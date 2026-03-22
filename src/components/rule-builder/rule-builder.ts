@@ -11,10 +11,11 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { Rule, AddressSpec, PortSpec } from '../../store/types';
+import type { Rule, AddressSpec, PortSpec, NetworkInterface } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
 import { ServicePicker, type ServiceSelection } from './service-picker';
 import { AddressPicker } from './address-picker';
+import { selectActiveHost } from '../../store/selectors';
 
 export interface RuleFormData {
   label: string;
@@ -48,6 +49,11 @@ export class RuleBuilder extends Component {
   private moreOptionsContainer: HTMLElement;
   private servicePicker: ServicePicker | null = null;
   private addressPicker: AddressPicker | null = null;
+
+  // Interface selector (shown in main form when host has 2+ interfaces)
+  private interfaceGroup: HTMLElement | null = null;
+  private interfaceSelect: HTMLSelectElement | null = null;
+  private selectedInterface = 'any';
 
   // Cached "More options" display elements
   private protocolDisplay: HTMLElement | null = null;
@@ -117,6 +123,22 @@ export class RuleBuilder extends Component {
     sourceGroup.appendChild(sourceContainer);
     this.formEl.appendChild(sourceGroup);
 
+    // --- Interface (shown when host has 2+ interfaces) ---
+    this.interfaceGroup = this.createFieldGroup('Interface');
+    this.interfaceGroup.style.display = 'none';
+    this.interfaceSelect = document.createElement('select');
+    this.interfaceSelect.className = 'rule-builder__select';
+    this.interfaceSelect.appendChild(this.createOption('any', 'Any interface'));
+    this.listen(this.interfaceSelect, 'change', () => {
+      if (this.interfaceSelect) {
+        this.selectedInterface = this.interfaceSelect.value;
+        this.updatePreview();
+      }
+    });
+    this.interfaceGroup.appendChild(this.interfaceSelect);
+    this.formEl.appendChild(this.interfaceGroup);
+    this.populateInterfaces();
+
     // --- Comment ---
     const commentGroup = this.createFieldGroup('Comment');
     this.commentInput = document.createElement('input');
@@ -159,6 +181,39 @@ export class RuleBuilder extends Component {
       source: this.selectedSource,
       comment: this.commentValue,
     };
+  }
+
+  /**
+   * Populate the interface selector from the active host's capabilities.
+   * Only shows the selector when the host has 2 or more interfaces.
+   */
+  private populateInterfaces(): void {
+    const host = this.store.select(selectActiveHost);
+    const interfaces = host?.capabilities?.interfaces;
+
+    if (!interfaces || interfaces.length < 2) {
+      if (this.interfaceGroup) {
+        this.interfaceGroup.style.display = 'none';
+      }
+      return;
+    }
+
+    if (this.interfaceGroup) {
+      this.interfaceGroup.style.display = '';
+    }
+
+    if (this.interfaceSelect) {
+      // Clear existing options except the first "Any"
+      while (this.interfaceSelect.options.length > 1) {
+        this.interfaceSelect.remove(1);
+      }
+
+      for (const iface of interfaces) {
+        const addrStr = iface.addresses.length > 0 ? ` (${iface.addresses[0]})` : '';
+        const label = `${iface.name}${addrStr}`;
+        this.interfaceSelect.appendChild(this.createOption(iface.name, label));
+      }
+    }
   }
 
   private ruleActionToChoice(action: Rule['action']): ActionChoice {

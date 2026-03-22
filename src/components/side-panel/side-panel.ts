@@ -16,6 +16,7 @@ import type { SidePanelContent } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
 import { RuleDetail } from './rule-detail';
 import { RuleEdit } from './rule-edit';
+import { SnapshotHistory } from './snapshot-history';
 
 export class SidePanel extends Component {
   private panelEl: HTMLElement;
@@ -130,11 +131,9 @@ export class SidePanel extends Component {
         break;
       }
       case 'snapshot-history': {
-        const historyEl = h('div', { className: 'side-panel__snapshot-history' },
-          h('h3', { className: 'side-panel__section-title' }, 'Snapshot History'),
-          h('p', { className: 'side-panel__empty-text' }, 'No snapshots yet.'),
-        );
-        this.contentEl.appendChild(historyEl);
+        const snapshotHistory = new SnapshotHistory(this.contentEl, this.store);
+        this.currentContent = snapshotHistory;
+        this.addChild(snapshotHistory);
         break;
       }
       case 'host-settings': {

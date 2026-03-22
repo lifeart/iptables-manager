@@ -189,6 +189,20 @@ export class RuleTable extends Component {
               className: `rule-table__host-status rule-table__host-status--${host.status}`,
             }, host.status.charAt(0).toUpperCase() + host.status.slice(1));
             this.headerEl.appendChild(statusEl);
+            const historyBtn = h('button', {
+              className: 'rule-table__history-btn',
+              type: 'button',
+              title: 'Snapshot History',
+              style: { marginLeft: 'auto', padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
+            }, 'History');
+            this.listen(historyBtn, 'click', () => {
+              this.store.dispatch({
+                type: 'SET_SIDE_PANEL_CONTENT',
+                content: { type: 'snapshot-history' },
+              });
+              this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+            });
+            this.headerEl.appendChild(historyBtn);
           } else {
             // Same host, just update name/status in place
             const nameEl = this.headerEl.querySelector('.rule-table__host-name');
@@ -479,12 +493,42 @@ export class RuleTable extends Component {
       }
     }
 
-    // Terminal tab — render placeholder
+    // Terminal tab — render placeholder with sub-tab buttons
     if (tab === 'terminal' && this.terminalPanel && this.terminalPanel.children.length === 0) {
-      const placeholder = h('div', { className: 'rule-table__terminal-placeholder' },
-        h('p', { style: { padding: '24px', color: 'var(--color-text-secondary, #888)' } },
-          'Terminal view is available when connected to a host via Tauri.'),
-      );
+      const placeholder = h('div', { className: 'rule-table__terminal-placeholder' });
+
+      const subTabs = h('div', {
+        className: 'rule-table__terminal-sub-tabs',
+        style: { display: 'flex', gap: '8px', padding: '16px 24px 0' },
+      });
+
+      const rawBtn = h('button', {
+        className: 'rule-table__terminal-sub-tab',
+        type: 'button',
+        disabled: true,
+        style: { opacity: '0.5', cursor: 'not-allowed', padding: '6px 16px', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'var(--color-bg-secondary, #1a1a1a)', color: 'var(--color-text-secondary, #888)' },
+      }, 'Raw Rules');
+
+      const tracerBtn = h('button', {
+        className: 'rule-table__terminal-sub-tab',
+        type: 'button',
+        disabled: true,
+        style: { opacity: '0.5', cursor: 'not-allowed', padding: '6px 16px', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'var(--color-bg-secondary, #1a1a1a)', color: 'var(--color-text-secondary, #888)' },
+      }, 'Packet Tracer');
+
+      subTabs.appendChild(rawBtn);
+      subTabs.appendChild(tracerBtn);
+      placeholder.appendChild(subTabs);
+
+      const message = h('div', {
+        className: 'rule-table__terminal-message',
+        style: { padding: '48px 24px', textAlign: 'center', color: 'var(--color-text-secondary, #888)' },
+      });
+      message.appendChild(h('p', {
+        style: { fontSize: '14px', margin: '0' },
+      }, 'Connect to a real host to use the Terminal'));
+      placeholder.appendChild(message);
+
       this.terminalPanel.appendChild(placeholder);
     }
   }
