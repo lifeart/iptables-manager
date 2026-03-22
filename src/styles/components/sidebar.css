@@ -113,8 +113,9 @@
 /* Status icon (SVG 8px) */
 .sidebar__status-icon {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
 }
 
 @keyframes sidebar-spin {

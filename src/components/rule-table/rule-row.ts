@@ -53,11 +53,11 @@ function getStatusLabelClass(action: EffectiveRule['action']): string {
   }
 }
 
-function formatAddress(addr: AddressSpec): string {
+function formatAddress(addr: AddressSpec, ipListName?: string): string {
   switch (addr.type) {
     case 'anyone': return 'Anyone';
     case 'cidr': return addr.value;
-    case 'iplist': return addr.ipListId;
+    case 'iplist': return ipListName ?? addr.ipListId;
     default: return '';
   }
 }
@@ -80,7 +80,7 @@ function formatHitCount(count: number): string {
 
 // ─── Create / Update ─────────────────────────────────────────
 
-export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HTMLElement {
+export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipListNames?: Map<string, string>): HTMLElement {
   const row = h('div', {
     className: 'rule-table__row',
     tabindex: '0',
@@ -118,18 +118,26 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HT
 
   content.appendChild(firstLine);
 
-  // Second line: protocol + comment
+  // Second line: protocol + comment (always show something for conntrack/auto rules)
   const secondLine = h('div', { className: 'rule-table__row-second-line' });
   const protocolText = rule.protocol ? String(rule.protocol).toUpperCase() : '';
   const commentText = rule.comment ? ` \u00B7 ${rule.comment}` : '';
-  const secondLineText = protocolText + commentText;
-  if (secondLineText) {
-    const protocolEl = h('span', { className: 'rule-table__protocol' }, protocolText);
-    secondLine.appendChild(protocolEl);
+
+  // For auto-generated rules without protocol, show a descriptive subtitle
+  const autoSubtitle = getAutoRuleSubtitle(rule);
+
+  if (protocolText || commentText) {
+    if (protocolText) {
+      const protocolEl = h('span', { className: 'rule-table__protocol' }, protocolText);
+      secondLine.appendChild(protocolEl);
+    }
     if (rule.comment) {
       const commentEl = h('span', { className: 'rule-table__comment' }, ` \u00B7 ${rule.comment}`);
       secondLine.appendChild(commentEl);
     }
+  } else if (autoSubtitle) {
+    const subtitleEl = h('span', { className: 'rule-table__comment' }, autoSubtitle);
+    secondLine.appendChild(subtitleEl);
   }
   content.appendChild(secondLine);
 
@@ -139,9 +147,12 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HT
   const rightSection = h('div', { className: 'rule-table__row-right' });
 
   // Source
+  const ipListName = rule.source.type === 'iplist' && ipListNames
+    ? ipListNames.get(rule.source.ipListId) : undefined;
+  const sourceText = formatAddress(rule.source, ipListName);
   const sourceEl = h('span', {
     className: 'rule-table__source' + (rule.source.type === 'cidr' ? ' rule-table__source--mono' : ''),
-  }, formatAddress(rule.source));
+  }, sourceText);
   rightSection.appendChild(sourceEl);
 
   // Origin tag
@@ -154,7 +165,7 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HT
     rightSection.appendChild(originTag);
   }
 
-  // Hit count (placeholder — will be updated with actual data)
+  // Hit count
   const hitCountEl = h('span', { className: 'rule-table__hit-count' }, '');
   rightSection.appendChild(hitCountEl);
 
@@ -171,7 +182,16 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HT
   return row;
 }
 
-export function updateRuleRow(el: HTMLElement, rule: EffectiveRule, hasPendingChange = false): void {
+function getAutoRuleSubtitle(rule: EffectiveRule): string {
+  if (rule.section === 'loopback') return 'Interface: lo';
+  if (rule.section === 'conntrack' && rule.id === '__ct_invalid__') return 'State: INVALID';
+  if (rule.section === 'conntrack' && rule.id === '__ct_established__') return 'State: ESTABLISHED, RELATED';
+  if (rule.section === 'log-catchall') return 'Rate limited: 5/min burst 10';
+  if (rule.section === 'default-policy') return 'Default policy';
+  return '';
+}
+
+export function updateRuleRow(el: HTMLElement, rule: EffectiveRule, hasPendingChange = false, ipListNames?: Map<string, string>): void {
   el.setAttribute('aria-label', `${getActionDisplay(rule.action)} ${rule.label}`);
   el.dataset.ruleId = rule.id;
 
@@ -223,7 +243,9 @@ export function updateRuleRow(el: HTMLElement, rule: EffectiveRule, hasPendingCh
   // Update source
   const sourceEl = el.querySelector('.rule-table__source');
   if (sourceEl) {
-    const sourceText = formatAddress(rule.source);
+    const ipListName = rule.source.type === 'iplist' && ipListNames
+      ? ipListNames.get(rule.source.ipListId) : undefined;
+    const sourceText = formatAddress(rule.source, ipListName);
     if (sourceEl.textContent !== sourceText) {
       sourceEl.textContent = sourceText;
     }

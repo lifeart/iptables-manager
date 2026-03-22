@@ -132,7 +132,8 @@
 .filter-bar__segment--active {
   background: var(--color-background);
   color: var(--color-text-primary);
-  box-shadow: var(--shadow-segment);
+  font-weight: 600;
+  box-shadow: var(--shadow-segment), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
 }
 
 /* Search */
@@ -194,7 +195,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-compact);
-  padding: var(--space-default) var(--space-spacious);
+  padding: var(--space-comfortable) var(--space-spacious);
   cursor: pointer;
   user-select: none;
   position: sticky;
@@ -212,7 +213,7 @@
 }
 
 .rule-table__section-header::before {
-  max-width: 16px;
+  max-width: 24px;
 }
 
 .rule-table__section-title {
@@ -220,7 +221,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
@@ -256,12 +257,13 @@
   display: flex;
   align-items: center;
   height: var(--row-height);
-  padding: 0 var(--space-spacious) 0 0;
+  max-height: var(--row-height);
+  padding: 0 var(--space-spacious) 0 15px;
   cursor: pointer;
   position: relative;
   transition: background var(--transition-fast);
   border-bottom: 1px solid var(--color-separator);
-  margin-left: 15px; /* inset separator */
+  box-sizing: border-box;
 }
 
 .rule-table__row:hover {
@@ -298,7 +300,7 @@
 /* Status bar (3px left edge) */
 .rule-table__row-bar {
   position: absolute;
-  left: -15px; /* account for margin-left on row */
+  left: 0;
   top: 0;
   width: var(--status-bar-width);
   height: 100%;
@@ -402,7 +404,7 @@
 .rule-table__row-second-line {
   display: flex;
   align-items: center;
-  padding-left: 60px; /* align with name after status label */
+  padding-left: 60px; /* align with name after status label (52px label + 8px gap) */
 }
 
 .rule-table__protocol {
@@ -673,4 +675,5 @@
 .rule-table__row--default-policy {
   border-top: 2px dashed var(--color-border);
   margin-top: var(--space-compact);
+  opacity: 0.7;
 }

@@ -8,7 +8,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, EffectiveRule } from '../../store/types';
+import type { AppState, EffectiveRule, HitCounter } from '../../store/types';
 import {
   selectActiveHost,
   selectEffectiveRules,
@@ -228,6 +228,16 @@ export class RuleTable extends Component {
       () => this.updateFilterBar(),
     );
 
+    // Hit counters changed — re-render to update counts
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return null;
+        return s.hostStates.get(hostId)?.hitCounters ?? null;
+      },
+      () => this.renderRules(),
+    );
+
     // Initial renders
     this.updateTabStyling();
     this.renderRules();
@@ -373,26 +383,62 @@ export class RuleTable extends Component {
             }
           }
 
+          // Get hit counters for the active host
+          const hitCounters = activeHostId
+            ? state.hostStates.get(activeHostId)?.hitCounters
+            : undefined;
+
+          // Build ipList name lookup
+          const ipListNames = new Map<string, string>();
+          for (const [id, list] of state.ipLists) {
+            ipListNames.set(id, list.name);
+          }
+
           // Use reconcileList for rule rows within the section
           reconcileList(
             rowsContainer,
             allSectionRules,
             (rule) => rule.id,
             (rule) => {
-              const rowEl = createRuleRow(rule, pendingRuleIds.has(rule.id));
+              const rowEl = createRuleRow(rule, pendingRuleIds.has(rule.id), ipListNames);
               if (rule.section === 'default-policy') {
                 rowEl.classList.add('rule-table__row--default-policy');
               }
+              // Set hit count
+              this.updateRowHitCount(rowEl, rule.id, hitCounters);
               return rowEl;
             },
             (el, rule) => {
-              updateRuleRow(el, rule, pendingRuleIds.has(rule.id));
+              updateRuleRow(el, rule, pendingRuleIds.has(rule.id), ipListNames);
               el.classList.toggle('rule-table__row--default-policy', rule.section === 'default-policy');
+              // Update hit count
+              this.updateRowHitCount(el, rule.id, hitCounters);
             },
           );
         }
       }
     }
+  }
+
+  private updateRowHitCount(
+    rowEl: HTMLElement,
+    ruleId: string,
+    hitCounters: Map<string, HitCounter> | undefined,
+  ): void {
+    const hitCountEl = rowEl.querySelector('.rule-table__hit-count');
+    if (!hitCountEl) return;
+    const counter = hitCounters?.get(ruleId);
+    const count = counter?.packets ?? 0;
+    const text = count > 0 ? this.formatHitCount(count) : '';
+    if (hitCountEl.textContent !== text) {
+      hitCountEl.textContent = text;
+    }
+  }
+
+  private formatHitCount(count: number): string {
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+    return String(count);
   }
 
   private switchTabContent(tab: AppState['activeTab']): void {

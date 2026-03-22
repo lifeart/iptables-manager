@@ -13,14 +13,28 @@
 }
 
 .activity-view__section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
   font-size: var(--font-size-section-header, 12px);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--color-text-secondary, #86868B);
+  color: var(--color-text-primary, #1D1D1F);
   margin: var(--space-section, 20px) 0 var(--space-compact, 8px);
   padding-bottom: var(--space-compact, 8px);
-  border-bottom: 1px solid var(--color-separator, #F2F2F7);
+}
+
+.activity-view__section-title::before,
+.activity-view__section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border, #E5E5E7);
+}
+
+.activity-view__section-title::before {
+  max-width: 16px;
 }
 
 .activity-view__section-title:first-of-type {
