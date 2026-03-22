@@ -21,7 +21,7 @@ export class Sidebar extends Component {
   private ipListsContainer!: HTMLElement;
   private searchTerm = '';
   private expandedGroups = new Set<string>();
-  private focusedIndex = -1;
+  private focusedId: string | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -48,7 +48,7 @@ export class Sidebar extends Component {
     const hostsSection = h('div', { className: 'sidebar__section' });
     const hostsHeader = h('div', { className: 'sidebar__section-header' }, 'HOSTS');
     hostsSection.appendChild(hostsHeader);
-    this.hostsContainer = h('div', { className: 'sidebar__host-list', role: 'listbox' });
+    this.hostsContainer = h('div', { className: 'sidebar__host-list', role: 'list' });
     hostsSection.appendChild(this.hostsContainer);
     this.el.appendChild(hostsSection);
 
@@ -56,7 +56,7 @@ export class Sidebar extends Component {
     const groupsSection = h('div', { className: 'sidebar__section' });
     const groupsHeader = h('div', { className: 'sidebar__section-header' }, 'GROUPS');
     groupsSection.appendChild(groupsHeader);
-    this.groupsContainer = h('div', { className: 'sidebar__group-list', role: 'listbox' });
+    this.groupsContainer = h('div', { className: 'sidebar__group-list', role: 'list' });
     groupsSection.appendChild(this.groupsContainer);
     this.el.appendChild(groupsSection);
 
@@ -64,7 +64,7 @@ export class Sidebar extends Component {
     const ipListsSection = h('div', { className: 'sidebar__section' });
     const ipListsHeader = h('div', { className: 'sidebar__section-header' }, 'IP LISTS');
     ipListsSection.appendChild(ipListsHeader);
-    this.ipListsContainer = h('div', { className: 'sidebar__iplist-list', role: 'listbox' });
+    this.ipListsContainer = h('div', { className: 'sidebar__iplist-list', role: 'list' });
     ipListsSection.appendChild(this.ipListsContainer);
     this.el.appendChild(ipListsSection);
 
@@ -101,6 +101,12 @@ export class Sidebar extends Component {
         } else {
           this.expandedGroups.add(groupId);
         }
+        // Select the first host in the group, if any
+        const state = this.store.getState();
+        const group = state.groups.get(groupId);
+        if (group && group.memberHostIds.length > 0) {
+          this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: group.memberHostIds[0] });
+        }
         this.renderGroups();
       }
     });
@@ -112,6 +118,17 @@ export class Sidebar extends Component {
         // IP lists don't set active host, but could open a panel in the future
       }
     });
+
+    // Add Host button
+    const addBtn = this.el.querySelector<HTMLElement>('.sidebar__add-btn');
+    if (addBtn) {
+      this.listen(addBtn, 'click', () => {
+        this.store.dispatch({
+          type: 'SET_SIDE_PANEL_CONTENT',
+          content: { type: 'host-settings' },
+        });
+      });
+    }
 
     // Keyboard navigation
     this.listen(this.el, 'keydown', (e) => {
@@ -220,7 +237,7 @@ export class Sidebar extends Component {
     const row = h('div', {
       className: 'sidebar__iplist-row',
       tabindex: '0',
-      role: 'button',
+      role: 'listitem',
       'aria-label': `${list.name} - ${list.entries.length} entries`,
       dataset: { iplistId: list.id },
     });
@@ -257,22 +274,36 @@ export class Sidebar extends Component {
     ));
   }
 
+  private getRowId(row: HTMLElement): string | null {
+    return row.dataset.hostId ?? row.dataset.groupId ?? row.dataset.iplistId ?? null;
+  }
+
   private navigateKeyboard(direction: number): void {
     const rows = this.getAllFocusableRows();
     if (rows.length === 0) return;
 
-    this.focusedIndex += direction;
-    if (this.focusedIndex < 0) this.focusedIndex = rows.length - 1;
-    if (this.focusedIndex >= rows.length) this.focusedIndex = 0;
+    // Recompute current index from stored ID
+    let currentIndex = -1;
+    if (this.focusedId) {
+      currentIndex = rows.findIndex(r => this.getRowId(r) === this.focusedId);
+    }
 
-    rows[this.focusedIndex].focus();
+    let nextIndex = currentIndex + direction;
+    if (nextIndex < 0) nextIndex = rows.length - 1;
+    if (nextIndex >= rows.length) nextIndex = 0;
+
+    const nextRow = rows[nextIndex];
+    this.focusedId = this.getRowId(nextRow);
+    nextRow.focus();
   }
 
   private selectFocused(): void {
     const rows = this.getAllFocusableRows();
-    if (this.focusedIndex < 0 || this.focusedIndex >= rows.length) return;
+    if (!this.focusedId) return;
 
-    const row = rows[this.focusedIndex];
+    const row = rows.find(r => this.getRowId(r) === this.focusedId);
+    if (!row) return;
+
     if (row.dataset.hostId) {
       this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: row.dataset.hostId });
     } else if (row.dataset.groupId) {

@@ -144,13 +144,28 @@ export const selectFilteredRules = createSelector(
       });
     }
 
-    // Filter by search text
+    // Filter by search text (label, comment, ports, source/dest addresses)
     if (filter.search) {
       const searchLower = filter.search.toLowerCase();
-      filtered = filtered.filter(r =>
-        r.label.toLowerCase().includes(searchLower) ||
-        (r.comment && r.comment.toLowerCase().includes(searchLower)),
-      );
+      filtered = filtered.filter(r => {
+        // Match label
+        if (r.label.toLowerCase().includes(searchLower)) return true;
+        // Match comment
+        if (r.comment && r.comment.toLowerCase().includes(searchLower)) return true;
+        // Match port numbers
+        if (r.ports) {
+          if (r.ports.type === 'single' && String(r.ports.port).includes(searchLower)) return true;
+          if (r.ports.type === 'range' && (`${r.ports.from}-${r.ports.to}`).includes(searchLower)) return true;
+          if (r.ports.type === 'multi' && r.ports.ports.some(p => String(p).includes(searchLower))) return true;
+        }
+        // Match source address
+        if (r.source.type === 'cidr' && r.source.value.toLowerCase().includes(searchLower)) return true;
+        if (r.source.type === 'iplist' && r.source.ipListId.toLowerCase().includes(searchLower)) return true;
+        // Match destination address
+        if (r.destination.type === 'cidr' && r.destination.value.toLowerCase().includes(searchLower)) return true;
+        if (r.destination.type === 'iplist' && r.destination.ipListId.toLowerCase().includes(searchLower)) return true;
+        return false;
+      });
     }
 
     return filtered;

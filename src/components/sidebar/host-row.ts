@@ -148,13 +148,14 @@ export function createHostRow(host: Host, isActive: boolean): HTMLElement {
   const row = h('div', {
     className: 'sidebar__host-row' + (isActive ? ' sidebar__host-row--selected' : ''),
     tabindex: '0',
-    role: 'button',
+    role: 'listitem',
     'aria-label': `${host.name} - ${STATUS_CONFIGS[host.status].label}`,
-    dataset: { hostId: host.id },
+    dataset: { hostId: host.id, key: host.id },
   });
 
   const indicator = createStatusSvg(host.status);
   row.appendChild(indicator);
+  row.dataset.status = host.status;
 
   const nameEl = h('span', { className: 'sidebar__host-name' }, host.name);
   row.appendChild(nameEl);
@@ -171,11 +172,14 @@ export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean): v
   el.setAttribute('aria-label', `${host.name} - ${STATUS_CONFIGS[host.status].label}`);
   el.dataset.hostId = host.id;
 
-  // Update status indicator
-  const existingIcon = el.querySelector('.sidebar__status-icon');
-  if (existingIcon) {
-    const newIcon = createStatusSvg(host.status);
-    existingIcon.replaceWith(newIcon);
+  // Update status indicator only when status actually changes
+  if (el.dataset.status !== host.status) {
+    el.dataset.status = host.status;
+    const existingIcon = el.querySelector('.sidebar__status-icon');
+    if (existingIcon) {
+      const newIcon = createStatusSvg(host.status);
+      existingIcon.replaceWith(newIcon);
+    }
   }
 
   // Update hostname

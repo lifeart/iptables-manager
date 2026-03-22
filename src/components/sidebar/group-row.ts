@@ -26,10 +26,10 @@ export function createGroupRow(group: HostGroup, isExpanded: boolean): HTMLEleme
   const row = h('div', {
     className: 'sidebar__group-row',
     tabindex: '0',
-    role: 'button',
+    role: 'listitem',
     'aria-expanded': String(isExpanded),
     'aria-label': `${group.name} - ${group.memberHostIds.length} members`,
-    dataset: { groupId: group.id },
+    dataset: { groupId: group.id, key: group.id },
   });
 
   const disclosure = createDisclosureSvg(isExpanded);

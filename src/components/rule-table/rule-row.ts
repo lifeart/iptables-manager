@@ -80,11 +80,11 @@ function formatHitCount(count: number): string {
 
 // ─── Create / Update ─────────────────────────────────────────
 
-export function createRuleRow(rule: EffectiveRule): HTMLElement {
+export function createRuleRow(rule: EffectiveRule, hasPendingChange = false): HTMLElement {
   const row = h('div', {
     className: 'rule-table__row',
     tabindex: '0',
-    role: 'row',
+    role: 'listitem',
     'aria-label': `${getActionDisplay(rule.action)} ${rule.label}`,
     dataset: { ruleId: rule.id },
   });
@@ -111,9 +111,9 @@ export function createRuleRow(rule: EffectiveRule): HTMLElement {
   }, nameText);
   firstLine.appendChild(nameEl);
 
-  // Pending dot (hidden by default)
+  // Pending dot (shown when rule has staged changes)
   const pendingDot = h('span', { className: 'rule-table__pending-dot' });
-  pendingDot.style.display = 'none';
+  pendingDot.style.display = hasPendingChange ? '' : 'none';
   firstLine.appendChild(pendingDot);
 
   content.appendChild(firstLine);
@@ -171,7 +171,7 @@ export function createRuleRow(rule: EffectiveRule): HTMLElement {
   return row;
 }
 
-export function updateRuleRow(el: HTMLElement, rule: EffectiveRule): void {
+export function updateRuleRow(el: HTMLElement, rule: EffectiveRule, hasPendingChange = false): void {
   el.setAttribute('aria-label', `${getActionDisplay(rule.action)} ${rule.label}`);
   el.dataset.ruleId = rule.id;
 
@@ -240,5 +240,11 @@ export function updateRuleRow(el: HTMLElement, rule: EffectiveRule): void {
       originTag.textContent = 'host';
       originTag.classList.remove('rule-table__origin-tag--pill');
     }
+  }
+
+  // Update pending dot visibility
+  const pendingDot = el.querySelector<HTMLElement>('.rule-table__pending-dot');
+  if (pendingDot) {
+    pendingDot.style.display = hasPendingChange ? '' : 'none';
   }
 }

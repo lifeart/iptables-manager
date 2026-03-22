@@ -72,6 +72,15 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
 
+  /* Focus rings */
+  --color-focus-ring: rgba(0, 122, 255, 0.2);
+
+  /* Segment control */
+  --shadow-segment: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  /* Button hover */
+  --color-primary-hover-bg: rgba(0, 122, 255, 0.06);
+
   /* Shadows */
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.15);
   --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.25);
@@ -123,6 +132,15 @@
     /* Buttons */
     --color-primary: #0A84FF;
     --color-primary-text: #FFFFFF;
+
+    /* Focus rings */
+    --color-focus-ring: rgba(10, 132, 255, 0.3);
+
+    /* Segment control */
+    --shadow-segment: 0 1px 3px rgba(0, 0, 0, 0.2);
+
+    /* Button hover */
+    --color-primary-hover-bg: rgba(10, 132, 255, 0.1);
 
     /* Shadows */
     --shadow-banner: 0 8px 32px rgba(0, 0, 0, 0.5);

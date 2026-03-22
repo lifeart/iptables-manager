@@ -58,7 +58,7 @@
 
 .sidebar__search-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .sidebar__search-input::placeholder {
@@ -101,7 +101,7 @@
 }
 
 .sidebar__host-row--selected {
-  background: rgba(0, 122, 255, 0.15);
+  background: var(--color-selected);
   border-left-color: var(--color-primary);
 }
 
@@ -272,6 +272,6 @@
   transition: background var(--transition-fast);
 }
 
-.sidebar::after:hover {
+.sidebar:hover::after {
   background: var(--color-primary);
 }

@@ -64,11 +64,12 @@ export class PendingBar extends Component {
       this.applyChanges();
     });
 
-    // Keyboard shortcut: Cmd+S / Ctrl+S
+    // Keyboard shortcut: Cmd+S / Ctrl+S — only on rules tab
     this.listen(document, 'keydown', (e) => {
       const ke = e as KeyboardEvent;
       if ((ke.metaKey || ke.ctrlKey) && ke.key === 's') {
         ke.preventDefault();
+        if (this.store.getState().activeTab !== 'rules') return;
         const count = this.store.select(selectPendingChangeCount);
         if (count > 0) {
           this.applyChanges();

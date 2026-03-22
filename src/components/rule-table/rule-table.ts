@@ -36,6 +36,7 @@ export class RuleTable extends Component {
   private filterBar: FilterBar | null = null;
   private pendingBar!: PendingBar;
   private collapsedSections = new Set<string>();
+  private currentHeaderHostId: string | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -60,9 +61,13 @@ export class RuleTable extends Component {
       { id: 'terminal', label: 'Terminal' },
     ];
     for (const tab of tabs) {
+      const panelId = `tabpanel-${tab.id}`;
+      const tabId = `tab-${tab.id}`;
       const btn = h('button', {
         className: 'rule-table__tab',
+        id: tabId,
         role: 'tab',
+        'aria-controls': panelId,
         dataset: { tab: tab.id },
       }, tab.label);
       this.tabsEl.appendChild(btn);
@@ -73,8 +78,13 @@ export class RuleTable extends Component {
     this.filterBarContainer = h('div', { className: 'rule-table__filter-bar-container' });
     this.el.appendChild(this.filterBarContainer);
 
-    // Sections container (scrollable)
-    this.sectionsContainer = h('div', { className: 'rule-table__sections' });
+    // Sections container (scrollable) — serves as the rules tab panel
+    this.sectionsContainer = h('div', {
+      className: 'rule-table__sections',
+      id: 'tabpanel-rules',
+      role: 'tabpanel',
+      'aria-labelledby': 'tab-rules',
+    });
     this.el.appendChild(this.sectionsContainer);
 
     // Pending bar at bottom
@@ -122,19 +132,37 @@ export class RuleTable extends Component {
   }
 
   private bindSubscriptions(): void {
-    // Active host changed — update header
+    // Active host changed — update header only when host ID changes
     this.subscribe(
       selectActiveHost,
       (host) => {
         if (host) {
-          this.headerEl.innerHTML = '';
-          const nameEl = h('span', { className: 'rule-table__host-name' }, host.name);
-          this.headerEl.appendChild(nameEl);
-          const statusEl = h('span', {
-            className: `rule-table__host-status rule-table__host-status--${host.status}`,
-          }, host.status.charAt(0).toUpperCase() + host.status.slice(1));
-          this.headerEl.appendChild(statusEl);
+          if (this.currentHeaderHostId !== host.id) {
+            this.currentHeaderHostId = host.id;
+            this.headerEl.innerHTML = '';
+            const nameEl = h('span', { className: 'rule-table__host-name' }, host.name);
+            this.headerEl.appendChild(nameEl);
+            const statusEl = h('span', {
+              className: `rule-table__host-status rule-table__host-status--${host.status}`,
+            }, host.status.charAt(0).toUpperCase() + host.status.slice(1));
+            this.headerEl.appendChild(statusEl);
+          } else {
+            // Same host, just update name/status in place
+            const nameEl = this.headerEl.querySelector('.rule-table__host-name');
+            if (nameEl && nameEl.textContent !== host.name) {
+              nameEl.textContent = host.name;
+            }
+            const statusEl = this.headerEl.querySelector('.rule-table__host-status');
+            if (statusEl) {
+              const statusText = host.status.charAt(0).toUpperCase() + host.status.slice(1);
+              if (statusEl.textContent !== statusText) {
+                statusEl.textContent = statusText;
+              }
+              statusEl.className = `rule-table__host-status rule-table__host-status--${host.status}`;
+            }
+          }
         } else {
+          this.currentHeaderHostId = null;
           this.headerEl.innerHTML = '';
         }
       },
@@ -210,7 +238,6 @@ export class RuleTable extends Component {
   }
 
   private renderRules(): void {
-    const state = this.store.getState();
     const filteredRules = this.store.select(selectFilteredRules as (s: AppState) => EffectiveRule[] | null);
 
     if (!filteredRules || filteredRules.length === 0) {
@@ -221,56 +248,122 @@ export class RuleTable extends Component {
     // Group rules by direction
     const sections = this.groupRulesByDirection(filteredRules);
 
-    // Build section DOM
-    this.sectionsContainer.innerHTML = '';
+    // Build a set of section keys we expect
+    const expectedSectionKeys = new Set(sections.map(s => s.title));
+
+    // Remove sections that no longer exist
+    const existingSections = Array.from(
+      this.sectionsContainer.querySelectorAll<HTMLElement>(':scope > .rule-table__section'),
+    );
+    for (const existingEl of existingSections) {
+      const key = existingEl.dataset.section;
+      if (key && !expectedSectionKeys.has(key)) {
+        this.sectionsContainer.removeChild(existingEl);
+      }
+    }
+
+    // Remove any empty-state element if present
+    const emptyEl = this.sectionsContainer.querySelector('.rule-table__empty');
+    if (emptyEl) emptyEl.remove();
+
+    let nextSibling: Element | null = this.sectionsContainer.firstElementChild;
 
     for (const section of sections) {
-      const sectionEl = h('div', {
-        className: 'rule-table__section',
-        dataset: { section: section.title },
-      });
-
       const isCollapsed = this.collapsedSections.has(section.title);
 
-      // Section header
-      const header = createSectionHeader(section.title, section.rules.length, isCollapsed);
-      sectionEl.appendChild(header);
+      // Find or create section element
+      let sectionEl = this.sectionsContainer.querySelector<HTMLElement>(
+        `.rule-table__section[data-section="${CSS.escape(section.title)}"]`,
+      );
+
+      if (!sectionEl) {
+        sectionEl = h('div', {
+          className: 'rule-table__section',
+          dataset: { section: section.title },
+        });
+        this.sectionsContainer.insertBefore(sectionEl, nextSibling);
+      } else if (sectionEl !== nextSibling) {
+        this.sectionsContainer.insertBefore(sectionEl, nextSibling);
+      }
+      nextSibling = sectionEl.nextElementSibling;
+
+      // Update or create section header
+      let header = sectionEl.querySelector<HTMLElement>('.rule-table__section-header');
+      if (header) {
+        updateSectionHeader(header, section.title, section.rules.length, isCollapsed);
+      } else {
+        header = createSectionHeader(section.title, section.rules.length, isCollapsed);
+        sectionEl.insertBefore(header, sectionEl.firstChild);
+      }
 
       // Rule rows (hidden if collapsed)
-      if (!isCollapsed) {
-        const rowsContainer = h('div', { className: 'rule-table__rows' });
+      let rowsContainer = sectionEl.querySelector<HTMLElement>('.rule-table__rows');
+      if (isCollapsed) {
+        if (rowsContainer) rowsContainer.remove();
+      } else {
+        if (!rowsContainer) {
+          rowsContainer = h('div', { className: 'rule-table__rows', role: 'list' });
+          sectionEl.appendChild(rowsContainer);
+        }
 
-        // Group by origin within section
-        const originGroups = this.groupRulesByOrigin(section.rules);
+        if (section.rules.length === 0) {
+          // Show empty state for sections with no rules
+          rowsContainer.innerHTML = '';
+          const emptyText = h('p', { className: 'rule-table__section-empty' },
+            'No outgoing traffic rules configured.');
+          rowsContainer.appendChild(emptyText);
+        } else {
+          // Remove any previous empty state text
+          const emptyP = rowsContainer.querySelector('.rule-table__section-empty');
+          if (emptyP) emptyP.remove();
 
-        for (const group of originGroups) {
-          // Origin sub-header (if not the only group)
-          if (originGroups.length > 1 && group.title) {
-            const subHeader = createSectionHeader(
-              group.title,
-              group.rules.length,
-              this.collapsedSections.has(`${section.title}:${group.title}`),
-            );
-            subHeader.classList.add('rule-table__section-header--sub');
-            rowsContainer.appendChild(subHeader);
-
+          // Collect all rules for this section into a flat list for reconciliation
+          const allSectionRules: EffectiveRule[] = [];
+          const originGroups = this.groupRulesByOrigin(section.rules);
+          for (const group of originGroups) {
             if (this.collapsedSections.has(`${section.title}:${group.title}`)) {
               continue;
             }
+            allSectionRules.push(...group.rules);
           }
 
-          // Render rule rows
-          for (const rule of group.rules) {
-            const rowEl = createRuleRow(rule);
-            rowEl.dataset.key = rule.id;
-            rowsContainer.appendChild(rowEl);
+          // Build set of rule IDs with pending changes
+          const state = this.store.getState();
+          const activeHostId = state.activeHostId;
+          const pendingRuleIds = new Set<string>();
+          if (activeHostId) {
+            const changeset = state.stagedChanges.get(activeHostId);
+            if (changeset) {
+              for (const change of changeset.changes) {
+                if ('ruleId' in change && change.ruleId) {
+                  pendingRuleIds.add(change.ruleId);
+                }
+                if (change.type === 'add') {
+                  pendingRuleIds.add(change.rule.id);
+                }
+              }
+            }
           }
+
+          // Use reconcileList for rule rows within the section
+          reconcileList(
+            rowsContainer,
+            allSectionRules,
+            (rule) => rule.id,
+            (rule) => {
+              const rowEl = createRuleRow(rule, pendingRuleIds.has(rule.id));
+              if (rule.section === 'default-policy') {
+                rowEl.classList.add('rule-table__row--default-policy');
+              }
+              return rowEl;
+            },
+            (el, rule) => {
+              updateRuleRow(el, rule, pendingRuleIds.has(rule.id));
+              el.classList.toggle('rule-table__row--default-policy', rule.section === 'default-policy');
+            },
+          );
         }
-
-        sectionEl.appendChild(rowsContainer);
       }
-
-      this.sectionsContainer.appendChild(sectionEl);
     }
   }
 
@@ -293,9 +386,8 @@ export class RuleTable extends Component {
     if (incoming.length > 0) {
       sections.push({ title: 'Incoming Traffic', rules: incoming });
     }
-    if (outgoing.length > 0) {
-      sections.push({ title: 'Outgoing Traffic', rules: outgoing });
-    }
+    // Always show Outgoing Traffic section
+    sections.push({ title: 'Outgoing Traffic', rules: outgoing });
     if (nat.length > 0) {
       sections.push({ title: 'NAT Rules', rules: nat });
     }

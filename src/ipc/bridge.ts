@@ -244,8 +244,20 @@ async function ipcCall<T>(cmd: string, args?: Record<string, unknown>): Promise<
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
-    const err = typeof e === 'string' ? JSON.parse(e) : e;
-    throw new IpcError(err.kind ?? 'Unknown', err.detail ?? String(e));
+    let err: Record<string, unknown>;
+    if (typeof e === 'string') {
+      try {
+        err = JSON.parse(e);
+      } catch {
+        throw new IpcError('Unknown', e);
+      }
+    } else {
+      err = e as Record<string, unknown>;
+    }
+    throw new IpcError(
+      (err.kind as string) ?? 'Unknown',
+      (err.detail as string) ?? String(e),
+    );
   }
 }
 
