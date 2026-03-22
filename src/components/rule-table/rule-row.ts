@@ -177,11 +177,11 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipL
 }
 
 function getAutoRuleSubtitle(rule: EffectiveRule): string {
-  if (rule.section === 'loopback') return 'Interface: lo';
-  if (rule.section === 'conntrack' && rule.id === '__ct_invalid__') return 'State: INVALID';
-  if (rule.section === 'conntrack' && rule.id === '__ct_established__') return 'State: ESTABLISHED, RELATED';
-  if (rule.section === 'log-catchall') return 'Rate limited: 5/min burst 10';
-  if (rule.section === 'default-policy') return 'Default policy';
+  if (rule.section === 'loopback') return 'Allows the server to talk to itself (required for local services)';
+  if (rule.section === 'conntrack' && rule.id === '__ct_invalid__') return 'Drops broken or malformed packets that don\'t belong to any connection';
+  if (rule.section === 'conntrack' && rule.id === '__ct_established__') return 'Allows response traffic for connections you already started';
+  if (rule.section === 'log-catchall') return 'Records blocked traffic for review (rate limited to 5/min)';
+  if (rule.section === 'default-policy') return 'Blocks all traffic not matched by rules above';
   return '';
 }
 

@@ -42,6 +42,13 @@ export class Sidebar extends Component {
     this.searchInput.className = 'sidebar__search-input';
     this.searchInput.setAttribute('aria-label', 'Search hosts');
     searchWrap.appendChild(this.searchInput);
+    const searchClearBtn = h('button', {
+      className: 'sidebar__search-clear',
+      type: 'button',
+      'aria-label': 'Clear search',
+      style: { display: 'none' },
+    }, '\u00D7');
+    searchWrap.appendChild(searchClearBtn);
     this.el.appendChild(searchWrap);
 
     // Hosts section
@@ -78,10 +85,21 @@ export class Sidebar extends Component {
 
   private bindEvents(): void {
     // Search input
+    const clearBtn = this.el.querySelector<HTMLElement>('.sidebar__search-clear');
     this.listen(this.searchInput, 'input', () => {
       this.searchTerm = this.searchInput.value.trim().toLowerCase();
+      if (clearBtn) clearBtn.style.display = this.searchTerm ? '' : 'none';
       this.renderHosts();
     });
+    if (clearBtn) {
+      this.listen(clearBtn, 'click', () => {
+        this.searchInput.value = '';
+        this.searchTerm = '';
+        clearBtn.style.display = 'none';
+        this.renderHosts();
+        this.searchInput.focus();
+      });
+    }
 
     // Click delegation for host rows
     this.listen(this.hostsContainer, 'click', (e) => {
@@ -111,11 +129,51 @@ export class Sidebar extends Component {
       }
     });
 
-    // Click delegation for IP list rows
+    // Click delegation for IP list rows — highlight and show toast
     this.listen(this.ipListsContainer, 'click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__iplist-row');
       if (row?.dataset.iplistId) {
-        // IP lists don't set active host, but could open a panel in the future
+        // Briefly highlight the clicked row to give visual feedback
+        const allRows = this.ipListsContainer.querySelectorAll('.sidebar__iplist-row');
+        for (const r of allRows) {
+          r.classList.remove('sidebar__iplist-row--selected');
+        }
+        row.classList.add('sidebar__iplist-row--selected');
+
+        // Show the IP list entries in a tooltip-like detail
+        const ipListId = row.dataset.iplistId;
+        const state = this.store.getState();
+        const ipList = state.ipLists.get(ipListId);
+        if (ipList) {
+          // Remove any existing detail popover
+          const existing = this.el.querySelector('.sidebar__iplist-detail');
+          if (existing) existing.remove();
+
+          const detail = h('div', { className: 'sidebar__iplist-detail' });
+          detail.appendChild(h('div', { className: 'sidebar__iplist-detail-title' }, ipList.name));
+          for (const entry of ipList.entries) {
+            const entryEl = h('div', { className: 'sidebar__iplist-detail-entry' });
+            entryEl.appendChild(h('span', { className: 'sidebar__iplist-detail-addr' }, entry.address));
+            if (entry.comment) {
+              entryEl.appendChild(h('span', { className: 'sidebar__iplist-detail-comment' }, entry.comment));
+            }
+            detail.appendChild(entryEl);
+          }
+          if (ipList.entries.length === 0) {
+            detail.appendChild(h('div', { className: 'sidebar__iplist-detail-empty' }, 'No addresses in this list.'));
+          }
+          const closeBtn = h('button', {
+            className: 'sidebar__iplist-detail-close',
+            type: 'button',
+            'aria-label': 'Close',
+          }, '\u00D7');
+          this.listen(closeBtn, 'click', () => {
+            detail.remove();
+            row.classList.remove('sidebar__iplist-row--selected');
+          });
+          detail.insertBefore(closeBtn, detail.firstChild);
+          row.parentElement?.appendChild(detail);
+        }
       }
     });
 

@@ -45,6 +45,30 @@ html, body {
   /* Hidden by default, shown via JS */
 }
 
+/* App title bar */
+.app-title-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--color-sidebar, #1a1a1a);
+  border-bottom: 1px solid var(--color-border, #333);
+  flex-shrink: 0;
+}
+
+.app-title-bar__logo {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary, #fff);
+  letter-spacing: -0.3px;
+}
+
+.app-title-bar__subtitle {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #666);
+  font-weight: 400;
+}
+
 /* Loading screen */
 .loading-screen {
   display: flex;

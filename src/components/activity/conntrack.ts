@@ -27,7 +27,7 @@ export class ConntrackBar extends Component {
     this.container.innerHTML = '';
 
     const header = h('div', { className: 'conntrack__header' },
-      h('span', { className: 'conntrack__title' }, 'Connection Tracking'),
+      h('span', { className: 'conntrack__title' }, 'Active Connections'),
     );
     this.labelEl = h('span', { className: 'conntrack__label' });
     header.appendChild(this.labelEl);

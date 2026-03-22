@@ -80,7 +80,7 @@ export function computeEffectiveRuleset(
   // 1. Loopback allow (auto-generated)
   effective.push(makeEffective({
     id: '__loopback__',
-    label: 'Allow Loopback',
+    label: 'Allow Local Traffic',
     action: 'allow',
     source: { type: 'anyone' },
     destination: { type: 'anyone' },
@@ -97,7 +97,7 @@ export function computeEffectiveRuleset(
   // 2. Connection Tracking
   effective.push(makeEffective({
     id: '__ct_invalid__',
-    label: 'Drop Invalid',
+    label: 'Drop Invalid Packets',
     action: 'block',
     source: { type: 'anyone' },
     destination: { type: 'anyone' },
@@ -113,7 +113,7 @@ export function computeEffectiveRuleset(
 
   effective.push(makeEffective({
     id: '__ct_established__',
-    label: 'Allow Established/Related',
+    label: 'Allow Return Traffic',
     action: 'allow',
     source: { type: 'anyone' },
     destination: { type: 'anyone' },
@@ -153,13 +153,14 @@ export function computeEffectiveRuleset(
   // 6. Log catch-all (auto-generated for blocked log functionality)
   effective.push(makeEffective({
     id: '__log_catchall__',
-    label: 'Log Unmatched',
+    label: 'Log Blocked Attempts',
     action: 'log',
     source: { type: 'anyone' },
     destination: { type: 'anyone' },
     direction: 'incoming',
     addressFamily: 'both',
-    logPrefix: 'TR-BLOCKED: ',
+    logPrefix: 'BLOCKED: ',
+    comment: 'Logs blocked traffic so you can review it in the Activity tab',
     logRateLimit: { rate: 5, per: 'minute', burst: 10 },
     origin: { type: 'user' },
     position: position++,

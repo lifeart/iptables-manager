@@ -382,7 +382,7 @@ export class RuleTable extends Component {
           // Show empty state for sections with no rules
           rowsContainer.innerHTML = '';
           const emptyText = h('p', { className: 'rule-table__section-empty' },
-            'No outgoing traffic rules configured.');
+            'No rules in this section.');
           rowsContainer.appendChild(emptyText);
         } else {
           // Remove any previous empty state text
@@ -526,7 +526,7 @@ export class RuleTable extends Component {
       });
       message.appendChild(h('p', {
         style: { fontSize: '14px', margin: '0' },
-      }, 'Connect to a real host to use the Terminal'));
+      }, 'Terminal is available when connected to a real server. In this demo, explore the Rules and Activity tabs to learn about firewall management.'));
       placeholder.appendChild(message);
 
       this.terminalPanel.appendChild(placeholder);
@@ -552,8 +552,9 @@ export class RuleTable extends Component {
     if (incoming.length > 0) {
       sections.push({ title: 'Incoming Traffic', rules: incoming });
     }
-    // Always show Outgoing Traffic section
-    sections.push({ title: 'Outgoing Traffic', rules: outgoing });
+    if (outgoing.length > 0) {
+      sections.push({ title: 'Outgoing Traffic', rules: outgoing });
+    }
     if (nat.length > 0) {
       sections.push({ title: 'NAT Rules', rules: nat });
     }
@@ -568,7 +569,7 @@ export class RuleTable extends Component {
     for (const rule of rules) {
       let key: string;
       if (rule.section === 'conntrack' || rule.section === 'loopback') {
-        key = 'Connection Tracking';
+        key = 'Auto-Generated (Essential)';
       } else if (rule.section === 'system') {
         key = `System Rules (${rule.origin.type === 'system' ? (rule.origin as { type: 'system'; owner: string }).owner : 'system'})`;
       } else if (rule.section === 'group' && rule.groupName) {
@@ -596,6 +597,24 @@ export class RuleTable extends Component {
 
   private renderEmptyState(): void {
     this.sectionsContainer.innerHTML = '';
+
+    // Check if the active host is unreachable
+    const activeHost = this.store.select(selectActiveHost);
+    if (activeHost && activeHost.status === 'unreachable') {
+      const empty = h('div', { className: 'rule-table__empty' });
+      empty.appendChild(h('p', { className: 'rule-table__empty-title' }, 'Host Unreachable'));
+      empty.appendChild(h('p', { className: 'rule-table__empty-subtitle' },
+        `Cannot connect to ${activeHost.name} (${activeHost.connection.hostname}). ` +
+        'The server may be offline or the network connection may be down.'));
+      if (activeHost.lastConnected) {
+        const lastSeen = new Date(activeHost.lastConnected).toLocaleString();
+        empty.appendChild(h('p', { className: 'rule-table__empty-subtitle' },
+          `Last connected: ${lastSeen}`));
+      }
+      this.sectionsContainer.appendChild(empty);
+      return;
+    }
+
     const empty = h('div', { className: 'rule-table__empty' });
     empty.appendChild(h('p', { className: 'rule-table__empty-title' }, 'No traffic rules configured.'));
     empty.appendChild(h('p', { className: 'rule-table__empty-subtitle' }, 'All traffic is currently allowed.'));

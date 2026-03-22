@@ -66,11 +66,14 @@ function formatDate(ts: number): string {
   });
 }
 
-function formatOrigin(rule: Rule): string {
+function formatOrigin(rule: Rule, groups: Map<string, import('../../store/types').HostGroup>): string {
   switch (rule.origin.type) {
     case 'user': return 'User-created';
-    case 'imported': return 'Imported';
-    case 'group': return `Group: ${rule.origin.groupId}`;
+    case 'imported': return 'Imported from server';
+    case 'group': {
+      const group = groups.get(rule.origin.groupId);
+      return `Group: ${group ? group.name : rule.origin.groupId}`;
+    }
     case 'system': return `System (${rule.origin.owner})`;
     default: return 'Unknown';
   }
@@ -183,7 +186,7 @@ export class RuleDetail extends Component {
     }
     detailFields.appendChild(this.createField('Hits', hitCount > 0 ? `${hitCount.toLocaleString()} (last 24h)` : '0'));
     detailFields.appendChild(this.createField('Added', formatDate(rule.createdAt)));
-    detailFields.appendChild(this.createField('Origin', formatOrigin(rule)));
+    detailFields.appendChild(this.createField('Origin', formatOrigin(rule, state.groups)));
 
     detailsSection.appendChild(detailFields);
     this.containerEl.appendChild(detailsSection);

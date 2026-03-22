@@ -158,7 +158,7 @@ export class RuleBuilder extends Component {
     const moreOptionsLink = h('button', {
       className: 'rule-builder__more-options-link',
       type: 'button',
-    }, 'More options...');
+    }, 'Show advanced options...');
     this.listen(moreOptionsLink, 'click', () => this.toggleMoreOptions());
     this.formEl.appendChild(moreOptionsLink);
 
@@ -302,8 +302,8 @@ export class RuleBuilder extends Component {
     const advancedHeader = h('div', { className: 'rule-builder__section-header' }, 'Advanced');
     this.moreOptionsContainer.appendChild(advancedHeader);
 
-    // Conntrack states
-    const conntrackGroup = this.createFieldGroup('Conntrack');
+    // Connection states (conntrack)
+    const conntrackGroup = this.createFieldGroup('Connection States');
     const states = ['New', 'Established', 'Related'];
     const stateContainer = h('div', { className: 'rule-builder__checkbox-group' });
     for (const state of states) {

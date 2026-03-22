@@ -75,7 +75,7 @@ export class ServicePicker extends Component {
     this.inputEl = document.createElement('input');
     this.inputEl.type = 'text';
     this.inputEl.className = 'service-picker__input';
-    this.inputEl.placeholder = 'choose...';
+    this.inputEl.placeholder = 'Search services (e.g. SSH, Web)...';
     this.inputEl.value = initialSelection.label;
     this.inputEl.setAttribute('role', 'combobox');
     this.inputEl.setAttribute('aria-expanded', 'false');

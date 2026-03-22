@@ -50,6 +50,13 @@ function mountApp(container: HTMLElement): void {
     h('main', { className: 'main-content', id: 'main-content' }),
     h('aside', { className: 'side-panel', id: 'side-panel' }),
   );
+
+  // App title bar (above main layout)
+  const titleBar = h('header', { className: 'app-title-bar' },
+    h('span', { className: 'app-title-bar__logo' }, 'Traffic Rules'),
+    h('span', { className: 'app-title-bar__subtitle' }, 'Firewall Manager'),
+  );
+  container.appendChild(titleBar);
   container.appendChild(layout);
 
   // Safety banner (top-level, renders when active)

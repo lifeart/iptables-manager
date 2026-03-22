@@ -220,6 +220,16 @@ export class CommandPalette extends Component {
         },
       },
       {
+        label: 'New Rule',
+        detail: 'Create a new firewall rule',
+        action: () => {
+          this.store.dispatch({
+            type: 'SET_SIDE_PANEL_CONTENT',
+            content: { type: 'rule-new' },
+          });
+        },
+      },
+      {
         label: 'Apply Changes',
         detail: 'Apply pending changes to host',
         action: () => {

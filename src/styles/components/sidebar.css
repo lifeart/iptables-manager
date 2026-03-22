@@ -65,6 +65,100 @@
   color: var(--color-text-tertiary);
 }
 
+/* ── Search Clear Button ─────────────────────────────── */
+
+.sidebar__search {
+  position: relative;
+}
+
+.sidebar__search-clear {
+  position: absolute;
+  right: calc(var(--space-default) + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--color-hover, #333);
+  color: var(--color-text-secondary, #888);
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.sidebar__search-clear:hover {
+  background: var(--color-text-tertiary, #555);
+  color: var(--color-text-primary, #fff);
+}
+
+/* ── IP List Detail Popover ──────────────────────────── */
+
+.sidebar__iplist-row--selected {
+  background: var(--color-selected, #2a2a2a);
+}
+
+.sidebar__iplist-detail {
+  position: relative;
+  background: var(--color-bg-secondary, #1e1e1e);
+  border: 1px solid var(--color-border, #333);
+  border-radius: var(--radius-md, 6px);
+  margin: 4px var(--space-default, 12px) 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.sidebar__iplist-detail-title {
+  font-weight: 600;
+  color: var(--color-text-primary, #fff);
+  margin-bottom: 6px;
+  padding-right: 20px;
+}
+
+.sidebar__iplist-detail-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary, #888);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar__iplist-detail-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.sidebar__iplist-detail-addr {
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-primary, #fff);
+  font-size: 11px;
+}
+
+.sidebar__iplist-detail-comment {
+  color: var(--color-text-tertiary, #666);
+  font-size: 11px;
+}
+
+.sidebar__iplist-detail-empty {
+  color: var(--color-text-tertiary, #666);
+  font-style: italic;
+}
+
 /* ── Section Headers ─────────────────────────────────── */
 
 .sidebar__section {

@@ -142,6 +142,30 @@
   align-items: center;
   gap: var(--space-compact);
   flex: 1;
+  position: relative;
+}
+
+.filter-bar__search-clear {
+  position: absolute;
+  left: calc(200px - 22px);
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--color-hover, #333);
+  color: var(--color-text-secondary, #888);
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.filter-bar__search-clear:hover {
+  background: var(--color-text-tertiary, #555);
+  color: var(--color-text-primary, #fff);
 }
 
 .filter-bar__search-input {

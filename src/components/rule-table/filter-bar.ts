@@ -38,10 +38,19 @@ export class FilterBar extends Component {
     const searchWrap = h('div', { className: 'filter-bar__search-wrap' });
     this.searchInput = document.createElement('input');
     this.searchInput.type = 'text';
-    this.searchInput.placeholder = 'Filter rules...';
+    this.searchInput.placeholder = 'Filter rules by name, port, IP...';
     this.searchInput.className = 'filter-bar__search-input';
     this.searchInput.setAttribute('aria-label', 'Filter rules');
     searchWrap.appendChild(this.searchInput);
+
+    // Clear search button
+    const searchClearBtn = h('button', {
+      className: 'filter-bar__search-clear',
+      type: 'button',
+      'aria-label': 'Clear filter',
+      style: { display: 'none' },
+    }, '\u00D7');
+    searchWrap.appendChild(searchClearBtn);
 
     // Filter count
     this.filterCountEl = h('span', { className: 'filter-bar__count' });
@@ -99,13 +108,27 @@ export class FilterBar extends Component {
       this.store.dispatch({ type: 'SET_RULE_FILTER', filter: { tab } });
     });
 
-    // Search input
+    // Search input with clear button
+    const filterClearBtn = this.el.querySelector<HTMLElement>('.filter-bar__search-clear');
     this.listen(this.searchInput, 'input', () => {
+      const val = this.searchInput.value;
+      if (filterClearBtn) filterClearBtn.style.display = val ? '' : 'none';
       this.store.dispatch({
         type: 'SET_RULE_FILTER',
-        filter: { search: this.searchInput.value },
+        filter: { search: val },
       });
     });
+    if (filterClearBtn) {
+      this.listen(filterClearBtn, 'click', () => {
+        this.searchInput.value = '';
+        filterClearBtn.style.display = 'none';
+        this.store.dispatch({
+          type: 'SET_RULE_FILTER',
+          filter: { search: '' },
+        });
+        this.searchInput.focus();
+      });
+    }
   }
 
   private bindSubscriptions(): void {
