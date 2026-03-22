@@ -8,7 +8,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, EffectiveRule, HitCounter } from '../../store/types';
+import type { AppState, EffectiveRule, HitCounter, Host } from '../../store/types';
 import {
   selectActiveHost,
   selectEffectiveRules,
@@ -22,7 +22,8 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
-import { disconnectHost } from '../../ipc/bridge';
+import { disconnectHost, connectHost, fetchRules } from '../../ipc/bridge';
+import { convertRuleSet } from '../../services/rule-converter';
 
 interface RuleSection {
   title: string;
@@ -175,65 +176,23 @@ export class RuleTable extends Component {
     });
   }
 
+  private currentHeaderStatus: string | null = null;
+
   private bindSubscriptions(): void {
-    // Active host changed — update header only when host ID changes
+    // Active host changed — rebuild header when host ID or status changes
     this.subscribe(
       selectActiveHost,
       (host) => {
         if (host) {
-          if (this.currentHeaderHostId !== host.id) {
+          const needsRebuild = this.currentHeaderHostId !== host.id
+            || this.currentHeaderStatus !== host.status;
+
+          if (needsRebuild) {
             this.currentHeaderHostId = host.id;
-            this.headerEl.innerHTML = '';
-            const nameEl = h('span', { className: 'rule-table__host-name' }, host.name);
-            this.headerEl.appendChild(nameEl);
-            const statusEl = h('span', {
-              className: `rule-table__host-status rule-table__host-status--${host.status}`,
-            }, host.status.charAt(0).toUpperCase() + host.status.slice(1));
-            this.headerEl.appendChild(statusEl);
-            const headerBtns = h('div', {
-              style: { marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' },
-            });
-
-            if (host.status === 'connected') {
-              const disconnectBtn = h('button', {
-                className: 'rule-table__disconnect-btn',
-                type: 'button',
-                title: 'Disconnect from host',
-                style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-block, #f85149)' },
-              }, 'Disconnect');
-              this.listen(disconnectBtn, 'click', () => {
-                this.handleDisconnect(host.id);
-              });
-              headerBtns.appendChild(disconnectBtn);
-            }
-
-            const historyBtn = h('button', {
-              className: 'rule-table__history-btn',
-              type: 'button',
-              title: 'Snapshot History',
-              style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
-            }, 'History');
-            this.listen(historyBtn, 'click', () => {
-              this.store.dispatch({
-                type: 'SET_SIDE_PANEL_CONTENT',
-                content: { type: 'snapshot-history' },
-              });
-              this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
-            });
-            headerBtns.appendChild(historyBtn);
-            this.headerEl.appendChild(headerBtns);
+            this.currentHeaderStatus = host.status;
+            this.rebuildHeader(host);
           } else {
-            // Same host — check if status changed (need to rebuild for disconnect button)
-            const statusEl = this.headerEl.querySelector('.rule-table__host-status');
-            const currentStatusClass = statusEl?.className ?? '';
-            const expectedStatusClass = `rule-table__host-status rule-table__host-status--${host.status}`;
-            if (currentStatusClass !== expectedStatusClass) {
-              // Status changed — force full header rebuild
-              this.currentHeaderHostId = null;
-              this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: host.id });
-              return;
-            }
-            // Just update name in place
+            // Just update name if it changed
             const nameEl = this.headerEl.querySelector('.rule-table__host-name');
             if (nameEl && nameEl.textContent !== host.name) {
               nameEl.textContent = host.name;
@@ -587,6 +546,75 @@ export class RuleTable extends Component {
 
       this.terminalPanel.appendChild(placeholder);
     }
+  }
+
+  private rebuildHeader(host: Host): void {
+    this.headerEl.innerHTML = '';
+    const nameEl = h('span', { className: 'rule-table__host-name' }, host.name);
+    this.headerEl.appendChild(nameEl);
+
+    const statusLabel = host.status.charAt(0).toUpperCase() + host.status.slice(1);
+    const statusEl = h('span', {
+      className: `rule-table__host-status rule-table__host-status--${host.status}`,
+    }, statusLabel);
+    this.headerEl.appendChild(statusEl);
+
+    const headerBtns = h('div', {
+      style: { marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' },
+    });
+
+    if (host.status === 'connected') {
+      // Disconnect button
+      const disconnectBtn = h('button', {
+        className: 'rule-table__disconnect-btn',
+        type: 'button',
+        title: 'Disconnect from host',
+        style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-block, #f85149)' },
+      }, 'Disconnect');
+      this.listen(disconnectBtn, 'click', () => this.handleDisconnect(host.id));
+      headerBtns.appendChild(disconnectBtn);
+    } else if (host.status === 'disconnected' || host.status === 'unreachable') {
+      // Reconnect button
+      const reconnectBtn = h('button', {
+        className: 'rule-table__reconnect-btn',
+        type: 'button',
+        title: 'Reconnect to host',
+        style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: 'none', background: 'var(--color-primary, #007AFF)', color: '#fff' },
+      }, 'Reconnect');
+      this.listen(reconnectBtn, 'click', () => this.handleReconnect(host));
+      headerBtns.appendChild(reconnectBtn);
+    }
+
+    // History button (always shown)
+    const historyBtn = h('button', {
+      className: 'rule-table__history-btn',
+      type: 'button',
+      title: 'Snapshot History',
+      style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
+    }, 'History');
+    this.listen(historyBtn, 'click', () => {
+      this.store.dispatch({ type: 'SET_SIDE_PANEL_CONTENT', content: { type: 'snapshot-history' } });
+      this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+    });
+    headerBtns.appendChild(historyBtn);
+    this.headerEl.appendChild(headerBtns);
+  }
+
+  private handleReconnect(host: Host): void {
+    this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'connecting' });
+    connectHost(host.id, host.connection.hostname, host.connection.port, host.connection.username, host.connection.authMethod, host.connection.keyPath)
+      .then(() => {
+        this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'connected' });
+        return fetchRules(host.id);
+      })
+      .then((ruleData) => {
+        const rules = convertRuleSet(ruleData);
+        this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
+      })
+      .catch((err) => {
+        console.warn('Reconnect failed:', err);
+        this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'unreachable' });
+      });
   }
 
   private handleDisconnect(hostId: string): void {
