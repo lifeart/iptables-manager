@@ -115,7 +115,7 @@ export class ShortcutService {
       meta: true,
       shift: false,
       handler: () => {
-        // Add host flow — will be implemented with host setup dialog
+        this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
       },
     });
 

@@ -216,7 +216,7 @@ export class CommandPalette extends Component {
         label: 'Add Host',
         detail: 'Connect to a new server',
         action: () => {
-          // Will be handled by host setup flow
+          this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
         },
       },
       {

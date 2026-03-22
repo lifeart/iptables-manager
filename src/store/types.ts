@@ -246,6 +246,14 @@ export type SidePanelContent =
   | { type: 'snapshot-history' }
   | { type: 'host-settings' };
 
+export type DialogType =
+  | 'add-host'
+  | 'quick-block'
+  | 'create-group'
+  | 'create-iplist'
+  | 'first-setup'
+  | null;
+
 export interface OperationState {
   type: string;
   hostId?: string;
@@ -294,6 +302,7 @@ export interface AppState {
   sidebarCollapsed: boolean;
   commandPaletteOpen: boolean;
   quickBlockOpen: boolean;
+  openDialog: DialogType;
   ruleFilter: { tab: 'all' | 'allow' | 'block' | 'log'; search: string };
 
   // @persisted — synced to IndexedDB
@@ -330,6 +339,7 @@ export function createInitialState(): AppState {
     sidebarCollapsed: false,
     commandPaletteOpen: false,
     quickBlockOpen: false,
+    openDialog: null,
     ruleFilter: { tab: 'all', search: '' },
 
     hosts: new Map(),

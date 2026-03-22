@@ -20,7 +20,9 @@ import { RuleTable } from './components/rule-table/rule-table';
 import { SidePanel } from './components/side-panel/side-panel';
 import { SafetyBanner } from './components/safety-banner/safety-banner';
 import { CommandPalette } from './components/command-palette/command-palette';
+import { DialogManager } from './components/dialogs/dialog-manager';
 import { ShortcutService } from './services/shortcut';
+import { loadDemoData } from './mock/demo-data';
 
 function showLoadingScreen(): void {
   const app = document.getElementById('app');
@@ -58,6 +60,10 @@ function mountApp(container: HTMLElement): void {
   const paletteEl = h('div', { id: 'command-palette' });
   container.appendChild(paletteEl);
 
+  // Dialog container (top-level overlay for modals)
+  const dialogEl = h('div', { id: 'dialog-container' });
+  container.appendChild(dialogEl);
+
   // Instantiate components
   const sidebarEl = document.getElementById('sidebar')!;
   const mainEl = document.getElementById('main-content')!;
@@ -68,6 +74,7 @@ function mountApp(container: HTMLElement): void {
   new SidePanel(sidePanelEl, store);
   new SafetyBanner(bannerEl, store);
   new CommandPalette(paletteEl, store);
+  new DialogManager(dialogEl, store);
 
   // Initialize keyboard shortcuts
   new ShortcutService(store);
@@ -126,10 +133,15 @@ async function bootstrap(): Promise<void> {
       mountApp(appContainer);
     }
 
-    // 7. Wire dbSync to store for persistence
+    // 7. Load demo data if no real hosts exist
+    if (store.getState().hosts.size === 0) {
+      loadDemoData(store);
+    }
+
+    // 8. Wire dbSync to store for persistence
     wireDbSync();
 
-    // 8. Auto-reconnect to last active host
+    // 9. Auto-reconnect to last active host
     if (store.getState().settings.autoReconnect) {
       autoReconnect().catch(() => {});
     }

@@ -20,6 +20,8 @@ import { createSectionHeader, updateSectionHeader } from './section-header';
 import { FilterBar } from './filter-bar';
 import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
+import { Activity } from '../activity/activity';
+import { generateFromTemplate } from '../../services/templates';
 
 interface RuleSection {
   title: string;
@@ -37,6 +39,11 @@ export class RuleTable extends Component {
   private pendingBar!: PendingBar;
   private collapsedSections = new Set<string>();
   private currentHeaderHostId: string | null = null;
+
+  // Tab content panels
+  private activityPanel: HTMLElement | null = null;
+  private terminalPanel: HTMLElement | null = null;
+  private activityComponent: Activity | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -86,6 +93,26 @@ export class RuleTable extends Component {
       'aria-labelledby': 'tab-rules',
     });
     this.el.appendChild(this.sectionsContainer);
+
+    // Activity tab panel (hidden by default)
+    this.activityPanel = h('div', {
+      className: 'rule-table__sections',
+      id: 'tabpanel-activity',
+      role: 'tabpanel',
+      'aria-labelledby': 'tab-activity',
+      style: { display: 'none' },
+    });
+    this.el.appendChild(this.activityPanel);
+
+    // Terminal tab panel (hidden by default)
+    this.terminalPanel = h('div', {
+      className: 'rule-table__sections',
+      id: 'tabpanel-terminal',
+      role: 'tabpanel',
+      'aria-labelledby': 'tab-terminal',
+      style: { display: 'none' },
+    });
+    this.el.appendChild(this.terminalPanel);
 
     // Pending bar at bottom
     this.pendingBarContainer = h('div', { className: 'rule-table__pending-bar-container' });
@@ -168,7 +195,7 @@ export class RuleTable extends Component {
       },
     );
 
-    // Active tab changed — update tab styling
+    // Active tab changed — update tab styling and switch content
     this.subscribe(
       (s: AppState) => s.activeTab,
       (tab) => {
@@ -179,6 +206,7 @@ export class RuleTable extends Component {
           el.classList.toggle('rule-table__tab--active', isActive);
           el.setAttribute('aria-selected', String(isActive));
         }
+        this.switchTabContent(tab);
       },
     );
 
@@ -367,6 +395,31 @@ export class RuleTable extends Component {
     }
   }
 
+  private switchTabContent(tab: AppState['activeTab']): void {
+    // Show/hide panels
+    this.sectionsContainer.style.display = tab === 'rules' ? '' : 'none';
+    this.filterBarContainer.style.display = tab === 'rules' ? '' : 'none';
+    if (this.activityPanel) this.activityPanel.style.display = tab === 'activity' ? '' : 'none';
+    if (this.terminalPanel) this.terminalPanel.style.display = tab === 'terminal' ? '' : 'none';
+
+    // Activity tab — mount activity component lazily
+    if (tab === 'activity' && this.activityPanel) {
+      if (!this.activityComponent) {
+        this.activityComponent = new Activity(this.activityPanel, this.store);
+        this.addChild(this.activityComponent);
+      }
+    }
+
+    // Terminal tab — render placeholder
+    if (tab === 'terminal' && this.terminalPanel && this.terminalPanel.children.length === 0) {
+      const placeholder = h('div', { className: 'rule-table__terminal-placeholder' },
+        h('p', { style: { padding: '24px', color: 'var(--color-text-secondary, #888)' } },
+          'Terminal view is available when connected to a host via Tauri.'),
+      );
+      this.terminalPanel.appendChild(placeholder);
+    }
+  }
+
   private groupRulesByDirection(rules: EffectiveRule[]): RuleSection[] {
     const incoming: EffectiveRule[] = [];
     const outgoing: EffectiveRule[] = [];
@@ -435,11 +488,37 @@ export class RuleTable extends Component {
     empty.appendChild(h('p', { className: 'rule-table__empty-subtitle' }, 'All traffic is currently allowed.'));
 
     const actions = h('div', { className: 'rule-table__empty-actions' });
-    actions.appendChild(h('button', { className: 'rule-table__empty-btn rule-table__empty-btn--primary' },
-      'Set up suggested rules'));
-    actions.appendChild(h('button', { className: 'rule-table__empty-btn' }, 'Add first rule'));
-    empty.appendChild(actions);
 
+    const suggestedBtn = h('button', { className: 'rule-table__empty-btn rule-table__empty-btn--primary' },
+      'Set up suggested rules');
+    this.listen(suggestedBtn, 'click', () => this.handleSetupSuggestedRules());
+    actions.appendChild(suggestedBtn);
+
+    const addFirstBtn = h('button', { className: 'rule-table__empty-btn' }, 'Add first rule');
+    this.listen(addFirstBtn, 'click', () => {
+      this.store.dispatch({
+        type: 'SET_SIDE_PANEL_CONTENT',
+        content: { type: 'rule-new' },
+      });
+    });
+    actions.appendChild(addFirstBtn);
+
+    empty.appendChild(actions);
     this.sectionsContainer.appendChild(empty);
+  }
+
+  private handleSetupSuggestedRules(): void {
+    const activeHostId = this.store.getState().activeHostId;
+    if (!activeHostId) return;
+
+    // Apply a web-server template as default suggested rules
+    const rules = generateFromTemplate('web-server');
+    for (let i = 0; i < rules.length; i++) {
+      this.store.dispatch({
+        type: 'ADD_STAGED_CHANGE',
+        hostId: activeHostId,
+        change: { type: 'add', rule: rules[i], position: i },
+      });
+    }
   }
 }

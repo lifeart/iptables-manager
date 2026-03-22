@@ -115,6 +115,12 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, ruleFilter: newFilter };
     }
 
+    case 'OPEN_DIALOG':
+      return { ...state, openDialog: action.dialog };
+
+    case 'CLOSE_DIALOG':
+      return { ...state, openDialog: null };
+
     // ─── Host Management ─────────────────────────────────
     case 'ADD_HOST': {
       const hosts = cloneMap(state.hosts);

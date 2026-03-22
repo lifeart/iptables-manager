@@ -123,10 +123,7 @@ export class Sidebar extends Component {
     const addBtn = this.el.querySelector<HTMLElement>('.sidebar__add-btn');
     if (addBtn) {
       this.listen(addBtn, 'click', () => {
-        this.store.dispatch({
-          type: 'SET_SIDE_PANEL_CONTENT',
-          content: { type: 'host-settings' },
-        });
+        this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
       });
     }
 

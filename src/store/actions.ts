@@ -15,6 +15,7 @@ import type {
   SidePanelContent,
   AppState,
   IpListEntry,
+  DialogType,
 } from './types';
 
 // ─── Hydration ─────────────────────────────────────────────────
@@ -86,6 +87,15 @@ export interface ToggleQuickBlockAction {
 export interface SetRuleFilterAction {
   type: 'SET_RULE_FILTER';
   filter: Partial<AppState['ruleFilter']>;
+}
+
+export interface OpenDialogAction {
+  type: 'OPEN_DIALOG';
+  dialog: DialogType;
+}
+
+export interface CloseDialogAction {
+  type: 'CLOSE_DIALOG';
 }
 
 // ─── Host Management ──────────────────────────────────────────
@@ -288,6 +298,8 @@ export type Action =
   | ToggleCommandPaletteAction
   | ToggleQuickBlockAction
   | SetRuleFilterAction
+  | OpenDialogAction
+  | CloseDialogAction
   | AddHostAction
   | UpdateHostAction
   | RemoveHostAction
