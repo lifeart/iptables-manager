@@ -1,1 +1,277 @@
-/* TODO: implement sidebar styles */
+/* Sidebar — 220px primary navigation panel */
+
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: 180px;
+  max-width: 320px;
+  height: 100%;
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  flex-shrink: 0;
+  transition: width var(--transition-default);
+}
+
+.sidebar--collapsed {
+  width: 36px;
+  min-width: 36px;
+  overflow: hidden;
+}
+
+.sidebar--collapsed .sidebar__search,
+.sidebar--collapsed .sidebar__section-header,
+.sidebar--collapsed .sidebar__host-name,
+.sidebar--collapsed .sidebar__chevron,
+.sidebar--collapsed .sidebar__group-name,
+.sidebar--collapsed .sidebar__group-count,
+.sidebar--collapsed .sidebar__iplist-name,
+.sidebar--collapsed .sidebar__iplist-count,
+.sidebar--collapsed .sidebar__add-btn {
+  display: none;
+}
+
+/* ── Search ──────────────────────────────────────────── */
+
+.sidebar__search {
+  padding: var(--space-compact) var(--space-default);
+  flex-shrink: 0;
+}
+
+.sidebar__search-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-compact);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.sidebar__search-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.sidebar__search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ── Section Headers ─────────────────────────────────── */
+
+.sidebar__section {
+  flex-shrink: 0;
+}
+
+.sidebar__section-header {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary);
+  padding: var(--space-section) var(--space-default) var(--space-compact);
+  user-select: none;
+}
+
+/* ── Host Row ────────────────────────────────────────── */
+
+.sidebar__host-row {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--space-default);
+  cursor: pointer;
+  user-select: none;
+  border-left: 3px solid transparent;
+  transition: background var(--transition-fast);
+  position: relative;
+  gap: var(--space-compact);
+}
+
+.sidebar__host-row:hover {
+  background: var(--color-hover);
+}
+
+.sidebar__host-row--selected {
+  background: rgba(0, 122, 255, 0.15);
+  border-left-color: var(--color-primary);
+}
+
+.sidebar__host-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Status icon (SVG 8px) */
+.sidebar__status-icon {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes sidebar-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.sidebar__status-icon--spinning {
+  animation: sidebar-spin 1s linear infinite;
+}
+
+/* Host name */
+.sidebar__host-name {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Chevron (show on hover) */
+.sidebar__chevron {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar__host-row:hover .sidebar__chevron {
+  opacity: 1;
+}
+
+/* ── Group Row ───────────────────────────────────────── */
+
+.sidebar__group-row {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--space-default);
+  cursor: pointer;
+  user-select: none;
+  gap: var(--space-compact);
+  transition: background var(--transition-fast);
+}
+
+.sidebar__group-row:hover {
+  background: var(--color-hover);
+}
+
+.sidebar__group-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Disclosure triangle */
+.sidebar__disclosure {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  transition: transform var(--transition-fast);
+}
+
+.sidebar__disclosure--expanded {
+  transform: rotate(90deg);
+}
+
+.sidebar__group-name {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__group-count {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ── IP List Row ─────────────────────────────────────── */
+
+.sidebar__iplist-row {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--space-default) 0 calc(var(--space-default) + 16px);
+  cursor: pointer;
+  user-select: none;
+  gap: var(--space-compact);
+  transition: background var(--transition-fast);
+}
+
+.sidebar__iplist-row:hover {
+  background: var(--color-hover);
+}
+
+.sidebar__iplist-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.sidebar__iplist-name {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__iplist-count {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ── Add Button ──────────────────────────────────────── */
+
+.sidebar__add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  margin: var(--space-compact) var(--space-default);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__add-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ── Resize Handle (visual) ──────────────────────────── */
+
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -1px;
+  width: 3px;
+  height: 100%;
+  cursor: col-resize;
+  transition: background var(--transition-fast);
+}
+
+.sidebar::after:hover {
+  background: var(--color-primary);
+}

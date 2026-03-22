@@ -1,1 +1,678 @@
-/* TODO: implement rule-table styles */
+/* Rule Table — primary rules interface */
+
+.rule-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Header ──────────────────────────────────────────── */
+
+.rule-table__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+  padding: var(--space-spacious) var(--space-spacious) var(--space-compact);
+  flex-shrink: 0;
+}
+
+.rule-table__host-name {
+  font-size: var(--font-size-page-title);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.rule-table__host-status {
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.rule-table__host-status--connected {
+  color: var(--color-allow);
+}
+
+.rule-table__host-status--connecting {
+  color: var(--color-info);
+}
+
+.rule-table__host-status--disconnected {
+  color: var(--color-block);
+}
+
+.rule-table__host-status--unreachable {
+  color: var(--color-disabled);
+}
+
+.rule-table__host-status--drifted {
+  color: var(--color-warning);
+}
+
+.rule-table__host-status--pending {
+  color: var(--color-info);
+}
+
+/* ── Tabs ────────────────────────────────────────────── */
+
+.rule-table__tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-spacious);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.rule-table__tab {
+  padding: var(--space-compact) var(--space-comfortable);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+  margin-bottom: -1px;
+}
+
+.rule-table__tab:hover {
+  color: var(--color-text-primary);
+}
+
+.rule-table__tab--active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+/* ── Filter Bar Container ────────────────────────────── */
+
+.rule-table__filter-bar-container {
+  flex-shrink: 0;
+}
+
+.rule-table__filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default);
+  padding: var(--space-default) var(--space-spacious);
+}
+
+/* Segmented Control */
+.filter-bar__segmented {
+  display: flex;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 2px;
+  gap: 0;
+}
+
+.filter-bar__segment {
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all var(--transition-default);
+  white-space: nowrap;
+}
+
+.filter-bar__segment:hover {
+  color: var(--color-text-primary);
+}
+
+.filter-bar__segment--active {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Search */
+.filter-bar__search-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  flex: 1;
+}
+
+.filter-bar__search-input {
+  flex: 1;
+  height: 28px;
+  padding: 0 var(--space-compact);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  max-width: 200px;
+  transition: border-color var(--transition-fast);
+}
+
+.filter-bar__search-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.filter-bar__search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.filter-bar__count {
+  font-size: var(--font-size-filter-count);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Sections Container ──────────────────────────────── */
+
+.rule-table__sections {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 60px; /* space for pending bar */
+}
+
+/* ── Section ─────────────────────────────────────────── */
+
+.rule-table__section {
+  margin-bottom: var(--space-compact);
+}
+
+/* ── Section Header ──────────────────────────────────── */
+
+.rule-table__section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  padding: var(--space-default) var(--space-spacious);
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  background: var(--color-background);
+  z-index: 1;
+}
+
+.rule-table__section-header::before,
+.rule-table__section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.rule-table__section-header::before {
+  max-width: 16px;
+}
+
+.rule-table__section-title {
+  font-size: var(--font-size-section-header);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.rule-table__section-count {
+  font-size: var(--font-size-section-header);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.rule-table__section-disclosure {
+  font-size: var(--font-size-section-header);
+  color: var(--color-disabled);
+  margin-left: var(--space-tight);
+}
+
+.rule-table__section-header--sub {
+  padding: var(--space-compact) var(--space-spacious);
+}
+
+.rule-table__section-header--sub .rule-table__section-title {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ── Rule Row ────────────────────────────────────────── */
+
+.rule-table__rows {
+  /* Container for reconciled rule rows */
+}
+
+.rule-table__row {
+  display: flex;
+  align-items: center;
+  height: var(--row-height);
+  padding: 0 var(--space-spacious) 0 0;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--color-separator);
+  margin-left: 15px; /* inset separator */
+}
+
+.rule-table__row:hover {
+  background: var(--color-hover);
+}
+
+.rule-table__row:hover .rule-table__overflow-btn {
+  opacity: 1;
+}
+
+.rule-table__row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Selected state */
+.rule-table__row--selected {
+  background: var(--color-selected);
+}
+
+.rule-table__row--selected .rule-table__row-bar {
+  background: var(--color-primary) !important;
+}
+
+/* Disabled state */
+.rule-table__row--disabled {
+  opacity: 0.4;
+}
+
+.rule-table__row--disabled .rule-table__rule-name {
+  text-decoration: line-through;
+}
+
+/* Status bar (3px left edge) */
+.rule-table__row-bar {
+  position: absolute;
+  left: -15px; /* account for margin-left on row */
+  top: 0;
+  width: var(--status-bar-width);
+  height: 100%;
+  border-radius: 0 1.5px 1.5px 0;
+}
+
+.rule-table__row-bar--allow {
+  background: var(--color-allow);
+}
+
+.rule-table__row-bar--block {
+  background: var(--color-block);
+}
+
+.rule-table__row-bar--log {
+  background: var(--color-log);
+}
+
+.rule-table__row-bar--fwd {
+  background: var(--color-info);
+}
+
+/* Row content (name + protocol lines) */
+.rule-table__row-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  padding-left: var(--space-default);
+  gap: 2px;
+}
+
+.rule-table__row-first-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+}
+
+/* Status label (ALLOW/BLOCK/LOG/FWD) */
+.rule-table__status-label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-status-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 52px;
+  flex-shrink: 0;
+}
+
+.rule-table__status-label--allow {
+  color: var(--color-allow);
+}
+
+.rule-table__status-label--block {
+  color: var(--color-block);
+}
+
+.rule-table__status-label--log {
+  color: var(--color-log);
+}
+
+.rule-table__status-label--fwd {
+  color: var(--color-info);
+}
+
+/* Rule name */
+.rule-table__rule-name {
+  font-size: var(--font-size-rule-name);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-table__rule-name--group {
+  font-weight: 400;
+}
+
+/* Pending dot (6px orange circle) */
+.rule-table__pending-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  flex-shrink: 0;
+}
+
+@keyframes pending-dot-appear {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.rule-table__pending-dot--animate {
+  animation: pending-dot-appear 300ms ease;
+}
+
+/* Second line: protocol + comment */
+.rule-table__row-second-line {
+  display: flex;
+  align-items: center;
+  padding-left: 60px; /* align with name after status label */
+}
+
+.rule-table__protocol {
+  font-size: var(--font-size-rule-protocol);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.rule-table__comment {
+  font-size: var(--font-size-rule-comment);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Right section */
+.rule-table__row-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Source/Dest */
+.rule-table__source {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  text-align: right;
+  width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-table__source--mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  color: var(--color-text-secondary);
+}
+
+/* Origin tag */
+.rule-table__origin-tag {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  width: 80px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rule-table__origin-tag--pill {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  color: var(--color-text-secondary);
+}
+
+/* Hit count */
+.rule-table__hit-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  text-align: right;
+  width: 48px;
+  flex-shrink: 0;
+}
+
+/* Overflow menu button */
+.rule-table__overflow-btn {
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.rule-table__overflow-btn:hover {
+  background: var(--color-surface);
+}
+
+.rule-table__overflow-btn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--color-primary);
+}
+
+/* ── Pending Bar ─────────────────────────────────────── */
+
+.rule-table__pending-bar-container {
+  position: relative;
+}
+
+.rule-table__pending-bar {
+  display: flex;
+  align-items: center;
+  height: var(--row-height);
+  padding: 0 var(--space-spacious);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  z-index: 10;
+  transform: translateY(100%);
+  transition: transform var(--transition-default);
+  gap: var(--space-compact);
+}
+
+.rule-table__pending-bar--visible {
+  transform: translateY(0);
+}
+
+.rule-table__pending-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  flex-shrink: 0;
+}
+
+.rule-table__pending-bar-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.rule-table__pending-bar-spacer {
+  flex: 1;
+}
+
+.rule-table__pending-bar-discard {
+  font-family: var(--font-family);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast);
+}
+
+.rule-table__pending-bar-discard:hover {
+  color: var(--color-block);
+}
+
+.rule-table__pending-bar-apply {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+  transition: opacity var(--transition-fast);
+}
+
+.rule-table__pending-bar-apply:hover {
+  opacity: 0.9;
+}
+
+.rule-table__pending-bar-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rule-table__pending-bar-apply kbd {
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+/* ── Empty State ─────────────────────────────────────── */
+
+.rule-table__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-generous) var(--space-spacious);
+  text-align: center;
+  min-height: 200px;
+}
+
+.rule-table__empty-title {
+  font-size: var(--font-size-rule-name);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-compact);
+}
+
+.rule-table__empty-subtitle {
+  font-size: var(--font-size-rule-protocol);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-comfortable);
+}
+
+.rule-table__empty-actions {
+  display: flex;
+  gap: var(--space-compact);
+}
+
+.rule-table__empty-btn {
+  font-family: var(--font-family);
+  font-size: 13px;
+  color: var(--color-primary);
+  background: none;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: 6px 16px;
+  cursor: pointer;
+  height: 28px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.rule-table__empty-btn:hover {
+  background: rgba(0, 122, 255, 0.06);
+}
+
+.rule-table__empty-btn--primary {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border-color: var(--color-primary);
+}
+
+.rule-table__empty-btn--primary:hover {
+  opacity: 0.9;
+  background: var(--color-primary);
+}
+
+/* ── Diff States (pending changes) ───────────────────── */
+
+.rule-table__row--added {
+  background: var(--color-diff-added-bg);
+}
+
+.rule-table__row--modified .rule-table__rule-name--old {
+  text-decoration: line-through;
+  color: var(--color-block);
+  opacity: 0.6;
+}
+
+.rule-table__row--deleted {
+  opacity: 0.4;
+  background: var(--color-diff-removed-bg);
+}
+
+.rule-table__row--deleted .rule-table__rule-name {
+  text-decoration: line-through;
+}
+
+/* ── "Everything Else" dashed separator ──────────────── */
+
+.rule-table__row--default-policy {
+  border-top: 2px dashed var(--color-border);
+  margin-top: var(--space-compact);
+}
