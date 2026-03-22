@@ -236,13 +236,53 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
   }
 }
 
+// ─── Command Name Mapping ────────────────────────────────────
+// Maps frontend colon-separated command names to Rust snake_case fn names.
+// Commands not in this map are converted by replacing colons with underscores.
+const COMMAND_NAME_MAP: Record<string, string> = {
+  'host:connect': 'host_connect',
+  'host:disconnect': 'host_disconnect',
+  'host:test': 'host_test',
+  'host:detect': 'host_detect',
+  'host:delete': 'host_delete',
+  'host:provision': 'host_provision',
+  'rules:fetch': 'fetch_rules',
+  'rules:apply': 'rules_apply',
+  'rules:revert': 'rules_revert',
+  'rules:confirm': 'rules_confirm',
+  'rules:explain': 'explain_rule_cmd',
+  'rules:export': 'export_rules',
+  'rules:trace': 'rules_trace',
+  'rules:check-duplicate': 'rules_check_duplicate',
+  'rules:detect-conflicts': 'rules_detect_conflicts',
+  'snapshot:create': 'snapshot_create',
+  'snapshot:list': 'snapshot_list',
+  'snapshot:restore': 'snapshot_restore',
+  'iplist:sync': 'iplist_sync',
+  'iplist:delete': 'iplist_delete',
+  'cred:store': 'cred_store',
+  'cred:delete': 'cred_delete',
+  'activity:subscribe': 'activity_subscribe',
+  'activity:unsubscribe': 'activity_unsubscribe',
+  'activity:fetch-conntrack-table': 'activity_fetch_conntrack_table',
+  'activity:fetch-bans': 'activity_fetch_bans',
+};
+
+function mapCommandName(cmd: string): string {
+  return COMMAND_NAME_MAP[cmd] ?? cmd.replace(/[:-]/g, '_');
+}
+
 // ─── Core IPC Call ────────────────────────────────────────────
 
 async function ipcCall<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!IS_TAURI) return mockCall<T>(cmd, args);
   const { invoke } = await import('@tauri-apps/api/core');
+  // Tauri 2.x derives command names from Rust fn names (snake_case).
+  // Frontend uses colon-separated names (e.g. 'host:connect') for readability,
+  // so we convert: 'host:connect' -> 'host_connect', 'rules:fetch' -> 'fetch_rules', etc.
+  const tauriCmd = mapCommandName(cmd);
   try {
-    return await invoke<T>(cmd, args);
+    return await invoke<T>(tauriCmd, args);
   } catch (e) {
     let err: Record<string, unknown>;
     if (typeof e === 'string') {
@@ -264,8 +304,22 @@ async function ipcCall<T>(cmd: string, args?: Record<string, unknown>): Promise<
 // ─── Typed Command Exports ───────────────────────────────────
 
 // Connection
-export const connectHost = (hostId: string) =>
-  ipcCall<ConnectionResult>('host:connect', { hostId });
+export const connectHost = (
+  hostId: string,
+  hostname?: string,
+  port?: number,
+  username?: string,
+  authMethod?: string,
+  keyPath?: string,
+) =>
+  ipcCall<ConnectionResult>('host:connect', {
+    hostId,
+    hostname: hostname ?? '',
+    port: port ?? 22,
+    username: username ?? 'root',
+    authMethod: authMethod ?? 'key',
+    keyPath: keyPath ?? null,
+  });
 
 export const disconnectHost = (hostId: string) =>
   ipcCall<void>('host:disconnect', { hostId });
@@ -280,14 +334,14 @@ export const provisionHost = (hostId: string) =>
   ipcCall<ProvisionResult>('host:provision', { hostId });
 
 export const deleteHost = (hostId: string, removeRemoteData: boolean) =>
-  ipcCall<void>('host:delete', { hostId, removeRemoteData });
+  ipcCall<void>('host:delete', { hostId, removeRemoteData: removeRemoteData });
 
 // Rules
 export const fetchRules = (hostId: string) =>
-  ipcCall<RuleSet>('rules:fetch', { hostId });
+  ipcCall<RuleSet>('rules:fetch', { hostId: hostId });
 
 export const applyChanges = (hostId: string, changes: StagedChange[]) =>
-  ipcCall<ApplyResult>('rules:apply', { hostId, changes });
+  ipcCall<ApplyResult>('rules:apply', { hostId, changesJson: JSON.stringify(changes) });
 
 export const revertChanges = (hostId: string) =>
   ipcCall<void>('rules:revert', { hostId });
@@ -299,7 +353,7 @@ export const tracePacket = (hostId: string, packet: TestPacket) =>
   ipcCall<TraceResult>('rules:trace', { hostId, packet });
 
 export const explainRule = (ruleSpec: string) =>
-  ipcCall<string>('rules:explain', { ruleSpec });
+  ipcCall<string>('rules:explain', { ruleJson: ruleSpec });
 
 export const exportRules = (hostId: string, format: 'shell' | 'ansible' | 'iptables-save') =>
   ipcCall<string>('rules:export', { hostId, format });

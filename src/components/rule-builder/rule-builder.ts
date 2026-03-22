@@ -7,15 +7,23 @@
  *   - Source: combobox (Anyone, My IP, Local Net, etc.)
  *   - Comment: text input
  *   - "More options..." reveals advanced fields with height animation
+ *   - Block Response: drop vs reject (visible when action is block)
+ *   - Custom conditions: "+ Add condition" for advanced match modules
  */
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { Rule, AddressSpec, PortSpec, NetworkInterface } from '../../store/types';
-import { h, clearChildren } from '../../utils/dom';
+import type { Rule, AddressSpec, PortSpec } from '../../store/types';
+import { h } from '../../utils/dom';
 import { ServicePicker, type ServiceSelection } from './service-picker';
 import { AddressPicker } from './address-picker';
 import { selectActiveHost } from '../../store/selectors';
+
+export interface CustomCondition {
+  field: string;
+  operator: string;
+  value: string;
+}
 
 export interface RuleFormData {
   label: string;
@@ -26,6 +34,8 @@ export interface RuleFormData {
   comment: string;
   interfaceIn: string | undefined;
   duration?: 'permanent' | '1h' | '4h' | '24h' | '1w';
+  blockType?: 'drop' | 'reject';
+  customConditions?: CustomCondition[];
 }
 
 type ActionChoice = 'allow' | 'block' | 'log' | 'log-block';
@@ -36,6 +46,43 @@ const ACTION_OPTIONS: { value: ActionChoice; label: string }[] = [
   { value: 'log', label: 'Log' },
   { value: 'log-block', label: 'Log+Block' },
 ];
+
+const CONDITION_FIELDS = [
+  { value: 'src-ip', label: 'Source IP', type: 'ip' },
+  { value: 'dst-ip', label: 'Dest IP', type: 'ip' },
+  { value: 'src-port', label: 'Source Port', type: 'port' },
+  { value: 'dst-port', label: 'Dest Port', type: 'port' },
+  { value: 'protocol', label: 'Protocol', type: 'enum' },
+  { value: 'interface', label: 'Interface', type: 'text' },
+  { value: 'mac', label: 'MAC Address', type: 'mac' },
+  { value: 'string', label: 'String Match', type: 'text' },
+];
+
+const OPERATORS_BY_TYPE: Record<string, { value: string; label: string }[]> = {
+  ip: [
+    { value: 'is', label: 'is' },
+    { value: 'is-not', label: 'is not' },
+    { value: 'is-in', label: 'is in' },
+  ],
+  port: [
+    { value: 'is', label: 'is' },
+    { value: 'is-not', label: 'is not' },
+    { value: 'is-in', label: 'is in' },
+  ],
+  enum: [
+    { value: 'is', label: 'is' },
+    { value: 'is-not', label: 'is not' },
+  ],
+  text: [
+    { value: 'is', label: 'is' },
+    { value: 'is-not', label: 'is not' },
+    { value: 'contains', label: 'contains' },
+  ],
+  mac: [
+    { value: 'is', label: 'is' },
+    { value: 'is-not', label: 'is not' },
+  ],
+};
 
 export class RuleBuilder extends Component {
   private formEl: HTMLElement;
@@ -65,6 +112,14 @@ export class RuleBuilder extends Component {
   private rateLimitPer: 'second' | 'minute' = 'second';
   private rateLimitBurst = '';
 
+  // Block type
+  private blockType: 'drop' | 'reject' = 'drop';
+  private blockTypeGroup: HTMLElement | null = null;
+
+  // Custom conditions
+  private customConditions: CustomCondition[] = [];
+  private conditionsContainer: HTMLElement | null = null;
+
   // Cached "More options" display elements
   private protocolDisplay: HTMLElement | null = null;
   private portDisplay: HTMLElement | null = null;
@@ -84,6 +139,9 @@ export class RuleBuilder extends Component {
       };
       this.selectedSource = existingRule.source;
       this.commentValue = existingRule.comment ?? '';
+      if (existingRule.action === 'block-reject') {
+        this.blockType = 'reject';
+      }
     }
 
     this.formEl = h('div', { className: 'rule-builder' });
@@ -183,7 +241,7 @@ export class RuleBuilder extends Component {
   }
 
   getFormData(): RuleFormData {
-    return {
+    const data: RuleFormData = {
       label: this.serviceSelection.label || 'Custom Rule',
       action: this.selectedAction,
       protocol: this.serviceSelection.protocol,
@@ -193,6 +251,16 @@ export class RuleBuilder extends Component {
       interfaceIn: this.selectedInterface === 'any' ? undefined : this.selectedInterface,
       duration: this.selectedDuration,
     };
+
+    if (this.selectedAction === 'block' || this.selectedAction === 'log-block') {
+      data.blockType = this.blockType;
+    }
+
+    if (this.customConditions.length > 0) {
+      data.customConditions = [...this.customConditions];
+    }
+
+    return data;
   }
 
   /**
@@ -245,7 +313,15 @@ export class RuleBuilder extends Component {
       el.classList.toggle('rule-builder__segment-btn--active', key === value);
     }
     this.updateSegmentIndicator();
+    this.updateBlockTypeVisibility();
     this.updatePreview();
+  }
+
+  private updateBlockTypeVisibility(): void {
+    if (this.blockTypeGroup) {
+      const isBlock = this.selectedAction === 'block' || this.selectedAction === 'log-block';
+      this.blockTypeGroup.style.display = isBlock ? '' : 'none';
+    }
   }
 
   private updateSegmentIndicator(): void {
@@ -400,6 +476,36 @@ export class RuleBuilder extends Component {
     rateLimitGroup.appendChild(rateLimitFields);
     this.moreOptionsContainer.appendChild(rateLimitGroup);
 
+    // Block Response (Drop vs Reject) — only visible when action is block
+    this.blockTypeGroup = this.createFieldGroup('Block Response');
+    const isBlock = this.selectedAction === 'block' || this.selectedAction === 'log-block';
+    this.blockTypeGroup.style.display = isBlock ? '' : 'none';
+
+    const blockTypeSelect = document.createElement('select');
+    blockTypeSelect.className = 'rule-builder__select';
+    blockTypeSelect.appendChild(this.createOption('drop', 'Silent drop (DROP)'));
+    blockTypeSelect.appendChild(this.createOption('reject', 'Connection refused (REJECT)'));
+    blockTypeSelect.value = this.blockType;
+    this.listen(blockTypeSelect, 'change', () => {
+      this.blockType = blockTypeSelect.value as 'drop' | 'reject';
+      this.updatePreview();
+    });
+    this.blockTypeGroup.appendChild(blockTypeSelect);
+    this.moreOptionsContainer.appendChild(this.blockTypeGroup);
+
+    // Custom conditions ("+ Add condition")
+    const conditionsSection = h('div', { className: 'rule-builder__conditions-section' });
+    this.conditionsContainer = h('div', { className: 'rule-builder__conditions-list' });
+    conditionsSection.appendChild(this.conditionsContainer);
+
+    const addConditionBtn = h('button', {
+      className: 'rule-builder__add-condition-btn',
+      type: 'button',
+    }, '+ Add condition');
+    this.listen(addConditionBtn, 'click', () => this.addConditionRow());
+    conditionsSection.appendChild(addConditionBtn);
+    this.moreOptionsContainer.appendChild(conditionsSection);
+
     // iptables preview disclosure
     const disclosure = h('details', { className: 'rule-builder__disclosure' });
     const summary = h('summary', { className: 'rule-builder__disclosure-summary' },
@@ -409,6 +515,87 @@ export class RuleBuilder extends Component {
     const codeBlock = h('pre', { className: 'rule-builder__code' }, this.previewCodeEl);
     disclosure.appendChild(codeBlock);
     this.moreOptionsContainer.appendChild(disclosure);
+  }
+
+  private addConditionRow(): void {
+    const condition: CustomCondition = {
+      field: 'src-ip',
+      operator: 'is',
+      value: '',
+    };
+    this.customConditions.push(condition);
+    this.renderConditionRow(condition, this.customConditions.length - 1);
+  }
+
+  private renderConditionRow(condition: CustomCondition, index: number): void {
+    if (!this.conditionsContainer) return;
+
+    const row = h('div', {
+      className: 'rule-builder__condition-row',
+      dataset: { conditionIndex: String(index) },
+    });
+
+    // Field selector
+    const fieldSelect = document.createElement('select');
+    fieldSelect.className = 'rule-builder__select rule-builder__condition-field';
+    for (const f of CONDITION_FIELDS) {
+      fieldSelect.appendChild(this.createOption(f.value, f.label));
+    }
+    fieldSelect.value = condition.field;
+    this.listen(fieldSelect, 'change', () => {
+      condition.field = fieldSelect.value;
+      // Update operator dropdown based on new field type
+      const fieldDef = CONDITION_FIELDS.find(f => f.value === condition.field);
+      const operators = OPERATORS_BY_TYPE[fieldDef?.type ?? 'text'] ?? OPERATORS_BY_TYPE['text'];
+      operatorSelect.innerHTML = '';
+      for (const op of operators) {
+        operatorSelect.appendChild(this.createOption(op.value, op.label));
+      }
+      condition.operator = operators[0].value;
+    });
+    row.appendChild(fieldSelect);
+
+    // Operator selector
+    const operatorSelect = document.createElement('select');
+    operatorSelect.className = 'rule-builder__select rule-builder__condition-operator';
+    const fieldDef = CONDITION_FIELDS.find(f => f.value === condition.field);
+    const operators = OPERATORS_BY_TYPE[fieldDef?.type ?? 'text'] ?? OPERATORS_BY_TYPE['text'];
+    for (const op of operators) {
+      operatorSelect.appendChild(this.createOption(op.value, op.label));
+    }
+    operatorSelect.value = condition.operator;
+    this.listen(operatorSelect, 'change', () => {
+      condition.operator = operatorSelect.value;
+    });
+    row.appendChild(operatorSelect);
+
+    // Value input
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.className = 'rule-builder__input rule-builder__condition-value';
+    valueInput.placeholder = 'Value';
+    valueInput.value = condition.value;
+    this.listen(valueInput, 'input', () => {
+      condition.value = valueInput.value;
+    });
+    row.appendChild(valueInput);
+
+    // Remove button
+    const removeBtn = h('button', {
+      className: 'rule-builder__condition-remove',
+      type: 'button',
+      'aria-label': 'Remove condition',
+    }, '\u00D7');
+    this.listen(removeBtn, 'click', () => {
+      const idx = this.customConditions.indexOf(condition);
+      if (idx !== -1) {
+        this.customConditions.splice(idx, 1);
+      }
+      row.remove();
+    });
+    row.appendChild(removeBtn);
+
+    this.conditionsContainer.appendChild(row);
   }
 
   /**
@@ -471,7 +658,7 @@ export class RuleBuilder extends Component {
 
     switch (this.selectedAction) {
       case 'allow': parts.push('-j', 'ACCEPT'); break;
-      case 'block': parts.push('-j', 'DROP'); break;
+      case 'block': parts.push('-j', this.blockType === 'reject' ? 'REJECT' : 'DROP'); break;
       case 'log': parts.push('-j', 'LOG'); break;
       case 'log-block': parts.push('-j', 'LOG'); break;
     }

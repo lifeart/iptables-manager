@@ -2,6 +2,7 @@
  * Conntrack usage bar — compact progress bar showing nf_conntrack usage.
  *
  * 4px height bar. Color coded: green (<50%), orange (50-75%), red (>75%).
+ * Shows warning with action buttons when usage exceeds 75%.
  */
 
 import { Component } from '../base';
@@ -14,6 +15,8 @@ export class ConntrackBar extends Component {
   private container: HTMLElement;
   private barFill!: HTMLElement;
   private labelEl!: HTMLElement;
+  private warningEl: HTMLElement | null = null;
+  private warningDismissed = false;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -58,6 +61,7 @@ export class ConntrackBar extends Component {
     if (!hostId) {
       this.labelEl.textContent = '';
       this.barFill.style.width = '0%';
+      this.removeWarning();
       return;
     }
 
@@ -79,5 +83,62 @@ export class ConntrackBar extends Component {
       color = 'var(--color-allow, #34C759)';
     }
     this.barFill.style.backgroundColor = color;
+
+    // Show/hide warning for >75%
+    if (percent > 75 && !this.warningDismissed) {
+      this.showWarning(percent, usage.max);
+    } else if (percent <= 75) {
+      this.removeWarning();
+      this.warningDismissed = false;
+    }
+  }
+
+  private showWarning(percent: number, currentMax: number): void {
+    if (this.warningEl) {
+      // Update existing warning text
+      const textEl = this.warningEl.querySelector('.conntrack__warning-text');
+      if (textEl) {
+        textEl.textContent = `\u26A0\uFE0F Connection tracking table is ${Math.round(percent)}% full.`;
+      }
+      return;
+    }
+
+    this.warningEl = h('div', { className: 'conntrack__warning' });
+
+    const textEl = h('span', { className: 'conntrack__warning-text' },
+      `\u26A0\uFE0F Connection tracking table is ${Math.round(percent)}% full.`);
+    this.warningEl.appendChild(textEl);
+
+    const actions = h('div', { className: 'conntrack__warning-actions' });
+
+    const increaseBtn = h('button', {
+      className: 'conntrack__warning-btn conntrack__warning-btn--primary',
+      type: 'button',
+    }, 'Increase to recommended');
+    this.listen(increaseBtn, 'click', () => {
+      const recommended = currentMax * 2;
+      alert(`Would run: sysctl -w net.netfilter.nf_conntrack_max=${recommended}\n\nThis is a demo — no changes were made.`);
+    });
+    actions.appendChild(increaseBtn);
+
+    const dismissBtn = h('button', {
+      className: 'conntrack__warning-btn conntrack__warning-btn--secondary',
+      type: 'button',
+    }, 'Dismiss');
+    this.listen(dismissBtn, 'click', () => {
+      this.warningDismissed = true;
+      this.removeWarning();
+    });
+    actions.appendChild(dismissBtn);
+
+    this.warningEl.appendChild(actions);
+    this.container.appendChild(this.warningEl);
+  }
+
+  private removeWarning(): void {
+    if (this.warningEl) {
+      this.warningEl.remove();
+      this.warningEl = null;
+    }
   }
 }

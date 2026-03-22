@@ -92,12 +92,33 @@ async function autoReconnect(): Promise<void> {
   const lastHostId = state.settings.lastActiveHostId;
   if (!lastHostId) return;
 
+  // Look up the host's connection details from the store
+  const host = state.hosts.get(lastHostId);
+  if (!host) return;
+
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('host:connect', { hostId: lastHostId });
+    const { connectHost } = await import('./ipc/bridge');
+    await connectHost(
+      lastHostId,
+      host.connection.hostname,
+      host.connection.port,
+      host.connection.username,
+      host.connection.authMethod,
+      host.connection.keyPath,
+    );
+    store.dispatch({
+      type: 'UPDATE_HOST',
+      hostId: lastHostId,
+      changes: { status: 'connected' as const, lastConnected: Date.now() },
+    });
   } catch {
     // Auto-reconnect failure is non-fatal
     console.warn('Auto-reconnect failed for host:', lastHostId);
+    store.dispatch({
+      type: 'UPDATE_HOST',
+      hostId: lastHostId,
+      changes: { status: 'disconnected' as const },
+    });
   }
 }
 

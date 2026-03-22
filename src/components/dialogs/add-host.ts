@@ -6,7 +6,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { testConnection } from '../../ipc/bridge';
+import { testConnection, connectHost, detectHost } from '../../ipc/bridge';
 import type { TestResult } from '../../ipc/bridge';
 import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidPort } from '../../utils/ip-validate';
@@ -449,7 +449,7 @@ export class AddHostDialog extends Component {
     return { hostname, port, username, authMethod, keyPath };
   }
 
-  private handleConnect(): void {
+  private async handleConnect(): Promise<void> {
     const params = this.getConnectionParams();
     if (!params) return;
     if (this.connectBtn.disabled) return;
@@ -474,9 +474,67 @@ export class AddHostDialog extends Component {
       updatedAt: now,
     };
 
+    // Add host to store immediately (shows as "connecting")
     this.store.dispatch({ type: 'ADD_HOST', host });
     this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: host.id });
-    this.close();
+
+    // Disable button while connecting
+    this.connectBtn.disabled = true;
+    this.connectBtn.textContent = 'Connecting...';
+
+    try {
+      // Initiate SSH connection via IPC
+      await connectHost(
+        host.id,
+        params.hostname,
+        params.port,
+        params.username,
+        params.authMethod,
+        params.keyPath,
+      );
+
+      // Update host status to connected
+      this.store.dispatch({
+        type: 'UPDATE_HOST',
+        hostId: host.id,
+        changes: { status: 'connected' as const, lastConnected: Date.now() },
+      });
+
+      // Run detection in the background (non-blocking)
+      detectHost(host.id)
+        .then((result) => {
+          if (result.completed && result.capabilities) {
+            this.store.dispatch({
+              type: 'UPDATE_HOST',
+              hostId: host.id,
+              changes: { capabilities: result.capabilities as Host['capabilities'] },
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Host detection failed:', err);
+        });
+
+      this.close();
+    } catch (err) {
+      // Connection failed — update status and show error
+      this.store.dispatch({
+        type: 'UPDATE_HOST',
+        hostId: host.id,
+        changes: { status: 'unreachable' as const },
+      });
+
+      this.connectBtn.disabled = false;
+      this.connectBtn.textContent = this.expanded ? 'Add Host' : 'Connect';
+
+      this.testStatusEl.innerHTML = '';
+      const errorMsg = err instanceof Error ? err.message : 'Connection failed';
+      this.testStatusEl.appendChild(
+        h('div', { className: 'dialog-test-item dialog-test-item--error' },
+          `Connection failed: ${errorMsg}`,
+        ),
+      );
+    }
   }
 
   private close(): void {

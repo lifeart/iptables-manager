@@ -3,7 +3,8 @@
  *
  * Subscribes to: hosts, groups, ipLists, activeHostId.
  * Dispatches: SET_ACTIVE_HOST.
- * Features: search filtering, keyboard navigation, status indicators.
+ * Features: search filtering, keyboard navigation, status indicators,
+ *           scaling behavior (30+/100+ hosts), group expand with nested hosts.
  */
 
 import { Component } from '../base';
@@ -14,9 +15,17 @@ import { createHostRow, updateHostRow } from './host-row';
 import { createGroupRow, updateGroupRow } from './group-row';
 import { h } from '../../utils/dom';
 
+type ScaleMode = 'all' | 'medium' | 'large';
+
 export class Sidebar extends Component {
   private searchInput!: HTMLInputElement;
   private hostsContainer!: HTMLElement;
+  private recentContainer!: HTMLElement;
+  private recentSection!: HTMLElement;
+  private statusFilterPill!: HTMLElement;
+  private allHostsRow!: HTMLElement;
+  private allHostsSection!: HTMLElement;
+  private allHostsExpanded = false;
   private groupsContainer!: HTMLElement;
   private ipListsContainer!: HTMLElement;
   private searchTerm = '';
@@ -24,12 +33,50 @@ export class Sidebar extends Component {
   private focusedId: string | null = null;
   private resizeHandle!: HTMLElement;
   private isResizing = false;
+  private statusFilterActive = false;
+  private recentHostIds: string[] = [];
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
     this.render();
     this.bindEvents();
     this.bindSubscriptions();
+  }
+
+  private getScaleMode(): ScaleMode {
+    const state = this.store.getState();
+    const hostCount = state.hosts.size;
+    if (hostCount > 100) return 'large';
+    if (hostCount > 30) return 'medium';
+    return 'all';
+  }
+
+  private trackRecentHost(hostId: string): void {
+    this.recentHostIds = [hostId, ...this.recentHostIds.filter(id => id !== hostId)];
+  }
+
+  private getRecentHosts(count: number): Host[] {
+    const state = this.store.getState();
+    const result: Host[] = [];
+    for (const id of this.recentHostIds) {
+      const host = state.hosts.get(id);
+      if (host) {
+        result.push(host);
+        if (result.length >= count) break;
+      }
+    }
+    return result;
+  }
+
+  private getIssueCount(): number {
+    const state = this.store.getState();
+    let count = 0;
+    for (const host of state.hosts.values()) {
+      if (host.status === 'drifted' || host.status === 'disconnected') {
+        count++;
+      }
+    }
+    return count;
   }
 
   private render(): void {
@@ -53,6 +100,22 @@ export class Sidebar extends Component {
     searchWrap.appendChild(searchClearBtn);
     this.el.appendChild(searchWrap);
 
+    // Recent section (hidden by default, shown at 31+ hosts)
+    this.recentSection = h('div', { className: 'sidebar__section sidebar__section--recent', style: { display: 'none' } });
+    const recentHeader = h('div', { className: 'sidebar__section-header' }, 'RECENT');
+    this.recentSection.appendChild(recentHeader);
+    this.recentContainer = h('div', { className: 'sidebar__host-list sidebar__host-list--recent', role: 'list' });
+    this.recentSection.appendChild(this.recentContainer);
+    this.el.appendChild(this.recentSection);
+
+    // Status filter pill (hidden by default, shown at 31+ hosts when issues exist)
+    this.statusFilterPill = h('button', {
+      className: 'sidebar__status-filter-pill',
+      type: 'button',
+      style: { display: 'none' },
+    });
+    this.el.appendChild(this.statusFilterPill);
+
     // Hosts section
     const hostsSection = h('div', { className: 'sidebar__section' });
     const hostsHeader = h('div', { className: 'sidebar__section-header' }, 'HOSTS');
@@ -60,6 +123,15 @@ export class Sidebar extends Component {
     this.hostsContainer = h('div', { className: 'sidebar__host-list', role: 'list' });
     hostsSection.appendChild(this.hostsContainer);
     this.el.appendChild(hostsSection);
+
+    // All Hosts row (hidden by default, shown at 100+ hosts)
+    this.allHostsSection = h('div', { className: 'sidebar__section sidebar__section--all-hosts', style: { display: 'none' } });
+    this.allHostsRow = h('button', {
+      className: 'sidebar__all-hosts-row',
+      type: 'button',
+    }, 'All Hosts (0)');
+    this.allHostsSection.appendChild(this.allHostsRow);
+    this.el.appendChild(this.allHostsSection);
 
     // Groups section
     const groupsSection = h('div', { className: 'sidebar__section' });
@@ -119,16 +191,27 @@ export class Sidebar extends Component {
       });
     }
 
-    // Click delegation for host rows
-    this.listen(this.hostsContainer, 'click', (e) => {
+    // Click delegation for host rows (in both hosts and recent containers)
+    const handleHostClick = (e: Event) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-row');
       if (row?.dataset.hostId) {
+        this.trackRecentHost(row.dataset.hostId);
         this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: row.dataset.hostId });
       }
-    });
+    };
+    this.listen(this.hostsContainer, 'click', handleHostClick);
+    this.listen(this.recentContainer, 'click', handleHostClick);
 
-    // Click delegation for group rows
+    // Click delegation for group rows and nested member hosts
     this.listen(this.groupsContainer, 'click', (e) => {
+      // Check if a member host row was clicked
+      const memberRow = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-row');
+      if (memberRow?.dataset.hostId) {
+        this.trackRecentHost(memberRow.dataset.hostId);
+        this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: memberRow.dataset.hostId });
+        return;
+      }
+
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__group-row');
       if (row?.dataset.groupId) {
         const groupId = row.dataset.groupId;
@@ -203,6 +286,19 @@ export class Sidebar extends Component {
       });
     }
 
+    // Status filter pill
+    this.listen(this.statusFilterPill, 'click', () => {
+      this.statusFilterActive = !this.statusFilterActive;
+      this.statusFilterPill.classList.toggle('sidebar__status-filter-pill--active', this.statusFilterActive);
+      this.renderHosts();
+    });
+
+    // All Hosts row (100+ mode)
+    this.listen(this.allHostsRow, 'click', () => {
+      this.allHostsExpanded = !this.allHostsExpanded;
+      this.renderHosts();
+    });
+
     // Resize handle drag
     this.listen(this.resizeHandle, 'mousedown', (e) => {
       e.preventDefault();
@@ -249,7 +345,10 @@ export class Sidebar extends Component {
     // Subscribe to activeHostId
     this.subscribe(
       (s: AppState) => s.activeHostId,
-      () => this.renderHosts(),
+      (hostId) => {
+        if (hostId) this.trackRecentHost(hostId);
+        this.renderHosts();
+      },
     );
 
     // Subscribe to groups
@@ -280,7 +379,14 @@ export class Sidebar extends Component {
 
   private getFilteredHosts(): Host[] {
     const state = this.store.getState();
-    const hosts = Array.from(state.hosts.values());
+    let hosts = Array.from(state.hosts.values());
+
+    // Status filter (for medium/large modes)
+    if (this.statusFilterActive) {
+      hosts = hosts.filter(host =>
+        host.status === 'drifted' || host.status === 'disconnected',
+      );
+    }
 
     if (!this.searchTerm) return hosts;
 
@@ -293,28 +399,104 @@ export class Sidebar extends Component {
   private renderHosts(): void {
     const state = this.store.getState();
     const activeHostId = state.activeHostId;
-    const hosts = this.getFilteredHosts();
+    const scaleMode = this.getScaleMode();
 
-    reconcileList(
-      this.hostsContainer,
-      hosts,
-      (host) => host.id,
-      (host) => createHostRow(host, host.id === activeHostId),
-      (el, host) => updateHostRow(el, host, host.id === activeHostId),
-    );
+    // Update status filter pill
+    const issueCount = this.getIssueCount();
+    if (scaleMode !== 'all' && issueCount > 0) {
+      this.statusFilterPill.style.display = '';
+      this.statusFilterPill.textContent = `${issueCount} issue${issueCount !== 1 ? 's' : ''}`;
+    } else {
+      this.statusFilterPill.style.display = 'none';
+      if (scaleMode === 'all') {
+        this.statusFilterActive = false;
+      }
+    }
+
+    // Recent section
+    if (scaleMode === 'medium' || scaleMode === 'large') {
+      this.recentSection.style.display = '';
+      const recentCount = scaleMode === 'large' ? 5 : 3;
+      const recentHosts = this.getRecentHosts(recentCount);
+      reconcileList(
+        this.recentContainer,
+        recentHosts,
+        (host) => `recent-${host.id}`,
+        (host) => {
+          const row = createHostRow(host, host.id === activeHostId);
+          row.dataset.key = `recent-${host.id}`;
+          return row;
+        },
+        (el, host) => updateHostRow(el, host, host.id === activeHostId),
+      );
+    } else {
+      this.recentSection.style.display = 'none';
+    }
+
+    // All Hosts expandable row (100+ mode)
+    if (scaleMode === 'large') {
+      this.allHostsSection.style.display = '';
+      this.allHostsRow.textContent = `All Hosts (${state.hosts.size})`;
+    } else {
+      this.allHostsSection.style.display = 'none';
+      this.allHostsExpanded = false;
+    }
+
+    // Main hosts list
+    const hosts = this.getFilteredHosts();
+    const shouldShowHosts = scaleMode === 'all'
+      || scaleMode === 'medium'
+      || this.allHostsExpanded
+      || this.searchTerm.length > 0;
+
+    if (shouldShowHosts) {
+      // In medium mode, collapse groups by default (handled in renderGroups)
+      this.hostsContainer.parentElement!.style.display = '';
+      reconcileList(
+        this.hostsContainer,
+        hosts,
+        (host) => host.id,
+        (host) => createHostRow(host, host.id === activeHostId),
+        (el, host) => updateHostRow(el, host, host.id === activeHostId),
+      );
+    } else {
+      // Large mode with all-hosts collapsed and no search: hide main host list
+      this.hostsContainer.parentElement!.style.display = 'none';
+    }
   }
 
   private renderGroups(): void {
     const state = this.store.getState();
     const groups = Array.from(state.groups.values());
+    const activeHostId = state.activeHostId;
+    const scaleMode = this.getScaleMode();
 
-    reconcileList(
-      this.groupsContainer,
-      groups,
-      (group) => group.id,
-      (group) => createGroupRow(group, this.expandedGroups.has(group.id)),
-      (el, group) => updateGroupRow(el, group, this.expandedGroups.has(group.id)),
-    );
+    // Clear and rebuild to handle nested member hosts
+    this.groupsContainer.innerHTML = '';
+
+    for (const group of groups) {
+      const isExpanded = this.expandedGroups.has(group.id);
+
+      // In medium mode, groups are collapsed by default (expandedGroups tracks explicit toggles)
+      const effectiveExpanded = scaleMode === 'medium' ? isExpanded : isExpanded;
+
+      const groupRow = createGroupRow(group, effectiveExpanded);
+      groupRow.dataset.key = group.id;
+      this.groupsContainer.appendChild(groupRow);
+
+      // If expanded, render member hosts as indented rows
+      if (effectiveExpanded) {
+        for (const memberId of group.memberHostIds) {
+          const host = state.hosts.get(memberId);
+          if (host) {
+            const memberRow = createHostRow(host, host.id === activeHostId);
+            memberRow.classList.add('sidebar__host-row--indented');
+            memberRow.dataset.key = `group-member-${group.id}-${host.id}`;
+            this.groupsContainer.appendChild(memberRow);
+          }
+        }
+      }
+    }
   }
 
   private renderIpLists(): void {
