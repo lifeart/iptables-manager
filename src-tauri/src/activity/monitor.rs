@@ -164,9 +164,19 @@ pub async fn fetch_conntrack_usage(
 ) -> Result<ConntrackUsage, MonitorError> {
     let count_cmd = build_command("cat", &["/proc/sys/net/netfilter/nf_conntrack_count"]);
     let count_output = executor.exec(&count_cmd).await?;
+    if count_output.exit_code != 0 {
+        return Err(MonitorError::ParseFailed(
+            "conntrack not available".to_string(),
+        ));
+    }
 
     let max_cmd = build_command("cat", &["/proc/sys/net/netfilter/nf_conntrack_max"]);
     let max_output = executor.exec(&max_cmd).await?;
+    if max_output.exit_code != 0 {
+        return Err(MonitorError::ParseFailed(
+            "conntrack not available".to_string(),
+        ));
+    }
 
     let current = count_output
         .stdout

@@ -14,8 +14,11 @@ pub enum IpcError {
     #[error("authentication failed for {host_id}")]
     AuthFailed { host_id: String },
 
-    #[error("lockout detected: {explanation}")]
-    LockoutDetected { explanation: String },
+    #[error("lockout detected: {trace_summary}")]
+    LockoutDetected {
+        trace_summary: String,
+        matched_rule: Option<String>,
+    },
 
     #[error("iptables lock held, retry after {retry_after_ms}ms")]
     IptablesLocked { retry_after_ms: u64 },
@@ -31,7 +34,7 @@ pub enum IpcError {
     },
 
     #[error("disk full at {path}")]
-    DiskFull { path: String },
+    DiskFull { path: String, available_bytes: u64 },
 
     #[error("quota exceeded for {store}")]
     QuotaExceeded { store: String },

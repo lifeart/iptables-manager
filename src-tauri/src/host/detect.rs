@@ -545,19 +545,13 @@ fn classify_interface(name: &str, link_type: Option<&str>) -> InterfaceType {
 }
 
 async fn detect_cloud(executor: &dyn CommandExecutor) -> Option<CloudEnvironment> {
-    // AWS: instance metadata
-    let cmd = build_command(
+    // Run AWS, GCP, and Azure checks in parallel (each has -m 1 timeout,
+    // so parallel = max ~1s instead of sequential ~3s).
+    let aws_cmd = build_command(
         "curl",
         &["-s", "-m", "1", "http://169.254.169.254/latest/meta-data/"],
     );
-    if let Ok(output) = executor.exec(&cmd).await {
-        if output.exit_code == 0 && !output.stdout.is_empty() && !output.stdout.contains("404") {
-            return Some(CloudEnvironment::Aws);
-        }
-    }
-
-    // GCP: metadata flavor header
-    let cmd = build_command(
+    let gcp_cmd = build_command(
         "curl",
         &[
             "-s",
@@ -565,17 +559,12 @@ async fn detect_cloud(executor: &dyn CommandExecutor) -> Option<CloudEnvironment
             "1",
             "-H",
             "Metadata-Flavor: Google",
+            "-D",
+            "-",
             "http://169.254.169.254/computeMetadata/v1/",
         ],
     );
-    if let Ok(output) = executor.exec(&cmd).await {
-        if output.exit_code == 0 && !output.stdout.is_empty() && !output.stdout.contains("404") {
-            return Some(CloudEnvironment::Gcp);
-        }
-    }
-
-    // Azure: IMDS
-    let cmd = build_command(
+    let azure_cmd = build_command(
         "curl",
         &[
             "-s",
@@ -586,8 +575,41 @@ async fn detect_cloud(executor: &dyn CommandExecutor) -> Option<CloudEnvironment
             "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
         ],
     );
-    if let Ok(output) = executor.exec(&cmd).await {
-        if output.exit_code == 0 && !output.stdout.is_empty() && output.stdout.contains("compute")
+
+    let (aws_result, gcp_result, azure_result) = tokio::join!(
+        executor.exec(&aws_cmd),
+        executor.exec(&gcp_cmd),
+        executor.exec(&azure_cmd),
+    );
+
+    // AWS: Check for AWS-specific content (ami-id or instance-id) to avoid
+    // false positives from other metadata services on 169.254.169.254.
+    if let Ok(output) = aws_result {
+        if output.exit_code == 0
+            && !output.stdout.is_empty()
+            && !output.stdout.contains("404")
+            && (output.stdout.contains("ami-id") || output.stdout.contains("instance-id"))
+        {
+            return Some(CloudEnvironment::Aws);
+        }
+    }
+
+    // GCP: Require Metadata-Flavor: Google header in the response
+    if let Ok(output) = gcp_result {
+        if output.exit_code == 0
+            && !output.stdout.is_empty()
+            && !output.stdout.contains("404")
+            && output.stdout.contains("Metadata-Flavor: Google")
+        {
+            return Some(CloudEnvironment::Gcp);
+        }
+    }
+
+    // Azure: IMDS
+    if let Ok(output) = azure_result {
+        if output.exit_code == 0
+            && !output.stdout.is_empty()
+            && output.stdout.contains("compute")
         {
             return Some(CloudEnvironment::Azure);
         }

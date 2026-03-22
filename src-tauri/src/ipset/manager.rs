@@ -124,25 +124,22 @@ async fn sync_single_ipset(
 ) -> Result<(), IpsetError> {
     let tmp_name = format!("{}-tmp", name);
 
-    // 1. Create temp set
+    // 1. Create temp set (with -exist to handle leftover from a previous failed sync)
     let create_cmd = build_command(
         "sudo",
-        &["ipset", "create", &tmp_name, "hash:net", "family", inet_family],
+        &["ipset", "create", &tmp_name, "hash:net", "family", inet_family, "-exist"],
     );
     let output = executor.exec(&create_cmd).await?;
     if output.exit_code != 0 {
-        // Clean up in case it existed from a previous failed sync
-        let destroy_cmd = build_command("sudo", &["ipset", "destroy", &tmp_name]);
-        let _ = executor.exec(&destroy_cmd).await;
-        // Retry create
-        let output = executor.exec(&create_cmd).await?;
-        if output.exit_code != 0 {
-            return Err(IpsetError::OperationFailed(format!(
-                "create temp set failed: {}",
-                output.stderr.trim()
-            )));
-        }
+        return Err(IpsetError::OperationFailed(format!(
+            "create temp set failed: {}",
+            output.stderr.trim()
+        )));
     }
+
+    // Flush the temp set in case it already existed with stale entries
+    let flush_cmd = build_command("sudo", &["ipset", "flush", &tmp_name]);
+    let _ = executor.exec(&flush_cmd).await;
 
     // 2. Bulk-add entries via ipset restore (stdin)
     if !entries.is_empty() {

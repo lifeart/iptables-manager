@@ -92,12 +92,13 @@ pub async fn create_snapshot(
         _ => None,
     };
 
-    // Generate snapshot ID from timestamp
-    let ts = std::time::SystemTime::now()
+    // Generate snapshot ID from millisecond timestamp to avoid collisions
+    let duration = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let snapshot_id = format!("{}-{}", host_id, ts);
+        .unwrap_or_default();
+    let ts = duration.as_secs();
+    let ts_ms = duration.as_millis() as u64;
+    let snapshot_id = format!("{}-{}", host_id, ts_ms);
 
     // Save to remote
     let remote_path_v4 = format!("{}/{}.v4", SNAPSHOT_DIR, snapshot_id);
@@ -254,29 +255,41 @@ pub async fn list_remote_snapshots(
 /// Filter an `iptables-save` output to only include TR- chains.
 ///
 /// Preserves the table structure (*table / COMMIT) but only includes
-/// `:TR-*` chain declarations and `-A TR-*` rules.
+/// `:TR-*` chain declarations, `-A TR-*` rules, and rules in built-in
+/// chains (INPUT/OUTPUT/FORWARD) that jump to a TR- chain.
 fn filter_tr_chains(input: &str) -> String {
     let mut out = String::new();
     let mut in_table = false;
-    let mut current_table = String::new();
     let mut has_tr_content = false;
     let mut table_header = String::new();
     let mut table_lines: Vec<String> = Vec::new();
 
+    /// Built-in chains whose jump-to-TR rules should be preserved.
+    const BUILTIN_CHAINS: &[&str] = &["INPUT", "OUTPUT", "FORWARD"];
+
+    /// Flush accumulated table content into the output buffer.
+    fn flush_table(
+        out: &mut String,
+        table_header: &str,
+        table_lines: &[String],
+        has_tr_content: bool,
+    ) {
+        if has_tr_content {
+            out.push_str(table_header);
+            out.push('\n');
+            for tl in table_lines {
+                out.push_str(tl);
+                out.push('\n');
+            }
+            out.push_str("COMMIT\n");
+        }
+    }
+
     for line in input.lines() {
         if line.starts_with('*') {
             // Flush previous table if it had TR content
-            if in_table && has_tr_content {
-                out.push_str(&table_header);
-                out.push('\n');
-                for tl in &table_lines {
-                    out.push_str(tl);
-                    out.push('\n');
-                }
-                out.push_str("COMMIT\n");
-            }
+            flush_table(&mut out, &table_header, &table_lines, has_tr_content);
 
-            current_table = line.to_string();
             table_header = line.to_string();
             table_lines.clear();
             has_tr_content = false;
@@ -285,15 +298,7 @@ fn filter_tr_chains(input: &str) -> String {
         }
 
         if line == "COMMIT" {
-            if in_table && has_tr_content {
-                out.push_str(&table_header);
-                out.push('\n');
-                for tl in &table_lines {
-                    out.push_str(tl);
-                    out.push('\n');
-                }
-                out.push_str("COMMIT\n");
-            }
+            flush_table(&mut out, &table_header, &table_lines, has_tr_content);
             in_table = false;
             table_lines.clear();
             has_tr_content = false;
@@ -314,19 +319,42 @@ fn filter_tr_chains(input: &str) -> String {
             continue;
         }
 
-        // Rules: "-A TR-INPUT ..."
+        // Rules: "-A CHAIN ..."
         if line.starts_with("-A ") {
             let chain_name = line[3..].split_whitespace().next().unwrap_or("");
             if chain_name.starts_with("TR-") {
+                // Direct TR- chain rule
                 table_lines.push(line.to_string());
                 has_tr_content = true;
+            } else if BUILTIN_CHAINS.contains(&chain_name) {
+                // Check if this built-in chain rule jumps to a TR- chain
+                if jumps_to_tr_chain(line) {
+                    table_lines.push(line.to_string());
+                    has_tr_content = true;
+                }
             }
         }
     }
 
-    let _ = current_table; // suppress unused warning
+    // Flush any remaining table (handles input without a final COMMIT)
+    flush_table(&mut out, &table_header, &table_lines, has_tr_content);
 
     out
+}
+
+/// Check if a rule line contains `-j TR-*` (jumps to a TR- chain).
+fn jumps_to_tr_chain(line: &str) -> bool {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    for (i, token) in tokens.iter().enumerate() {
+        if (*token == "-j" || *token == "--jump" || *token == "-g" || *token == "--goto")
+            && i + 1 < tokens.len()
+        {
+            if tokens[i + 1].starts_with("TR-") {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -362,11 +390,13 @@ COMMIT
         assert!(filtered.contains("-A TR-CONNTRACK"));
         assert!(filtered.contains("-A TR-INPUT -i lo -j ACCEPT"));
         assert!(filtered.contains("COMMIT"));
-        // Should NOT contain Docker or built-in chains
+        // Should include jump rules from built-in chains to TR- chains
+        assert!(filtered.contains("-A INPUT -j TR-CONNTRACK"));
+        assert!(filtered.contains("-A INPUT -j TR-INPUT"));
+        // Should NOT contain Docker or built-in chain declarations
         assert!(!filtered.contains(":INPUT"));
         assert!(!filtered.contains(":DOCKER"));
         assert!(!filtered.contains("-A DOCKER"));
-        assert!(!filtered.contains("-A INPUT"));
     }
 
     #[test]
@@ -378,6 +408,16 @@ COMMIT
 "#;
         let filtered = filter_tr_chains(input);
         assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_filter_tr_chains_no_commit() {
+        // Input without a final COMMIT — should still be flushed
+        let input = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\n";
+        let filtered = filter_tr_chains(input);
+        assert!(filtered.contains("*filter"));
+        assert!(filtered.contains("-A TR-INPUT"));
+        assert!(filtered.contains("COMMIT"));
     }
 
     #[test]
