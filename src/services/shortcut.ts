@@ -200,7 +200,7 @@ export class ShortcutService {
       handler: () => {
         this.store.dispatch({
           type: 'SET_SIDE_PANEL_CONTENT',
-          content: { type: 'host-settings' },
+          content: { type: 'settings' },
         });
         this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
       },

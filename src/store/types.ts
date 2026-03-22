@@ -246,6 +246,7 @@ export type SidePanelContent =
   | { type: 'snapshot-history' }
   | { type: 'port-forward' }
   | { type: 'source-nat' }
+  | { type: 'settings' }
   | { type: 'host-settings' };
 
 export type DialogType =

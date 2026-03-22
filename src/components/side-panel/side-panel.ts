@@ -18,6 +18,7 @@ import { RuleDetail } from './rule-detail';
 import { RuleEdit } from './rule-edit';
 import { SnapshotHistory } from './snapshot-history';
 import { PortForwardBuilder, SourceNatBuilder } from './nat-builder';
+import { Settings as SettingsPanel } from '../settings/settings';
 
 export class SidePanel extends Component {
   private panelEl: HTMLElement;
@@ -147,6 +148,12 @@ export class SidePanel extends Component {
         const snatBuilder = new SourceNatBuilder(this.contentEl, this.store);
         this.currentContent = snatBuilder;
         this.addChild(snatBuilder);
+        break;
+      }
+      case 'settings': {
+        const settingsComp = new SettingsPanel(this.contentEl, this.store);
+        this.currentContent = settingsComp;
+        this.addChild(settingsComp);
         break;
       }
       case 'host-settings': {
