@@ -346,6 +346,125 @@ impl SshTransport for FailingTransport {
 }
 
 // ---------------------------------------------------------------------------
+// OpensshTransport — real SSH transport using the `openssh` crate
+// ---------------------------------------------------------------------------
+
+/// Real SSH transport that shells out to the system `ssh` binary via the
+/// `openssh` crate.
+pub struct OpensshTransport;
+
+#[async_trait]
+impl SshTransport for OpensshTransport {
+    async fn connect(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Box<dyn CommandExecutor>, ConnectError> {
+        use openssh::{KnownHosts, SessionBuilder};
+
+        let mut builder = SessionBuilder::default();
+        builder
+            .known_hosts_check(KnownHosts::Accept)
+            .user(config.username.clone())
+            .port(config.port);
+
+        if let Some(ref key_path) = config.key_path {
+            // Expand ~ to home directory
+            let expanded = if key_path.starts_with("~/") {
+                if let Some(home) = dirs_path() {
+                    format!("{}/{}", home, &key_path[2..])
+                } else {
+                    key_path.clone()
+                }
+            } else {
+                key_path.clone()
+            };
+            builder.keyfile(&expanded);
+        }
+
+        if let Some(ref jump) = config.jump_host {
+            let jump_dest = format!("{}@{}:{}", jump.username, jump.hostname, jump.port);
+            builder.jump_hosts(vec![jump_dest]);
+        }
+
+        let session = builder
+            .connect(&config.hostname)
+            .await
+            .map_err(|e| ConnectError::Transport(format!("SSH connection failed: {}", e)))?;
+
+        Ok(Box::new(OpensshExecutor {
+            session: Arc::new(session),
+        }))
+    }
+}
+
+/// Helper to get the home directory path.
+fn dirs_path() -> Option<String> {
+    std::env::var("HOME").ok()
+}
+
+/// Command executor backed by a real openssh session.
+struct OpensshExecutor {
+    session: Arc<openssh::Session>,
+}
+
+#[async_trait]
+impl CommandExecutor for OpensshExecutor {
+    async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
+        let output = self
+            .session
+            .shell(command)
+            .output()
+            .await
+            .map_err(|e| ExecError::Transport(format!("SSH exec failed: {}", e)))?;
+
+        Ok(CommandOutput {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        })
+    }
+
+    async fn exec_with_stdin(
+        &self,
+        command: &str,
+        stdin_data: &[u8],
+    ) -> Result<CommandOutput, ExecError> {
+        use openssh::Stdio;
+        use tokio::io::AsyncWriteExt;
+
+        let mut child = self
+            .session
+            .shell(command)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .await
+            .map_err(|e| ExecError::Transport(format!("SSH spawn failed: {}", e)))?;
+
+        // Write stdin data
+        if let Some(mut stdin) = child.stdin().take() {
+            stdin
+                .write_all(stdin_data)
+                .await
+                .map_err(|e| ExecError::Transport(format!("stdin write failed: {}", e)))?;
+            drop(stdin);
+        }
+
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|e| ExecError::Transport(format!("SSH wait failed: {}", e)))?;
+
+        Ok(CommandOutput {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

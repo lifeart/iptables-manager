@@ -1,30 +1,381 @@
+use std::sync::Arc;
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
+use tauri::State;
+
 use crate::ipc::errors::IpcError;
 use crate::iptables::explain::explain_rule;
+use crate::iptables::parser::parse_iptables_save;
 use crate::iptables::types::RuleSpec;
+use crate::ssh::pool::{ConnectionConfig, ConnectionPool};
+use crate::host::detect::detect_capabilities;
+use crate::ssh::command::build_command;
+
+// ---------------------------------------------------------------------------
+// Shared state type alias
+// ---------------------------------------------------------------------------
+
+pub type PoolState = Arc<ConnectionPool>;
+
+// ---------------------------------------------------------------------------
+// Serializable response types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionResult {
+    pub host_id: String,
+    pub status: String,
+    pub latency_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestConnectionResult {
+    pub success: bool,
+    pub latency_ms: u64,
+    pub iptables_available: bool,
+    pub root_access: bool,
+    pub docker_detected: bool,
+    pub fail2ban_detected: bool,
+    pub nftables_backend: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectionResult {
+    pub completed: bool,
+    pub capabilities: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionResult {
+    pub success: bool,
+    pub dirs_created: Vec<String>,
+    pub revert_script_installed: bool,
+    pub sudo_verified: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSetResult {
+    pub rules: serde_json::Value,
+    pub default_policy: String,
+    pub raw_iptables_save: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyResult {
+    pub success: bool,
+    pub safety_timer_active: bool,
+    pub safety_timer_expiry: Option<u64>,
+    pub remote_job_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestConnectionParams {
+    pub hostname: String,
+    pub port: u16,
+    pub username: String,
+    pub auth_method: String,
+    pub key_path: Option<String>,
+}
 
 // ---------------------------------------------------------------------------
 // Tauri IPC command handlers
 // ---------------------------------------------------------------------------
 
-/// Fetch the current iptables rules for a host.
-///
-/// In a full implementation, this would look up the SSH session from the
-/// connection pool, run `iptables-save`, parse the output, and return
-/// the structured ruleset. For now it returns an error indicating the
-/// host is not connected.
+/// Connect to a remote host via SSH.
 #[tauri::command]
-pub async fn fetch_rules(host_id: String) -> Result<String, IpcError> {
-    // TODO: Look up host connection from pool, run iptables-save, parse
-    Err(IpcError::ConnectionFailed {
+pub async fn host_connect(
+    host_id: String,
+    hostname: String,
+    port: u16,
+    username: String,
+    auth_method: String,
+    key_path: Option<String>,
+    pool: State<'_, PoolState>,
+) -> Result<ConnectionResult, IpcError> {
+    let start = Instant::now();
+
+    let config = ConnectionConfig {
+        hostname: hostname.clone(),
+        port,
+        username,
+        key_path: if auth_method == "key" { key_path } else { None },
+        jump_host: None,
+    };
+
+    pool.connect(&host_id, config).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: e.to_string(),
+        }
+    })?;
+
+    let latency = start.elapsed().as_millis() as u64;
+
+    Ok(ConnectionResult {
         host_id,
-        reason: "not yet connected — call host:connect first".to_string(),
+        status: "connected".to_string(),
+        latency_ms: latency,
     })
 }
 
+/// Disconnect from a remote host.
+#[tauri::command]
+pub async fn host_disconnect(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    pool.disconnect(&host_id).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: e.to_string(),
+        }
+    })?;
+    Ok(())
+}
+
+/// Test connection to a remote host without storing the session.
+#[tauri::command]
+pub async fn host_test(
+    params: TestConnectionParams,
+    pool: State<'_, PoolState>,
+) -> Result<TestConnectionResult, IpcError> {
+    let start = Instant::now();
+    let temp_id = format!("__test_{}", uuid_v4());
+
+    let config = ConnectionConfig {
+        hostname: params.hostname.clone(),
+        port: params.port,
+        username: params.username.clone(),
+        key_path: if params.auth_method == "key" {
+            params.key_path.clone()
+        } else {
+            None
+        },
+        jump_host: None,
+    };
+
+    // Try to connect
+    if let Err(e) = pool.connect(&temp_id, config).await {
+        return Ok(TestConnectionResult {
+            success: false,
+            latency_ms: start.elapsed().as_millis() as u64,
+            iptables_available: false,
+            root_access: false,
+            docker_detected: false,
+            fail2ban_detected: false,
+            nftables_backend: false,
+            error: Some(e.to_string()),
+        });
+    }
+
+    let latency = start.elapsed().as_millis() as u64;
+
+    // Check iptables
+    let iptables_cmd = build_command("sudo", &["iptables", "--version"]);
+    let ipt_result = pool.execute(&temp_id, &iptables_cmd).await;
+    let (iptables_available, nftables_backend) = match ipt_result {
+        Ok(ref output) if output.exit_code == 0 => {
+            let nft = output.stdout.contains("nf_tables");
+            (true, nft)
+        }
+        _ => (false, false),
+    };
+
+    // Check root/sudo
+    let sudo_cmd = build_command("sudo", &["-n", "true"]);
+    let root_result = pool.execute(&temp_id, &sudo_cmd).await;
+    let root_access = matches!(root_result, Ok(ref o) if o.exit_code == 0);
+
+    // Check docker
+    let docker_cmd = build_command("systemctl", &["is-active", "docker"]);
+    let docker_result = pool.execute(&temp_id, &docker_cmd).await;
+    let docker_detected = matches!(docker_result, Ok(ref o) if o.exit_code == 0);
+
+    // Check fail2ban
+    let f2b_cmd = build_command("systemctl", &["is-active", "fail2ban"]);
+    let f2b_result = pool.execute(&temp_id, &f2b_cmd).await;
+    let fail2ban_detected = matches!(f2b_result, Ok(ref o) if o.exit_code == 0);
+
+    // Clean up test connection
+    let _ = pool.disconnect(&temp_id).await;
+
+    Ok(TestConnectionResult {
+        success: true,
+        latency_ms: latency,
+        iptables_available,
+        root_access,
+        docker_detected,
+        fail2ban_detected,
+        nftables_backend,
+        error: None,
+    })
+}
+
+/// Detect host capabilities via SSH.
+#[tauri::command]
+pub async fn host_detect(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<DetectionResult, IpcError> {
+    // We need a CommandExecutor — get one via the pool's execute method.
+    // Create a proxy executor that uses the pool.
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    let capabilities = detect_capabilities(&proxy).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("detection failed: {}", e),
+        }
+    })?;
+
+    let caps_json = serde_json::to_value(&capabilities).unwrap_or(serde_json::Value::Null);
+
+    Ok(DetectionResult {
+        completed: true,
+        capabilities: Some(caps_json),
+    })
+}
+
+/// Delete a host and optionally remove remote data.
+#[tauri::command]
+pub async fn host_delete(
+    host_id: String,
+    _remove_remote_data: bool,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    // Disconnect if connected
+    let _ = pool.disconnect(&host_id).await;
+    Ok(())
+}
+
+/// Fetch the current iptables rules for a host.
+#[tauri::command]
+pub async fn fetch_rules(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<RuleSetResult, IpcError> {
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let raw = output.stdout.clone();
+
+    let ruleset = parse_iptables_save(&raw).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to parse iptables-save output: {}", e),
+        exit_code: 1,
+    })?;
+
+    // Determine default policy from the filter table's INPUT chain
+    let default_policy = ruleset
+        .tables
+        .get("filter")
+        .and_then(|t| t.chains.get("INPUT"))
+        .and_then(|c| c.policy.clone())
+        .unwrap_or_else(|| "ACCEPT".to_string())
+        .to_lowercase();
+
+    let rules_json = serde_json::to_value(&ruleset).unwrap_or(serde_json::Value::Null);
+
+    Ok(RuleSetResult {
+        rules: rules_json,
+        default_policy,
+        raw_iptables_save: raw,
+    })
+}
+
+/// Apply rule changes via iptables-restore.
+#[tauri::command]
+pub async fn rules_apply(
+    host_id: String,
+    changes_json: String,
+    pool: State<'_, PoolState>,
+) -> Result<ApplyResult, IpcError> {
+    let _lock = pool.acquire_apply_lock(&host_id).await;
+
+    // Write the changes via iptables-restore --noflush
+    let restore_cmd = build_command(
+        "sudo",
+        &["iptables-restore", "-w", "5", "--noflush", "--counters"],
+    );
+    let output = pool
+        .execute_with_stdin(&host_id, &restore_cmd, changes_json.as_bytes())
+        .await
+        .map_err(|e| IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to apply rules: {}", e),
+        })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    Ok(ApplyResult {
+        success: true,
+        safety_timer_active: false,
+        safety_timer_expiry: None,
+        remote_job_id: None,
+    })
+}
+
+/// Revert rule changes on a host.
+#[tauri::command]
+pub async fn rules_revert(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    let cmd = build_command("sudo", &["/var/lib/traffic-rules/revert.sh"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to revert: {}", e),
+        }
+    })?;
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+    Ok(())
+}
+
+/// Confirm applied changes (cancel safety timer).
+#[tauri::command]
+pub async fn rules_confirm(
+    host_id: String,
+) -> Result<(), IpcError> {
+    // Safety timer cancellation is handled client-side for now
+    let _ = host_id;
+    Ok(())
+}
+
 /// Produce a human-readable explanation of a rule.
-///
-/// Accepts a JSON-serialized `RuleSpec` and returns a plain-English
-/// explanation string.
 #[tauri::command]
 pub async fn explain_rule_cmd(rule_json: String) -> Result<String, IpcError> {
     let spec: RuleSpec = serde_json::from_str(&rule_json).map_err(|e| {
@@ -38,18 +389,12 @@ pub async fn explain_rule_cmd(rule_json: String) -> Result<String, IpcError> {
 }
 
 /// Export rules in the requested format.
-///
-/// Supported formats: `"shell"`, `"ansible"`, `"iptables-save"`.
-///
-/// In a full implementation, this would fetch the current ruleset for the
-/// host and format it. For now it returns a placeholder indicating the
-/// host needs to be connected first.
 #[tauri::command]
 pub async fn export_rules(
     host_id: String,
     format: String,
+    pool: State<'_, PoolState>,
 ) -> Result<String, IpcError> {
-    // Validate the format parameter
     match format.as_str() {
         "shell" | "ansible" | "iptables-save" => {}
         _ => {
@@ -60,9 +405,103 @@ pub async fn export_rules(
         }
     }
 
-    // TODO: Look up host connection, fetch rules, export in requested format
-    Err(IpcError::ConnectionFailed {
-        host_id,
-        reason: "not yet connected — call host:connect first".to_string(),
+    // For iptables-save format, just return raw output
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    Ok(output.stdout)
+}
+
+/// Provision a remote host for management.
+#[tauri::command]
+pub async fn host_provision(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<ProvisionResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    let cred_store = crate::ssh::credential::CredentialStore::new().map_err(|e| {
+        IpcError::ProvisionFailed {
+            reason: format!("credential store error: {}", e),
+        }
+    })?;
+
+    crate::ssh::provision::provision_host(&proxy, &host_id, &cred_store)
+        .await
+        .map_err(|e| IpcError::ProvisionFailed {
+            reason: e.to_string(),
+        })?;
+
+    Ok(ProvisionResult {
+        success: true,
+        dirs_created: vec![
+            "/var/lib/traffic-rules".to_string(),
+            "/var/lib/traffic-rules/snapshots".to_string(),
+        ],
+        revert_script_installed: true,
+        sudo_verified: true,
     })
+}
+
+// ---------------------------------------------------------------------------
+// PoolProxyExecutor — adapts ConnectionPool to CommandExecutor trait
+// ---------------------------------------------------------------------------
+
+use crate::ssh::executor::{CommandExecutor, CommandOutput, ExecError};
+use async_trait::async_trait;
+
+/// Proxy that implements CommandExecutor by delegating to the ConnectionPool.
+struct PoolProxyExecutor {
+    pool: Arc<ConnectionPool>,
+    host_id: String,
+}
+
+#[async_trait]
+impl CommandExecutor for PoolProxyExecutor {
+    async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
+        self.pool.execute(&self.host_id, command).await
+    }
+
+    async fn exec_with_stdin(
+        &self,
+        command: &str,
+        stdin: &[u8],
+    ) -> Result<CommandOutput, ExecError> {
+        self.pool
+            .execute_with_stdin(&self.host_id, command, stdin)
+            .await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn uuid_v4() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let bytes: [u8; 16] = rng.gen();
+    format!(
+        "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
+        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+        u16::from_be_bytes([bytes[4], bytes[5]]),
+        u16::from_be_bytes([bytes[6], bytes[7]]) & 0x0FFF,
+        (u16::from_be_bytes([bytes[8], bytes[9]]) & 0x3FFF) | 0x8000,
+        u64::from_be_bytes([0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]])
+    )
 }
