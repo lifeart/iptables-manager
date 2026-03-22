@@ -22,6 +22,7 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
+import { disconnectHost } from '../../ipc/bridge';
 
 interface RuleSection {
   title: string;
@@ -189,11 +190,28 @@ export class RuleTable extends Component {
               className: `rule-table__host-status rule-table__host-status--${host.status}`,
             }, host.status.charAt(0).toUpperCase() + host.status.slice(1));
             this.headerEl.appendChild(statusEl);
+            const headerBtns = h('div', {
+              style: { marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' },
+            });
+
+            if (host.status === 'connected') {
+              const disconnectBtn = h('button', {
+                className: 'rule-table__disconnect-btn',
+                type: 'button',
+                title: 'Disconnect from host',
+                style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-block, #f85149)' },
+              }, 'Disconnect');
+              this.listen(disconnectBtn, 'click', () => {
+                this.handleDisconnect(host.id);
+              });
+              headerBtns.appendChild(disconnectBtn);
+            }
+
             const historyBtn = h('button', {
               className: 'rule-table__history-btn',
               type: 'button',
               title: 'Snapshot History',
-              style: { marginLeft: 'auto', padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
+              style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
             }, 'History');
             this.listen(historyBtn, 'click', () => {
               this.store.dispatch({
@@ -202,20 +220,23 @@ export class RuleTable extends Component {
               });
               this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
             });
-            this.headerEl.appendChild(historyBtn);
+            headerBtns.appendChild(historyBtn);
+            this.headerEl.appendChild(headerBtns);
           } else {
-            // Same host, just update name/status in place
+            // Same host — check if status changed (need to rebuild for disconnect button)
+            const statusEl = this.headerEl.querySelector('.rule-table__host-status');
+            const currentStatusClass = statusEl?.className ?? '';
+            const expectedStatusClass = `rule-table__host-status rule-table__host-status--${host.status}`;
+            if (currentStatusClass !== expectedStatusClass) {
+              // Status changed — force full header rebuild
+              this.currentHeaderHostId = null;
+              this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: host.id });
+              return;
+            }
+            // Just update name in place
             const nameEl = this.headerEl.querySelector('.rule-table__host-name');
             if (nameEl && nameEl.textContent !== host.name) {
               nameEl.textContent = host.name;
-            }
-            const statusEl = this.headerEl.querySelector('.rule-table__host-status');
-            if (statusEl) {
-              const statusText = host.status.charAt(0).toUpperCase() + host.status.slice(1);
-              if (statusEl.textContent !== statusText) {
-                statusEl.textContent = statusText;
-              }
-              statusEl.className = `rule-table__host-status rule-table__host-status--${host.status}`;
             }
           }
         } else {
@@ -566,6 +587,20 @@ export class RuleTable extends Component {
 
       this.terminalPanel.appendChild(placeholder);
     }
+  }
+
+  private handleDisconnect(hostId: string): void {
+    disconnectHost(hostId)
+      .then(() => {
+        this.store.dispatch({ type: 'SET_HOST_STATUS', hostId, status: 'disconnected' });
+        this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId });
+      })
+      .catch((err) => {
+        console.warn('Failed to disconnect host:', err);
+        // Update status anyway since the UI should reflect the intent
+        this.store.dispatch({ type: 'SET_HOST_STATUS', hostId, status: 'disconnected' });
+        this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId });
+      });
   }
 
   private groupRulesByDirection(rules: EffectiveRule[]): RuleSection[] {

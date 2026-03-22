@@ -6,8 +6,9 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { testConnection, connectHost, detectHost } from '../../ipc/bridge';
+import { testConnection, connectHost, detectHost, fetchRules } from '../../ipc/bridge';
 import type { TestResult } from '../../ipc/bridge';
+import { convertRuleSet } from '../../services/rule-converter';
 import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidPort } from '../../utils/ip-validate';
 
@@ -499,6 +500,16 @@ export class AddHostDialog extends Component {
         hostId: host.id,
         changes: { status: 'connected' as const, lastConnected: Date.now() },
       });
+
+      // Fetch rules from the connected host
+      fetchRules(host.id)
+        .then((ruleSet) => {
+          const rules = convertRuleSet(ruleSet);
+          this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
+        })
+        .catch((err) => {
+          console.warn('Failed to fetch rules after connect:', err);
+        });
 
       // Run detection in the background (non-blocking)
       detectHost(host.id)

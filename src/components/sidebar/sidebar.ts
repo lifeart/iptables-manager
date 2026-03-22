@@ -14,6 +14,8 @@ import { reconcileList } from '../reconciler';
 import { createHostRow, updateHostRow } from './host-row';
 import { createGroupRow, updateGroupRow } from './group-row';
 import { h } from '../../utils/dom';
+import { fetchRules } from '../../ipc/bridge';
+import { convertRuleSet } from '../../services/rule-converter';
 
 type ScaleMode = 'all' | 'medium' | 'large';
 
@@ -195,8 +197,10 @@ export class Sidebar extends Component {
     const handleHostClick = (e: Event) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-row');
       if (row?.dataset.hostId) {
-        this.trackRecentHost(row.dataset.hostId);
-        this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: row.dataset.hostId });
+        const hostId = row.dataset.hostId;
+        this.trackRecentHost(hostId);
+        this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId });
+        this.fetchRulesIfConnected(hostId);
       }
     };
     this.listen(this.hostsContainer, 'click', handleHostClick);
@@ -375,6 +379,21 @@ export class Sidebar extends Component {
     this.renderHosts();
     this.renderGroups();
     this.renderIpLists();
+  }
+
+  private fetchRulesIfConnected(hostId: string): void {
+    const state = this.store.getState();
+    const host = state.hosts.get(hostId);
+    if (host && host.status === 'connected') {
+      fetchRules(hostId)
+        .then((ruleSet) => {
+          const rules = convertRuleSet(ruleSet);
+          this.store.dispatch({ type: 'SET_HOST_RULES', hostId, rules });
+        })
+        .catch((err) => {
+          console.warn('Failed to fetch rules for host:', err);
+        });
+    }
   }
 
   private getFilteredHosts(): Host[] {

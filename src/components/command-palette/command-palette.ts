@@ -14,6 +14,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
 import { h, clearChildren, trapFocus } from '../../utils/dom';
+import { disconnectHost } from '../../ipc/bridge';
 
 interface PaletteItem {
   id: string;
@@ -242,6 +243,30 @@ export class CommandPalette extends Component {
         },
       },
     ];
+
+    // Add Disconnect action when the active host is connected
+    const activeHostId = state.activeHostId;
+    if (activeHostId) {
+      const activeHost = state.hosts.get(activeHostId);
+      if (activeHost && activeHost.status === 'connected') {
+        actions.push({
+          label: 'Disconnect',
+          detail: `Disconnect from ${activeHost.name}`,
+          action: () => {
+            disconnectHost(activeHostId)
+              .then(() => {
+                this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: activeHostId, status: 'disconnected' });
+                this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId: activeHostId });
+              })
+              .catch((err) => {
+                console.warn('Failed to disconnect host:', err);
+                this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: activeHostId, status: 'disconnected' });
+                this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId: activeHostId });
+              });
+          },
+        });
+      }
+    }
 
     for (const act of actions) {
       if (queryLower && !act.label.toLowerCase().includes(queryLower)) continue;
