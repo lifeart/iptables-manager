@@ -17,6 +17,7 @@ import { h, clearChildren } from '../../utils/dom';
 import { RuleDetail } from './rule-detail';
 import { RuleEdit } from './rule-edit';
 import { SnapshotHistory } from './snapshot-history';
+import { PortForwardBuilder, SourceNatBuilder } from './nat-builder';
 
 export class SidePanel extends Component {
   private panelEl: HTMLElement;
@@ -134,6 +135,18 @@ export class SidePanel extends Component {
         const snapshotHistory = new SnapshotHistory(this.contentEl, this.store);
         this.currentContent = snapshotHistory;
         this.addChild(snapshotHistory);
+        break;
+      }
+      case 'port-forward': {
+        const pfBuilder = new PortForwardBuilder(this.contentEl, this.store);
+        this.currentContent = pfBuilder;
+        this.addChild(pfBuilder);
+        break;
+      }
+      case 'source-nat': {
+        const snatBuilder = new SourceNatBuilder(this.contentEl, this.store);
+        this.currentContent = snatBuilder;
+        this.addChild(snatBuilder);
         break;
       }
       case 'host-settings': {

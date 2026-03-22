@@ -377,14 +377,14 @@ export class RuleTable extends Component {
             this.listen(portFwdLink, 'click', () => {
               this.store.dispatch({
                 type: 'SET_SIDE_PANEL_CONTENT',
-                content: { type: 'host-settings' },
+                content: { type: 'port-forward' },
               });
               this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
             });
             this.listen(snatLink, 'click', () => {
               this.store.dispatch({
                 type: 'SET_SIDE_PANEL_CONTENT',
-                content: { type: 'host-settings' },
+                content: { type: 'source-nat' },
               });
               this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
             });
@@ -392,7 +392,7 @@ export class RuleTable extends Component {
             natActions.appendChild(snatLink);
             natActions.appendChild(h('p', {
               style: { margin: '8px 0 0', fontSize: '12px', color: 'var(--color-text-secondary, #888)' },
-            }, 'Connect to a real server to configure NAT rules'));
+            }, 'Set up port forwarding or source NAT for this host'));
             rowsContainer.appendChild(natActions);
           } else {
             const emptyText = h('p', { className: 'rule-table__section-empty' },

@@ -244,6 +244,8 @@ export type SidePanelContent =
   | { type: 'rule-edit'; ruleId: string }
   | { type: 'rule-new' }
   | { type: 'snapshot-history' }
+  | { type: 'port-forward' }
+  | { type: 'source-nat' }
   | { type: 'host-settings' };
 
 export type DialogType =
