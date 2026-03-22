@@ -1,0 +1,130 @@
+:root {
+  /* Background */
+  --color-background: #FFFFFF;
+  --color-surface: #F5F5F7;
+  --color-sidebar: #F0F0F2;
+  --color-elevated: #FFFFFF;
+  --color-super-elevated: #FFFFFF;
+
+  /* Border & Separator */
+  --color-border: #E5E5E7;
+  --color-separator: #F2F2F7;
+
+  /* Text */
+  --color-text-primary: #1D1D1F;
+  --color-text-secondary: #86868B;
+  --color-text-tertiary: #AEAEB2;
+
+  /* Status */
+  --color-allow: #34C759;
+  --color-block: #FF3B30;
+  --color-warning: #FF9500;
+  --color-info: #007AFF;
+  --color-disabled: #C7C7CC;
+  --color-log: #5856D6;
+
+  /* Diff highlights */
+  --color-diff-added-bg: rgba(52, 199, 89, 0.04);
+  --color-diff-added-field: rgba(52, 199, 89, 0.08);
+  --color-diff-removed-bg: rgba(255, 59, 48, 0.04);
+  --color-diff-removed-field: rgba(255, 59, 48, 0.08);
+
+  /* Selection */
+  --color-selected: rgba(0, 122, 255, 0.10);
+  --color-hover: #F5F5F7;
+
+  /* Buttons */
+  --color-primary: #007AFF;
+  --color-primary-text: #FFFFFF;
+
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+
+  --font-size-page-title: 22px;
+  --font-size-section-header: 12px;
+  --font-size-rule-name: 14px;
+  --font-size-rule-protocol: 12px;
+  --font-size-rule-comment: 12px;
+  --font-size-status-label: 11px;
+  --font-size-caption: 11px;
+  --font-size-filter-count: 12px;
+  --font-size-mono: 12px;
+
+  /* Spacing (8px grid) */
+  --space-tight: 4px;
+  --space-compact: 8px;
+  --space-default: 12px;
+  --space-comfortable: 16px;
+  --space-section: 20px;
+  --space-spacious: 24px;
+  --space-generous: 32px;
+
+  /* Sizes */
+  --row-height: 52px;
+  --sidebar-width: 220px;
+  --side-panel-width: 420px;
+  --status-bar-width: 3px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Shadows */
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.15);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.25);
+  --shadow-banner: 0 8px 32px rgba(0, 0, 0, 0.25);
+
+  /* Transitions */
+  --transition-fast: 100ms ease;
+  --transition-default: 150ms ease;
+  --transition-slow: 250ms ease-out;
+  --transition-banner: 300ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Background */
+    --color-background: #000000;
+    --color-surface: #1C1C1E;
+    --color-sidebar: #1C1C1E;
+    --color-elevated: #2C2C2E;
+    --color-super-elevated: #3A3A3C;
+
+    /* Border & Separator */
+    --color-border: #38383A;
+    --color-separator: #38383A;
+
+    /* Text */
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #98989D;
+    --color-text-tertiary: #636366;
+
+    /* Status (adjusted for dark) */
+    --color-allow: #30D158;
+    --color-block: #FF453A;
+    --color-warning: #FF9F0A;
+    --color-info: #0A84FF;
+    --color-disabled: #48484A;
+    --color-log: #5E5CE6;
+
+    /* Diff highlights */
+    --color-diff-added-bg: rgba(50, 215, 75, 0.2);
+    --color-diff-added-field: rgba(50, 215, 75, 0.2);
+    --color-diff-removed-bg: rgba(255, 69, 58, 0.2);
+    --color-diff-removed-field: rgba(255, 69, 58, 0.2);
+
+    /* Selection */
+    --color-selected: rgba(10, 132, 255, 0.20);
+    --color-hover: #1C1C1E;
+
+    /* Buttons */
+    --color-primary: #0A84FF;
+    --color-primary-text: #FFFFFF;
+
+    /* Shadows */
+    --shadow-banner: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/.schemas/tauri-conf-v2.json",
+  "productName": "Traffic Rules",
+  "version": "0.1.0",
+  "identifier": "com.lifeart.traffic-rules",
+  "build": {
+    "frontendDist": "../src",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npx vite",
+    "beforeBuildCommand": "npx vite build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Traffic Rules",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ]
+  }
+}

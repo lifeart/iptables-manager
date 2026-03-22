@@ -1,0 +1,7 @@
+{
+  "nginx": { "label": "Web Traffic", "ports": [80, 443], "protocol": "tcp" },
+  "apache2": { "label": "Web Traffic", "ports": [80, 443], "protocol": "tcp" },
+  "sshd": { "label": "SSH", "ports": [22], "protocol": "tcp", "restrictToManagementIp": true },
+  "node_exporter": { "label": "Monitoring", "ports": [9100], "protocol": "tcp", "restrictToLocalNet": true },
+  "postgres": { "label": "PostgreSQL", "ports": [5432], "protocol": "tcp", "restrictToLocalNet": true }
+}

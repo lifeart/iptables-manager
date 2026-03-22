@@ -1,0 +1,28 @@
+{
+  "name": "iptables-manager",
+  "version": "1.0.0",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/sortablejs": "^1.15.9",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "idb": "^8.0.3",
+    "sortablejs": "^1.15.7"
+  }
+}
