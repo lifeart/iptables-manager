@@ -611,8 +611,7 @@ export class RuleTable extends Component {
         const rules = convertRuleSet(ruleData);
         this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
       })
-      .catch((err) => {
-        console.warn('Reconnect failed:', err);
+      .catch(() => {
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'unreachable' });
       });
   }
@@ -623,8 +622,7 @@ export class RuleTable extends Component {
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId, status: 'disconnected' });
         this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId });
       })
-      .catch((err) => {
-        console.warn('Failed to disconnect host:', err);
+      .catch(() => {
         // Update status anyway since the UI should reflect the intent
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId, status: 'disconnected' });
         this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId });

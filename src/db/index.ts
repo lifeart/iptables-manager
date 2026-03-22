@@ -39,7 +39,7 @@ export async function initDB(): Promise<IDBPDatabase> {
       }
     },
     blocked() {
-      console.warn('IndexedDB upgrade blocked — close other tabs');
+      // IndexedDB upgrade blocked — user should close other tabs
     },
     blocking() {
       // Close the connection to unblock other tabs

@@ -1,1 +1,32 @@
-/* TODO: implement terminal styles */
+/* Terminal tab styles */
+
+.rule-table__terminal-placeholder {
+  display: flex;
+  flex-direction: column;
+}
+
+.rule-table__terminal-sub-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px 0;
+}
+
+.rule-table__terminal-sub-tab {
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #333);
+  background: var(--color-bg-secondary, #1a1a1a);
+  color: var(--color-text-secondary, #888);
+  font-size: 13px;
+}
+
+.rule-table__terminal-message {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-secondary, #888);
+}
+
+.rule-table__terminal-message p {
+  font-size: 14px;
+  margin: 0;
+}

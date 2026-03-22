@@ -167,8 +167,9 @@ export class PortForwardBuilder extends Component {
     const hostId = this.store.getState().activeHostId;
     if (!hostId) return;
 
-    const rule: Partial<Rule> = {
-      id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    const now = Date.now();
+    const rule: Rule = {
+      id: `rule-${now}-${Math.random().toString(36).slice(2, 7)}`,
       label: this.nameInput.value.trim() || `Port ${extPort} → ${targetIp}:${targetPort}`,
       action: 'dnat',
       protocol: this.protocolSelect.value as Rule['protocol'],
@@ -184,15 +185,16 @@ export class PortForwardBuilder extends Component {
       },
       comment: this.nameInput.value.trim(),
       origin: { type: 'user' },
+      position: 0,
       enabled: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     this.store.dispatch({
       type: 'ADD_STAGED_CHANGE',
       hostId,
-      change: { type: 'add', rule: rule as Rule, position: 0 },
+      change: { type: 'add', rule, position: 0 },
     });
 
     this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: false });
@@ -373,8 +375,9 @@ export class SourceNatBuilder extends Component {
     if (!hostId) return;
 
     const action = isMasquerade ? 'masquerade' : 'snat';
-    const rule: Partial<Rule> = {
-      id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    const snatNow = Date.now();
+    const rule: Rule = {
+      id: `rule-${snatNow}-${Math.random().toString(36).slice(2, 7)}`,
       label: this.nameInput.value.trim() || `${action === 'masquerade' ? 'Masquerade' : 'SNAT'} ${source}`,
       action: action as Rule['action'],
       source: { type: 'cidr', value: source },
@@ -385,15 +388,16 @@ export class SourceNatBuilder extends Component {
       snat: action === 'snat' ? { sourceIp: this.snatIpInput.value.trim() } : undefined,
       comment: this.nameInput.value.trim(),
       origin: { type: 'user' },
+      position: 0,
       enabled: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: snatNow,
+      updatedAt: snatNow,
     };
 
     this.store.dispatch({
       type: 'ADD_STAGED_CHANGE',
       hostId,
-      change: { type: 'add', rule: rule as Rule, position: 0 },
+      change: { type: 'add', rule, position: 0 },
     });
 
     this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: false });

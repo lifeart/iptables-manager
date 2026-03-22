@@ -28,8 +28,8 @@ export abstract class Component {
     const safeCb = (val: T, prev: T) => {
       try {
         cb.call(this, val, prev);
-      } catch (e) {
-        console.error(`${this.constructor.name} error:`, e);
+      } catch {
+        // Subscription callback error — component continues functioning
       }
     };
     const unsub = this.store.subscribeSelector(selector, safeCb);
@@ -66,7 +66,6 @@ export abstract class Component {
         });
       } catch {
         // @tauri-apps/api may not be available in non-Tauri environments
-        console.warn(`Failed to set up IPC listener for "${event}"`);
       }
     };
     setupListener();

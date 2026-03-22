@@ -4,11 +4,10 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { Snapshot } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
 import { demoSnapshots } from '../../mock/demo-data';
 import { selectActiveHost } from '../../store/selectors';
-import type { AppState } from '../../store/types';
+import type { AppState, Snapshot } from '../../store/types';
 
 export class SnapshotHistory extends Component {
   private listEl: HTMLElement;

@@ -507,8 +507,8 @@ export class AddHostDialog extends Component {
           const rules = convertRuleSet(ruleSet);
           this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
         })
-        .catch((err) => {
-          console.warn('Failed to fetch rules after connect:', err);
+        .catch(() => {
+          // Rule fetch failure after connect is handled by the empty state UI
         });
 
       // Run detection in the background (non-blocking)
@@ -522,8 +522,8 @@ export class AddHostDialog extends Component {
             });
           }
         })
-        .catch((err) => {
-          console.warn('Host detection failed:', err);
+        .catch(() => {
+          // Detection failure is non-fatal; host works without capabilities
         });
 
       this.close();

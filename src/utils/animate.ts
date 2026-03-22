@@ -1,5 +1,7 @@
 /**
  * Animation utilities using the Web Animations API.
+ *
+ * Currently unused — kept as a utility for future component transitions.
  */
 
 /**

@@ -350,8 +350,15 @@ export class Settings extends Component {
               settings: data.settings,
             },
           });
-        } catch {
-          // Silently ignore malformed import files
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : 'Invalid file format';
+          const errorBanner = h('div', {
+            className: 'settings-panel__import-error',
+            style: { color: 'var(--color-block, #FF3B30)', fontSize: '13px', padding: '8px 0' },
+          }, `Import failed: ${errorMsg}`);
+          const existingError = this.el.querySelector('.settings-panel__import-error');
+          if (existingError) existingError.remove();
+          this.el.querySelector('.settings-panel__body')?.appendChild(errorBanner);
         }
       };
       reader.readAsText(file);

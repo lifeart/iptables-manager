@@ -157,10 +157,11 @@ export class SidePanel extends Component {
         break;
       }
       case 'host-settings': {
-        const settingsEl = h('div', { className: 'side-panel__host-settings' },
-          h('h3', { className: 'side-panel__section-title' }, 'Host Settings'),
-        );
-        this.contentEl.appendChild(settingsEl);
+        // Host settings reuses the Settings panel (host-specific settings
+        // are not yet distinct from global settings)
+        const hostSettingsComp = new SettingsPanel(this.contentEl, this.store);
+        this.currentContent = hostSettingsComp;
+        this.addChild(hostSettingsComp);
         break;
       }
     }

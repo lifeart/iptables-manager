@@ -258,8 +258,7 @@ export class CommandPalette extends Component {
                 this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: activeHostId, status: 'disconnected' });
                 this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId: activeHostId });
               })
-              .catch((err) => {
-                console.warn('Failed to disconnect host:', err);
+              .catch(() => {
                 this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: activeHostId, status: 'disconnected' });
                 this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId: activeHostId });
               });

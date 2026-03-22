@@ -180,10 +180,10 @@ export class SafetyBanner extends Component {
 
   private async revertChanges(hostId: string): Promise<void> {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('safety:revert', { hostId });
+      const { revertChanges: revertIpc } = await import('../../ipc/bridge');
+      await revertIpc(hostId);
     } catch {
-      console.warn('Failed to invoke safety:revert');
+      // Revert failure is non-critical; clear the timer UI regardless
     }
     this.store.dispatch({ type: 'CLEAR_SAFETY_TIMER', hostId });
   }

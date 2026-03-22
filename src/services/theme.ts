@@ -98,8 +98,8 @@ class ThemeManager {
     for (const listener of this.listeners) {
       try {
         listener(resolved);
-      } catch (e) {
-        console.error('Theme change listener error:', e);
+      } catch {
+        // Theme change listener error — non-critical
       }
     }
   }

@@ -390,8 +390,8 @@ export class Sidebar extends Component {
           const rules = convertRuleSet(ruleSet);
           this.store.dispatch({ type: 'SET_HOST_RULES', hostId, rules });
         })
-        .catch((err) => {
-          console.warn('Failed to fetch rules for host:', err);
+        .catch(() => {
+          // Rule fetch failure is handled by the empty state UI
         });
     }
   }

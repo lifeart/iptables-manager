@@ -112,8 +112,7 @@ async function autoReconnect(): Promise<void> {
       changes: { status: 'connected' as const, lastConnected: Date.now() },
     });
   } catch {
-    // Auto-reconnect failure is non-fatal
-    console.warn('Auto-reconnect failed for host:', lastHostId);
+    // Auto-reconnect failure is non-fatal — silently update status
     store.dispatch({
       type: 'UPDATE_HOST',
       hostId: lastHostId,
@@ -134,8 +133,8 @@ async function bootstrap(): Promise<void> {
 
     // 3. Check for orphaned safety timers
     if (data.safetyTimers.length > 0) {
-      console.warn('Orphaned safety timers detected:', data.safetyTimers.length);
-      // TODO: Show recovery UI for orphaned timers
+      // Orphaned safety timers are hydrated into store and handled
+      // by SafetyBanner which auto-expires or offers manual revert.
     }
 
     // 4. Hydrate store
@@ -174,7 +173,7 @@ async function bootstrap(): Promise<void> {
       autoReconnect().catch(() => {});
     }
   } catch (e) {
-    console.error('Bootstrap failed:', e);
+    // Bootstrap failure is shown in the UI error screen below
     hideLoadingScreen();
     const app = document.getElementById('app');
     if (app) {

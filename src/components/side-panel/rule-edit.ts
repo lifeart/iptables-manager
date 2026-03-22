@@ -94,6 +94,12 @@ export class RuleEdit extends Component {
     const activeHostId = this.store.getState().activeHostId;
     if (!activeHostId) return;
 
+    // Resolve the effective action: when blockType is 'reject', use 'block-reject'
+    let resolvedAction: Rule['action'] = formData.action;
+    if ((formData.action === 'block' || formData.action === 'log-block') && formData.blockType === 'reject') {
+      resolvedAction = 'block-reject';
+    }
+
     if (this.ruleId) {
       // Edit existing rule
       const existingRule = this.findRule();
@@ -114,7 +120,7 @@ export class RuleEdit extends Component {
             interfaceIn: existingRule.interfaceIn,
           },
           after: {
-            action: formData.action,
+            action: resolvedAction,
             protocol: formData.protocol,
             ports: formData.ports,
             source: formData.source,
@@ -144,7 +150,7 @@ export class RuleEdit extends Component {
       const newRule: Rule = {
         id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         label: formData.label,
-        action: formData.action,
+        action: resolvedAction,
         protocol: formData.protocol,
         ports: formData.ports,
         source: formData.source,

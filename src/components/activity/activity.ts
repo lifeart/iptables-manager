@@ -149,8 +149,8 @@ export class Activity extends Component {
     if (this.streamId) {
       try {
         await unsubscribeActivity(this.streamId);
-      } catch (err) {
-        console.warn('Failed to unsubscribe from activity stream:', err);
+      } catch {
+        // Unsubscribe failure is non-critical
       }
       this.streamId = null;
     }
@@ -160,8 +160,7 @@ export class Activity extends Component {
     if (hostId) {
       try {
         this.streamId = await subscribeActivity(hostId);
-      } catch (err) {
-        console.warn('Failed to subscribe to activity stream:', err);
+      } catch {
         this.showActivityError('Unable to load activity data');
       }
     }
@@ -174,8 +173,7 @@ export class Activity extends Component {
     try {
       const bans = await fetchBans(hostId);
       this.renderBans(bans);
-    } catch (err) {
-      console.warn('Failed to fetch bans:', err);
+    } catch {
       const existingList = this.bansSection.querySelector('.activity-view__bans-list');
       if (existingList) existingList.remove();
       const errorEl = h('div', { className: 'activity-view__bans-list' },

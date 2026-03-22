@@ -242,8 +242,14 @@ export class PendingBar extends Component {
       await ipc.applyChanges(hostId, changeset.changes);
       this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
     } catch (err) {
-      console.error('Apply failed:', err);
-      // Error handling will be done via operations tracking in a future iteration
+      // Show error feedback inline
+      const errorMsg = err instanceof Error ? err.message : 'Apply failed';
+      const errorEl = document.createElement('span');
+      errorEl.className = 'rule-table__pending-bar-error';
+      errorEl.textContent = errorMsg;
+      errorEl.style.cssText = 'color: var(--color-block, #FF3B30); font-size: 12px; margin-left: 8px;';
+      this.el.appendChild(errorEl);
+      setTimeout(() => errorEl.remove(), 5000);
     } finally {
       this.applyBtn.disabled = false;
       this.applyBtn.innerHTML = 'Apply <kbd>\u2318S</kbd>';

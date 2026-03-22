@@ -84,8 +84,10 @@ export class DialogManager extends Component {
         break;
       }
       case 'first-setup': {
-        // FirstSetupDialog requires config — for demo, skip
-        this.currentDialogType = null;
+        // FirstSetupDialog requires a FirstSetupConfig which is built
+        // from host detection results. Close the dialog since there is
+        // no config to display without an active detection flow.
+        this.store.dispatch({ type: 'CLOSE_DIALOG' });
         break;
       }
     }

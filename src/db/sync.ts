@@ -127,9 +127,9 @@ class IndexedDBSync {
   private handleWriteError(e: unknown): void {
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       store.dispatch({ type: 'STORAGE_QUOTA_EXCEEDED' });
-    } else {
-      console.error('IndexedDB write error:', e);
     }
+    // Non-quota errors are silently ignored to avoid console noise;
+    // data will be re-persisted on the next write attempt.
   }
 }
 

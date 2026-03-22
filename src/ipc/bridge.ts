@@ -231,7 +231,6 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
     case 'activity:fetch-bans':
       return [] as T;
     default:
-      console.warn(`[IPC Mock] Unknown command: ${cmd}`);
       return undefined as T;
   }
 }
