@@ -1,1 +1,356 @@
-/* TODO: implement side-panel styles */
+/* ─── Side Panel ─────────────────────────────────────────────── */
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--side-panel-width, 420px);
+  background: var(--color-background);
+  border-left: 1px solid var(--color-border);
+  transform: translateX(100%);
+  transition: transform 250ms ease-out;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.side-panel--open {
+  transform: translateX(0);
+}
+
+/* ─── Header ──────────────────────────────────────────────────── */
+
+.side-panel__header {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-default) var(--space-spacious);
+  flex-shrink: 0;
+}
+
+.side-panel__close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+
+.side-panel__close-btn:hover {
+  background: var(--color-hover);
+}
+
+.side-panel__close-btn:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: -2px;
+}
+
+/* ─── Content ─────────────────────────────────────────────────── */
+
+.side-panel__content {
+  flex: 1;
+  padding: 0 var(--space-spacious) var(--space-spacious);
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.side-panel__content--fading {
+  opacity: 0;
+}
+
+.side-panel__section-title {
+  font-size: var(--font-size-section-header);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary);
+  margin: var(--space-section) 0 var(--space-compact);
+}
+
+.side-panel__empty-text {
+  font-size: var(--font-size-rule-protocol);
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Rule Detail ─────────────────────────────────────────────── */
+
+.rule-detail {
+  font-family: var(--font-family);
+}
+
+.rule-detail__title {
+  font-size: var(--font-size-page-title);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-default);
+}
+
+.rule-detail__divider {
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  margin: 0 0 var(--space-comfortable);
+}
+
+.rule-detail__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-default);
+}
+
+.rule-detail__field {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-compact);
+}
+
+.rule-detail__label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.rule-detail__value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.rule-detail__expanded-ips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-tight);
+}
+
+.rule-detail__ip-entry {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  color: var(--color-text-secondary);
+}
+
+.rule-detail__empty {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  padding: var(--space-spacious);
+  text-align: center;
+}
+
+/* ─── Details Section ─────────────────────────────────────────── */
+
+.rule-detail__section {
+  margin-top: var(--space-spacious);
+}
+
+.rule-detail__section-header {
+  font-size: var(--font-size-section-header);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary);
+  padding-bottom: var(--space-compact);
+  border-bottom: 1px solid var(--color-separator);
+  margin-bottom: var(--space-default);
+}
+
+/* ─── Disclosure Triangle ─────────────────────────────────────── */
+
+.rule-detail__disclosure {
+  margin-top: var(--space-comfortable);
+}
+
+.rule-detail__disclosure-summary {
+  font-size: 13px;
+  color: var(--color-info);
+  cursor: pointer;
+  user-select: none;
+  padding: var(--space-compact) 0;
+  list-style: none;
+}
+
+.rule-detail__disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rule-detail__disclosure-summary::before {
+  content: '\25B8';
+  display: inline-block;
+  margin-right: var(--space-compact);
+  transition: transform var(--transition-fast);
+}
+
+.rule-detail__disclosure[open] .rule-detail__disclosure-summary::before {
+  transform: rotate(90deg);
+}
+
+.rule-detail__code {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-default);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  color: var(--color-text-primary);
+  overflow-x: auto;
+  margin-top: var(--space-compact);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Action Buttons ──────────────────────────────────────────── */
+
+.rule-detail__actions {
+  display: flex;
+  gap: var(--space-compact);
+  margin-top: var(--space-spacious);
+  padding-top: var(--space-comfortable);
+  border-top: 1px solid var(--color-separator);
+}
+
+.rule-detail__action-btn {
+  flex: 1;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.rule-detail__action-btn--edit {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.rule-detail__action-btn--edit:hover {
+  opacity: 0.9;
+}
+
+.rule-detail__action-btn--disable {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+}
+
+.rule-detail__action-btn--disable:hover {
+  background: var(--color-primary-hover-bg);
+}
+
+.rule-detail__action-btn--delete {
+  background: transparent;
+  color: var(--color-block);
+  border: 1px solid var(--color-border);
+}
+
+.rule-detail__action-btn--delete:hover {
+  background: var(--color-diff-removed-bg);
+}
+
+/* ─── Rule Edit ───────────────────────────────────────────────── */
+
+.rule-edit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--font-family);
+}
+
+.rule-edit__title {
+  font-size: var(--font-size-page-title);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-default);
+}
+
+.rule-edit__divider {
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  margin: 0 0 var(--space-comfortable);
+}
+
+.rule-edit__builder {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.rule-edit__footer {
+  display: flex;
+  gap: var(--space-compact);
+  justify-content: flex-end;
+  padding: var(--space-comfortable) 0 0;
+  border-top: 1px solid var(--color-separator);
+  margin-top: var(--space-comfortable);
+  flex-shrink: 0;
+}
+
+.rule-edit__cancel-btn {
+  height: 28px;
+  padding: 0 var(--space-comfortable);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.rule-edit__cancel-btn:hover {
+  background: var(--color-hover);
+}
+
+.rule-edit__save-btn {
+  height: 28px;
+  padding: 0 var(--space-comfortable);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.rule-edit__save-btn:hover {
+  opacity: 0.9;
+}
+
+/* ─── Bottom Sheet Mode ───────────────────────────────────────── */
+
+.side-panel--bottom-sheet {
+  top: auto;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-height: 70vh;
+  border-left: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  transform: translateY(100%);
+}
+
+.side-panel--bottom-sheet.side-panel--open {
+  transform: translateY(0);
+}
+
+/* ─── Dark Theme ──────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .side-panel {
+    background: var(--color-elevated);
+  }
+
+  .rule-detail__code {
+    background: var(--color-surface);
+  }
+}

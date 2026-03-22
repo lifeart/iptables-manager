@@ -1,1 +1,125 @@
-/* TODO: implement command-palette styles */
+/* ─── Command Palette ─────────────────────────────────────────── */
+
+.command-palette__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  padding-top: 20vh;
+}
+
+/* ─── Dialog ──────────────────────────────────────────────────── */
+
+.command-palette__dialog {
+  width: 680px;
+  max-width: calc(100vw - 48px);
+  max-height: 60vh;
+  background: var(--color-background);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  align-self: flex-start;
+  transform: scale(0.95);
+  opacity: 0;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.command-palette__dialog--open {
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* ─── Search Field ────────────────────────────────────────────── */
+
+.command-palette__search {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-bottom: 1px solid var(--color-separator);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 17px;
+  font-family: var(--font-family);
+  padding: 0 var(--space-spacious);
+  box-sizing: border-box;
+  outline: none;
+}
+
+.command-palette__search::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ─── Results ─────────────────────────────────────────────────── */
+
+.command-palette__results {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-compact) 0;
+}
+
+/* ─── Category Header ─────────────────────────────────────────── */
+
+.command-palette__category {
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary);
+  padding: var(--space-default) var(--space-spacious) var(--space-tight);
+}
+
+/* ─── Result Row ──────────────────────────────────────────────── */
+
+.command-palette__result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 var(--space-spacious);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.command-palette__result:hover {
+  background: var(--color-hover);
+}
+
+.command-palette__result--selected {
+  background: var(--color-selected);
+}
+
+.command-palette__result-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.command-palette__result-detail {
+  font-size: var(--font-size-rule-protocol);
+  color: var(--color-text-tertiary);
+  margin-left: var(--space-compact);
+  font-family: var(--font-mono);
+}
+
+/* ─── Empty State ─────────────────────────────────────────────── */
+
+.command-palette__empty {
+  text-align: center;
+  padding: var(--space-spacious);
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* ─── Dark Theme ──────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .command-palette__dialog {
+    background: var(--color-elevated);
+  }
+}

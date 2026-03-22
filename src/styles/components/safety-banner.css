@@ -1,1 +1,107 @@
-/* TODO: implement safety-banner styles */
+/* ─── Safety Timer Banner ─────────────────────────────────────── */
+
+.safety-banner {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-120%);
+  width: 400px;
+  background: #1C1C1E;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-banner);
+  z-index: 1000;
+  padding: var(--space-comfortable) var(--space-spacious);
+  transition: transform 300ms ease;
+}
+
+.safety-banner--visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+.safety-banner--hiding {
+  transform: translateX(-50%) translateY(-120%);
+}
+
+/* ─── Progress Bar ────────────────────────────────────────────── */
+
+.safety-banner__progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: var(--space-default);
+}
+
+.safety-banner__progress {
+  height: 100%;
+  background: var(--color-allow);
+  border-radius: 2px;
+  transition: width 1s linear;
+  width: 0%;
+}
+
+/* ─── Content ─────────────────────────────────────────────────── */
+
+.safety-banner__content {
+  text-align: center;
+}
+
+.safety-banner__text {
+  font-size: 14px;
+  color: #FFFFFF;
+  margin: 0 0 var(--space-compact);
+  line-height: 1.4;
+}
+
+/* ─── Revert Button ───────────────────────────────────────────── */
+
+.safety-banner__revert-btn {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+  padding: var(--space-compact) var(--space-comfortable);
+  font-family: var(--font-family);
+  transition: color var(--transition-fast);
+}
+
+.safety-banner__revert-btn:hover {
+  color: #FFFFFF;
+  text-decoration: underline;
+}
+
+/* ─── Compact Mode ────────────────────────────────────────────── */
+
+.safety-banner--compact {
+  padding: var(--space-compact) var(--space-comfortable);
+}
+
+.safety-banner--compact .safety-banner__progress-track {
+  margin-bottom: var(--space-compact);
+}
+
+.safety-banner__compact-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-default);
+  font-size: 13px;
+  color: #FFFFFF;
+  height: 28px;
+}
+
+.safety-banner__revert-btn--compact {
+  padding: var(--space-tight) var(--space-compact);
+  font-size: 12px;
+}
+
+/* ─── Dark Theme ──────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .safety-banner {
+    background: var(--color-super-elevated);
+    box-shadow: var(--shadow-banner);
+  }
+}
