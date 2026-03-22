@@ -1,1 +1,544 @@
-/* TODO: implement dialogs styles */
+/* Dialog styles — modal overlay, dialog card, form fields, buttons */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  animation: dialog-fade-in 200ms ease-out;
+}
+
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog-card {
+  background: var(--color-elevated, #FFFFFF);
+  border-radius: var(--radius-xl, 12px);
+  box-shadow: var(--shadow-modal, 0 24px 80px rgba(0, 0, 0, 0.25));
+  width: 520px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: dialog-scale-in 200ms ease-out;
+}
+
+@keyframes dialog-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dialog-card--quick-block {
+  width: 380px;
+}
+
+.dialog-card--first-setup {
+  width: 560px;
+}
+
+.dialog-card--create-group,
+.dialog-card--create-iplist {
+  width: 480px;
+}
+
+/* Header */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-spacious, 24px) var(--space-spacious, 24px) var(--space-comfortable, 16px);
+}
+
+.dialog-header--compact {
+  padding-bottom: var(--space-compact, 8px);
+}
+
+.dialog-title {
+  font-size: var(--font-size-page-title, 22px);
+  font-weight: 600;
+  color: var(--color-text-primary, #1D1D1F);
+}
+
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--color-text-secondary, #86868B);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 4px);
+  transition: background var(--transition-fast, 100ms ease);
+}
+
+.dialog-close:hover {
+  background: var(--color-hover, #F5F5F7);
+}
+
+/* Body */
+.dialog-body {
+  padding: 0 var(--space-spacious, 24px) var(--space-comfortable, 16px);
+}
+
+/* Form fields */
+.dialog-field {
+  margin-bottom: var(--space-comfortable, 16px);
+}
+
+.dialog-field--inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+}
+
+.dialog-label {
+  display: block;
+  font-size: var(--font-size-rule-name, 14px);
+  font-weight: 500;
+  color: var(--color-text-primary, #1D1D1F);
+  margin-bottom: var(--space-tight, 4px);
+}
+
+.dialog-input {
+  width: 100%;
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  border: 1px solid var(--color-border, #E5E5E7);
+  border-radius: var(--radius-md, 6px);
+  font-size: var(--font-size-rule-name, 14px);
+  font-family: var(--font-family);
+  color: var(--color-text-primary, #1D1D1F);
+  background: var(--color-background, #FFFFFF);
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast, 100ms ease);
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--color-primary, #007AFF);
+  box-shadow: 0 0 0 3px var(--color-focus-ring, rgba(0, 122, 255, 0.2));
+}
+
+.dialog-input--error {
+  border-color: var(--color-block, #FF3B30);
+}
+
+.dialog-input--quick {
+  font-size: 16px;
+  padding: var(--space-default, 12px) var(--space-comfortable, 16px);
+  font-family: var(--font-mono, monospace);
+}
+
+.dialog-input--ip {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-mono, 12px);
+}
+
+.dialog-input--entry {
+  flex: 1;
+}
+
+.dialog-select {
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  border: 1px solid var(--color-border, #E5E5E7);
+  border-radius: var(--radius-md, 6px);
+  font-size: var(--font-size-rule-name, 14px);
+  font-family: var(--font-family);
+  color: var(--color-text-primary, #1D1D1F);
+  background: var(--color-background, #FFFFFF);
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.dialog-select:focus {
+  outline: none;
+  border-color: var(--color-primary, #007AFF);
+  box-shadow: 0 0 0 3px var(--color-focus-ring, rgba(0, 122, 255, 0.2));
+}
+
+/* Parsed info */
+.dialog-parsed-info {
+  font-size: var(--font-size-caption, 11px);
+  color: var(--color-text-secondary, #86868B);
+  margin-top: var(--space-compact, 8px);
+  font-family: var(--font-mono, monospace);
+  min-height: 16px;
+}
+
+.dialog-parsed-info--error {
+  color: var(--color-block, #FF3B30);
+}
+
+/* Error message */
+.dialog-error {
+  font-size: var(--font-size-caption, 11px);
+  color: var(--color-block, #FF3B30);
+  margin-top: var(--space-tight, 4px);
+}
+
+/* Radio group */
+.dialog-radio-group {
+  display: flex;
+  gap: var(--space-comfortable, 16px);
+  align-items: center;
+}
+
+.dialog-radio-group input[type="radio"] {
+  margin-right: var(--space-tight, 4px);
+}
+
+.dialog-radio-group label {
+  font-size: var(--font-size-rule-name, 14px);
+  color: var(--color-text-primary, #1D1D1F);
+  cursor: pointer;
+}
+
+/* Expanded form */
+.dialog-expanded-form {
+  padding: 0 var(--space-spacious, 24px);
+  animation: expand-in 200ms ease-out;
+}
+
+@keyframes expand-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 800px;
+  }
+}
+
+/* Test status */
+.dialog-test-status {
+  padding: 0 var(--space-spacious, 24px);
+}
+
+.dialog-test-item {
+  font-size: var(--font-size-rule-protocol, 12px);
+  padding: var(--space-tight, 4px) 0;
+}
+
+.dialog-test-item--ok {
+  color: var(--color-allow, #34C759);
+}
+
+.dialog-test-item--error {
+  color: var(--color-block, #FF3B30);
+}
+
+/* Footer */
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-comfortable, 16px) var(--space-spacious, 24px) var(--space-spacious, 24px);
+  border-top: 1px solid var(--color-separator, #F2F2F7);
+}
+
+.dialog-footer--setup {
+  flex-wrap: wrap;
+}
+
+.dialog-footer-spacer {
+  flex: 1;
+}
+
+/* Buttons */
+.dialog-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-md, 6px);
+  font-size: var(--font-size-rule-name, 14px);
+  font-family: var(--font-family);
+  cursor: pointer;
+  border: none;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast, 100ms ease), opacity var(--transition-fast, 100ms ease);
+  white-space: nowrap;
+}
+
+.dialog-btn--primary {
+  background: var(--color-primary, #007AFF);
+  color: var(--color-primary-text, #FFFFFF);
+}
+
+.dialog-btn--primary:hover {
+  opacity: 0.9;
+}
+
+.dialog-btn--primary:disabled {
+  background: var(--color-disabled, #C7C7CC);
+  color: var(--color-text-tertiary, #AEAEB2);
+  cursor: not-allowed;
+}
+
+.dialog-btn--secondary {
+  background: transparent;
+  color: var(--color-primary, #007AFF);
+  border: 1px solid var(--color-border, #E5E5E7);
+}
+
+.dialog-btn--secondary:hover {
+  background: var(--color-primary-hover-bg, rgba(0, 122, 255, 0.06));
+}
+
+.dialog-btn--text {
+  background: transparent;
+  color: var(--color-primary, #007AFF);
+  padding: 6px 8px;
+}
+
+.dialog-btn--text:hover {
+  background: var(--color-primary-hover-bg, rgba(0, 122, 255, 0.06));
+}
+
+.dialog-btn--small {
+  height: 24px;
+  font-size: var(--font-size-rule-protocol, 12px);
+  padding: 4px 12px;
+}
+
+.dialog-btn--remove {
+  color: var(--color-text-tertiary, #AEAEB2);
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.dialog-btn--remove:hover {
+  color: var(--color-block, #FF3B30);
+}
+
+/* Empty text */
+.dialog-empty-text {
+  font-size: var(--font-size-rule-protocol, 12px);
+  color: var(--color-text-secondary, #86868B);
+  padding: var(--space-compact, 8px) 0;
+}
+
+/* Members list */
+.dialog-members-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border, #E5E5E7);
+  border-radius: var(--radius-md, 6px);
+  padding: var(--space-compact, 8px);
+}
+
+.dialog-member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-tight, 4px) 0;
+}
+
+.dialog-member-label {
+  font-size: var(--font-size-rule-name, 14px);
+  color: var(--color-text-primary, #1D1D1F);
+  cursor: pointer;
+}
+
+/* Entries list */
+.dialog-entries-list {
+  border: 1px solid var(--color-border, #E5E5E7);
+  border-radius: var(--radius-md, 6px);
+  padding: var(--space-compact, 8px);
+  min-height: 40px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: var(--space-compact, 8px);
+}
+
+.dialog-entry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-tight, 4px) var(--space-compact, 8px);
+}
+
+.dialog-entry-row:not(:last-child) {
+  border-bottom: 1px solid var(--color-separator, #F2F2F7);
+}
+
+.dialog-entry-address {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-mono, 12px);
+  color: var(--color-text-primary, #1D1D1F);
+}
+
+.dialog-add-entry-row {
+  display: flex;
+  gap: var(--space-compact, 8px);
+}
+
+/* ─── First Setup Specific ──────────────────── */
+
+.setup-notice {
+  font-size: var(--font-size-rule-name, 14px);
+  color: var(--color-text-secondary, #86868B);
+  margin-bottom: var(--space-comfortable, 16px);
+}
+
+.setup-notice--info {
+  padding: var(--space-default, 12px);
+  background: var(--color-surface, #F5F5F7);
+  border-radius: var(--radius-md, 6px);
+}
+
+.setup-section-title {
+  font-size: var(--font-size-section-header, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-text-secondary, #86868B);
+  margin: var(--space-section, 20px) 0 var(--space-compact, 8px);
+}
+
+.setup-services {
+  margin-bottom: var(--space-comfortable, 16px);
+}
+
+.setup-service-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-default, 12px);
+  padding: var(--space-compact, 8px) 0;
+  border-bottom: 1px solid var(--color-separator, #F2F2F7);
+}
+
+.setup-service-name {
+  font-weight: 500;
+  font-size: var(--font-size-rule-name, 14px);
+  min-width: 120px;
+}
+
+.setup-service-ports {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-mono, 12px);
+  color: var(--color-text-secondary, #86868B);
+}
+
+.setup-show-more {
+  margin-top: var(--space-compact, 8px);
+}
+
+.setup-footnote {
+  font-size: var(--font-size-caption, 11px);
+  color: var(--color-text-tertiary, #AEAEB2);
+  margin-top: var(--space-compact, 8px);
+}
+
+/* Suggested rules */
+.setup-rules-list {
+  border: 1px solid var(--color-border, #E5E5E7);
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+}
+
+.setup-rule-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-default, 12px) var(--space-comfortable, 16px);
+  border-bottom: 1px solid var(--color-separator, #F2F2F7);
+}
+
+.setup-rule-item:last-child {
+  border-bottom: none;
+}
+
+.setup-rule-checkbox {
+  flex-shrink: 0;
+}
+
+.setup-rule-indicator {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.setup-rule-label {
+  font-size: var(--font-size-rule-name, 14px);
+  font-weight: 500;
+  color: var(--color-text-primary, #1D1D1F);
+  cursor: pointer;
+}
+
+.setup-rule-desc {
+  font-size: var(--font-size-rule-protocol, 12px);
+  color: var(--color-text-secondary, #86868B);
+  margin-left: auto;
+}
+
+/* Health check */
+.setup-health {
+  margin-bottom: var(--space-comfortable, 16px);
+}
+
+.setup-health-item {
+  font-size: var(--font-size-rule-name, 14px);
+  padding: var(--space-tight, 4px) 0;
+}
+
+.setup-health-item--good {
+  color: var(--color-allow, #34C759);
+}
+
+.setup-health-item--warning {
+  color: var(--color-warning, #FF9500);
+}
+
+.setup-health-item--suggestion {
+  color: var(--color-text-secondary, #86868B);
+}
+
+/* System tools */
+.setup-tool {
+  margin-bottom: var(--space-comfortable, 16px);
+  padding: var(--space-default, 12px);
+  background: var(--color-surface, #F5F5F7);
+  border-radius: var(--radius-md, 6px);
+}
+
+.setup-tool-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  margin-bottom: var(--space-tight, 4px);
+}
+
+.setup-tool-icon {
+  font-size: 18px;
+}
+
+.setup-tool-name {
+  font-weight: 600;
+  font-size: var(--font-size-rule-name, 14px);
+}
+
+.setup-tool-detail {
+  font-size: var(--font-size-rule-protocol, 12px);
+  color: var(--color-text-secondary, #86868B);
+  margin: 0;
+}
