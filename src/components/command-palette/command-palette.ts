@@ -223,7 +223,12 @@ export class CommandPalette extends Component {
         label: 'Apply Changes',
         detail: 'Apply pending changes to host',
         action: () => {
-          // Will be handled by apply action
+          // Simulate Cmd+S to trigger the pending bar's apply logic
+          document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 's',
+            metaKey: true,
+            bubbles: true,
+          }));
         },
       },
     ];

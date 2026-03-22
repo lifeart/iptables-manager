@@ -338,11 +338,20 @@ export class Settings extends Component {
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const _data = JSON.parse(reader.result as string);
-          // TODO: Implement import logic with conflict resolution
-          console.log('Import data loaded:', _data);
-        } catch (e) {
-          console.error('Failed to parse import file:', e);
+          const data = JSON.parse(reader.result as string);
+
+          // Hydrate store with imported data
+          this.store.dispatch({
+            type: 'HYDRATE',
+            payload: {
+              hosts: data.hosts,
+              groups: data.groups,
+              ipLists: data.ipLists,
+              settings: data.settings,
+            },
+          });
+        } catch {
+          // Silently ignore malformed import files
         }
       };
       reader.readAsText(file);

@@ -72,12 +72,6 @@ function formatPorts(ports: PortSpec | undefined): string {
   }
 }
 
-function formatHitCount(count: number): string {
-  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
-  return String(count);
-}
-
 // ─── Create / Update ─────────────────────────────────────────
 
 export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipListNames?: Map<string, string>): HTMLElement {

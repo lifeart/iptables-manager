@@ -9,7 +9,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Rule } from '../../store/types';
-import { h, clearChildren } from '../../utils/dom';
+import { h } from '../../utils/dom';
 import { RuleBuilder } from '../rule-builder/rule-builder';
 
 export class RuleEdit extends Component {
@@ -111,6 +111,7 @@ export class RuleEdit extends Component {
             ports: existingRule.ports,
             source: existingRule.source,
             comment: existingRule.comment,
+            interfaceIn: existingRule.interfaceIn,
           },
           after: {
             action: formData.action,
@@ -118,6 +119,7 @@ export class RuleEdit extends Component {
             ports: formData.ports,
             source: formData.source,
             comment: formData.comment,
+            interfaceIn: formData.interfaceIn,
           },
         },
       });
@@ -139,6 +141,7 @@ export class RuleEdit extends Component {
         destination: { type: 'anyone' },
         direction: 'incoming',
         addressFamily: 'both',
+        interfaceIn: formData.interfaceIn,
         comment: formData.comment,
         origin: { type: 'user' },
         position: 0,

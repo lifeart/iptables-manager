@@ -7,7 +7,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, Host } from '../../store/types';
+import type { AppState } from '../../store/types';
 import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidCIDR } from '../../utils/ip-validate';
 

@@ -5,7 +5,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { Host, AppState } from '../../store/types';
+import type { Host } from '../../store/types';
 import { testConnection } from '../../ipc/bridge';
 import type { TestResult } from '../../ipc/bridge';
 import { h, trapFocus } from '../../utils/dom';

@@ -24,6 +24,7 @@ export interface RuleFormData {
   ports: PortSpec | undefined;
   source: AddressSpec;
   comment: string;
+  interfaceIn: string | undefined;
 }
 
 type ActionChoice = 'allow' | 'block' | 'log' | 'log-block';
@@ -180,6 +181,7 @@ export class RuleBuilder extends Component {
       ports: this.serviceSelection.ports,
       source: this.selectedSource,
       comment: this.commentValue,
+      interfaceIn: this.selectedInterface === 'any' ? undefined : this.selectedInterface,
     };
   }
 
@@ -263,14 +265,6 @@ export class RuleBuilder extends Component {
   }
 
   private buildMoreOptions(): void {
-    // Interface selector
-    const interfaceGroup = this.createFieldGroup('Interface');
-    const interfaceSelect = document.createElement('select');
-    interfaceSelect.className = 'rule-builder__select';
-    interfaceSelect.appendChild(this.createOption('any', 'Any interface'));
-    interfaceGroup.appendChild(interfaceSelect);
-    this.moreOptionsContainer.appendChild(interfaceGroup);
-
     // Duration selector
     const durationGroup = this.createFieldGroup('Duration');
     const durationSelect = document.createElement('select');
@@ -377,6 +371,10 @@ export class RuleBuilder extends Component {
 
   private generateIptablesPreview(): string {
     const parts = ['iptables', '-A', 'INPUT'];
+
+    if (this.selectedInterface !== 'any') {
+      parts.push('-i', this.selectedInterface);
+    }
 
     if (this.serviceSelection.protocol) {
       parts.push('-p', String(this.serviceSelection.protocol));
