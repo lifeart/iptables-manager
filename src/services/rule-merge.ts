@@ -218,7 +218,9 @@ function isRuleOverride(ruleA: Rule, ruleB: Rule): boolean {
   return (
     ruleA.direction === ruleB.direction &&
     ruleA.protocol === ruleB.protocol &&
-    portsMatch(ruleA.ports, ruleB.ports)
+    portsMatch(ruleA.ports, ruleB.ports) &&
+    JSON.stringify(ruleA.source) === JSON.stringify(ruleB.source) &&
+    JSON.stringify(ruleA.destination) === JSON.stringify(ruleB.destination)
   );
 }
 

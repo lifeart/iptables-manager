@@ -104,11 +104,16 @@ export function reducer(state: AppState, action: Action): AppState {
         quickBlockOpen: action.open !== undefined ? action.open : !state.quickBlockOpen,
       };
 
-    case 'SET_RULE_FILTER':
-      return {
-        ...state,
-        ruleFilter: { ...state.ruleFilter, ...action.filter },
-      };
+    case 'SET_RULE_FILTER': {
+      const newFilter = { ...state.ruleFilter, ...action.filter };
+      if (
+        newFilter.tab === state.ruleFilter.tab &&
+        newFilter.search === state.ruleFilter.search
+      ) {
+        return state;
+      }
+      return { ...state, ruleFilter: newFilter };
+    }
 
     // ─── Host Management ─────────────────────────────────
     case 'ADD_HOST': {
@@ -140,7 +145,27 @@ export function reducer(state: AppState, action: Action): AppState {
 
       const activeHostId = state.activeHostId === action.hostId ? null : state.activeHostId;
 
-      return { ...state, hosts, hostStates, stagedChanges, safetyTimers, activeHostId };
+      // Cascade: remove hostId from all groups' memberHostIds
+      const groups = cloneMap(state.groups);
+      for (const [groupId, group] of groups) {
+        if (group.memberHostIds.includes(action.hostId)) {
+          groups.set(groupId, {
+            ...group,
+            memberHostIds: group.memberHostIds.filter(id => id !== action.hostId),
+            updatedAt: Date.now(),
+          });
+        }
+      }
+
+      // Cascade: remove operations with matching hostId
+      const operations = cloneMap(state.operations);
+      for (const [opId, op] of operations) {
+        if (op.hostId === action.hostId) {
+          operations.delete(opId);
+        }
+      }
+
+      return { ...state, hosts, hostStates, stagedChanges, safetyTimers, activeHostId, groups, operations };
     }
 
     case 'SET_HOST_STATUS': {
@@ -177,7 +202,21 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'REMOVE_GROUP': {
       const groups = cloneMap(state.groups);
       groups.delete(action.groupId);
-      return { ...state, groups };
+
+      // Cascade: remove groupId from all hosts' groupIds and groupOrder
+      const hosts = cloneMap(state.hosts);
+      for (const [hostId, host] of hosts) {
+        if (host.groupIds.includes(action.groupId) || host.groupOrder.includes(action.groupId)) {
+          hosts.set(hostId, {
+            ...host,
+            groupIds: host.groupIds.filter(id => id !== action.groupId),
+            groupOrder: host.groupOrder.filter(id => id !== action.groupId),
+            updatedAt: Date.now(),
+          });
+        }
+      }
+
+      return { ...state, groups, hosts };
     }
 
     // ─── IP List Management ──────────────────────────────
@@ -384,8 +423,7 @@ export function reducer(state: AppState, action: Action): AppState {
 
     // ─── Storage ─────────────────────────────────────────
     case 'STORAGE_QUOTA_EXCEEDED':
-      // Could set a flag; for now, the action is emitted for middleware/side effects
-      return state;
+      return { ...state, storageQuotaExceeded: true };
 
     default:
       return state;

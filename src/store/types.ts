@@ -311,6 +311,9 @@ export interface AppState {
 
   // Async operation tracking
   operations: Map<string, OperationState>;
+
+  // Storage
+  storageQuotaExceeded: boolean;
 }
 
 // ─── Initial State ─────────────────────────────────────────────
@@ -345,5 +348,6 @@ export function createInitialState(): AppState {
     safetyTimers: new Map(),
     hostStates: new Map(),
     operations: new Map(),
+    storageQuotaExceeded: false,
   };
 }

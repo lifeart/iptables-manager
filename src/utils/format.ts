@@ -60,6 +60,7 @@ export function formatTimeAgo(timestamp: number, now?: number): string {
  *   formatDuration(45000)     // "45s"
  */
 export function formatDuration(ms: number): string {
+  ms = Math.max(0, ms);
   if (ms < 1000) return '0s';
 
   const seconds = Math.floor(ms / 1000) % 60;

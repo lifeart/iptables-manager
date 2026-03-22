@@ -56,6 +56,11 @@ export abstract class Component {
       try {
         const { listen } = await import('@tauri-apps/api/event');
         const unlisten = await listen<T>(event, (e) => handler(e.payload));
+        // If the component was destroyed while awaiting, clean up immediately
+        if (this.ac.signal.aborted) {
+          unlisten();
+          return;
+        }
         this.ac.signal.addEventListener('abort', () => {
           unlisten();
         });

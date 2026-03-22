@@ -45,6 +45,10 @@ export function h(
       } else if (key.startsWith('on') && typeof value === 'function') {
         const eventName = key.slice(2).toLowerCase();
         el.addEventListener(eventName, value as EventListener);
+      } else if (value === true) {
+        el.setAttribute(key, '');
+      } else if (value === false) {
+        el.removeAttribute(key);
       } else {
         el.setAttribute(key, String(value));
       }

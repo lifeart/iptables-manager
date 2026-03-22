@@ -1,4 +1,4 @@
-import type { AppState, EffectiveRule, Host, HostState } from './types';
+import type { AppState, EffectiveRule, Host, HostGroup, HostState, StagedChangeset } from './types';
 import { computeEffectiveRuleset } from '../services/rule-merge';
 
 // ─── createSelector with memoization ─────────────────────────
@@ -103,14 +103,17 @@ export const selectActiveHostState = createSelector(
  * This is the primary memoized selector — never stored in state.
  */
 export const selectEffectiveRules = createSelector(
-  (s: AppState) => s.activeHostId,
-  (s: AppState) => s.hosts,
+  (s: AppState): Host | undefined => s.activeHostId ? s.hosts.get(s.activeHostId) : undefined,
   (s: AppState) => s.groups,
-  (s: AppState) => s.hostStates,
-  (s: AppState) => s.stagedChanges,
-  (activeId, hosts, groups, hostStates, staged): EffectiveRule[] | null => {
-    if (!activeId) return null;
-    return computeEffectiveRuleset(activeId, hosts, groups, hostStates, staged);
+  (s: AppState): HostState | undefined => s.activeHostId ? s.hostStates.get(s.activeHostId) : undefined,
+  (s: AppState): StagedChangeset | undefined => s.activeHostId ? s.stagedChanges.get(s.activeHostId) : undefined,
+  (activeHost: Host | undefined, groups: Map<string, HostGroup>, hostState: HostState | undefined, staged: StagedChangeset | undefined): EffectiveRule[] | null => {
+    if (!activeHost) return null;
+    // Reconstruct minimal maps for computeEffectiveRuleset
+    const hosts = new Map([[activeHost.id, activeHost]]);
+    const hostStates = hostState ? new Map([[activeHost.id, hostState]]) : new Map<string, HostState>();
+    const stagedChanges = staged ? new Map([[activeHost.id, staged]]) : new Map<string, StagedChangeset>();
+    return computeEffectiveRuleset(activeHost.id, hosts, groups, hostStates, stagedChanges);
   },
 );
 

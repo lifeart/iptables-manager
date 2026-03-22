@@ -40,13 +40,21 @@ export type StoreName = typeof STORE_NAMES[keyof typeof STORE_NAMES];
  */
 export const migrations: Record<number, (db: IDBDatabase) => void> = {
   1: (db) => {
-    db.createObjectStore(STORE_NAMES.HOSTS, { keyPath: 'id' });
-    db.createObjectStore(STORE_NAMES.GROUPS, { keyPath: 'id' });
-    db.createObjectStore(STORE_NAMES.IP_LISTS, { keyPath: 'id' });
+    const hosts = db.createObjectStore(STORE_NAMES.HOSTS, { keyPath: 'id' });
+    hosts.createIndex('name', 'name');
+    hosts.createIndex('status', 'status');
+
+    const groups = db.createObjectStore(STORE_NAMES.GROUPS, { keyPath: 'id' });
+    groups.createIndex('name', 'name');
+
+    const ipLists = db.createObjectStore(STORE_NAMES.IP_LISTS, { keyPath: 'id' });
+    ipLists.createIndex('name', 'name');
+
     db.createObjectStore(STORE_NAMES.STAGED_CHANGES, { keyPath: 'hostId' });
 
     const snapshots = db.createObjectStore(STORE_NAMES.SNAPSHOTS, { keyPath: 'id' });
     snapshots.createIndex('hostId', 'hostId');
+    snapshots.createIndex('timestamp', 'timestamp');
 
     db.createObjectStore(STORE_NAMES.SETTINGS, { keyPath: 'key' });
 

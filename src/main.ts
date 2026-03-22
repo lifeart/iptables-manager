@@ -12,6 +12,9 @@
 import { store } from './store/index';
 import { initDB, loadPersistedState } from './db/index';
 import { themeManager } from './services/theme';
+import { dbSync } from './db/sync';
+import { STORE_NAMES } from './db/schema';
+import { h } from './utils/dom';
 
 function showLoadingScreen(): void {
   const app = document.getElementById('app');
@@ -101,7 +104,10 @@ async function bootstrap(): Promise<void> {
       mountApp(appContainer);
     }
 
-    // 7. Auto-reconnect to last active host
+    // 7. Wire dbSync to store for persistence
+    wireDbSync();
+
+    // 8. Auto-reconnect to last active host
     if (store.getState().settings.autoReconnect) {
       autoReconnect().catch(() => {});
     }
@@ -110,15 +116,119 @@ async function bootstrap(): Promise<void> {
     hideLoadingScreen();
     const app = document.getElementById('app');
     if (app) {
-      app.innerHTML = `
-        <div class="error-screen">
-          <h1>Failed to start Traffic Rules</h1>
-          <p>${e instanceof Error ? e.message : 'Unknown error'}</p>
-          <button onclick="location.reload()">Retry</button>
-        </div>
-      `;
+      app.textContent = '';
+      const retryBtn = h('button', {}, 'Retry');
+      retryBtn.addEventListener('click', () => location.reload());
+      app.appendChild(
+        h('div', { className: 'error-screen' },
+          h('h1', {}, 'Failed to start Traffic Rules'),
+          h('p', {}, e instanceof Error ? e.message : 'Unknown error'),
+          retryBtn,
+        ),
+      );
     }
   }
+}
+
+function wireDbSync(): void {
+  // Batched writes for hosts, groups, ipLists, settings
+  store.subscribeSelector(
+    (s) => s.hosts,
+    (newHosts, oldHosts) => {
+      if (newHosts === oldHosts) return;
+      for (const [id, host] of newHosts) {
+        if (oldHosts.get(id) !== host) {
+          dbSync.write(STORE_NAMES.HOSTS, host);
+        }
+      }
+      for (const id of oldHosts.keys()) {
+        if (!newHosts.has(id)) {
+          dbSync.deleteRecord(STORE_NAMES.HOSTS, id);
+        }
+      }
+    },
+  );
+
+  store.subscribeSelector(
+    (s) => s.groups,
+    (newGroups, oldGroups) => {
+      if (newGroups === oldGroups) return;
+      for (const [id, group] of newGroups) {
+        if (oldGroups.get(id) !== group) {
+          dbSync.write(STORE_NAMES.GROUPS, group);
+        }
+      }
+      for (const id of oldGroups.keys()) {
+        if (!newGroups.has(id)) {
+          dbSync.deleteRecord(STORE_NAMES.GROUPS, id);
+        }
+      }
+    },
+  );
+
+  store.subscribeSelector(
+    (s) => s.ipLists,
+    (newIpLists, oldIpLists) => {
+      if (newIpLists === oldIpLists) return;
+      for (const [id, ipList] of newIpLists) {
+        if (oldIpLists.get(id) !== ipList) {
+          dbSync.write(STORE_NAMES.IP_LISTS, ipList);
+        }
+      }
+      for (const id of oldIpLists.keys()) {
+        if (!newIpLists.has(id)) {
+          dbSync.deleteRecord(STORE_NAMES.IP_LISTS, id);
+        }
+      }
+    },
+  );
+
+  store.subscribeSelector(
+    (s) => s.settings,
+    (newSettings, oldSettings) => {
+      if (newSettings === oldSettings) return;
+      for (const [key, value] of Object.entries(newSettings)) {
+        if ((oldSettings as unknown as Record<string, unknown>)[key] !== value) {
+          dbSync.writeSetting(key, value);
+        }
+      }
+    },
+  );
+
+  // Immediate writes for stagedChanges and safetyTimers
+  store.subscribeSelector(
+    (s) => s.stagedChanges,
+    (newStaged, oldStaged) => {
+      if (newStaged === oldStaged) return;
+      for (const [hostId, changeset] of newStaged) {
+        if (oldStaged.get(hostId) !== changeset) {
+          dbSync.writeImmediate(STORE_NAMES.STAGED_CHANGES, changeset);
+        }
+      }
+      for (const hostId of oldStaged.keys()) {
+        if (!newStaged.has(hostId)) {
+          dbSync.deleteImmediate(STORE_NAMES.STAGED_CHANGES, hostId);
+        }
+      }
+    },
+  );
+
+  store.subscribeSelector(
+    (s) => s.safetyTimers,
+    (newTimers, oldTimers) => {
+      if (newTimers === oldTimers) return;
+      for (const [hostId, timer] of newTimers) {
+        if (oldTimers.get(hostId) !== timer) {
+          dbSync.writeImmediate(STORE_NAMES.SAFETY_TIMERS, timer);
+        }
+      }
+      for (const hostId of oldTimers.keys()) {
+        if (!newTimers.has(hostId)) {
+          dbSync.deleteImmediate(STORE_NAMES.SAFETY_TIMERS, hostId);
+        }
+      }
+    },
+  );
 }
 
 bootstrap();

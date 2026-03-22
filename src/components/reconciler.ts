@@ -56,6 +56,9 @@ export function reconcileList<T>(
   for (const [key, el] of existingByKey) {
     if (!newKeys.has(key)) {
       if (options?.onRemove) {
+        // Mark element as removing so subsequent reconciliation calls don't find it as keyed
+        delete el.dataset.key;
+        el.dataset.removing = 'true';
         // Async removal (for exit animations)
         options.onRemove(el).then(() => {
           if (el.parentNode === container) {

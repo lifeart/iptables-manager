@@ -14,6 +14,8 @@ interface SelectorSubscription<R> {
 export class Store {
   private state: AppState;
   private subscriptions = new Set<SelectorSubscription<unknown>>();
+  private isDispatching = false;
+  private pendingActions: Action[] = [];
 
   constructor(initialState?: AppState) {
     this.state = initialState ?? createInitialState();
@@ -24,23 +26,36 @@ export class Store {
   }
 
   dispatch(action: Action): void {
-    const prevState = this.state;
-    this.state = reducer(prevState, action);
+    if (this.isDispatching) {
+      this.pendingActions.push(action);
+      return;
+    }
 
-    if (this.state === prevState) return;
+    this.isDispatching = true;
 
-    // Notify subscribers whose selected value changed
-    for (const sub of this.subscriptions) {
-      const newValue = sub.selector(this.state);
-      const prevValue = sub.lastValue;
-      if (newValue !== prevValue) {
-        sub.lastValue = newValue;
-        try {
-          sub.callback(newValue, prevValue);
-        } catch (e) {
-          console.error('Store subscription error:', e);
+    try {
+      const prevState = this.state;
+      this.state = reducer(prevState, action);
+
+      if (this.state !== prevState) {
+        // Notify subscribers whose selected value changed
+        for (const sub of this.subscriptions) {
+          const newValue = sub.selector(this.state);
+          const prevValue = sub.lastValue;
+          if (newValue !== prevValue) {
+            sub.lastValue = newValue;
+            sub.callback(newValue, prevValue);
+          }
         }
       }
+    } finally {
+      this.isDispatching = false;
+    }
+
+    // Process any actions queued during notification
+    while (this.pendingActions.length > 0) {
+      const next = this.pendingActions.shift()!;
+      this.dispatch(next);
     }
   }
 
