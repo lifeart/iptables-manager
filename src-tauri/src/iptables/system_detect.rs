@@ -27,7 +27,7 @@ pub fn detect_chain_owner(chain_name: &str, rules: &[ParsedRule]) -> ChainOwner 
         }
 
         // Kubernetes / Calico
-        s if s.starts_with("KUBE-") || s.starts_with("cali-") || s.starts_with("cali") => {
+        s if s.starts_with("KUBE-") || s.starts_with("cali-") => {
             return ChainOwner::System(SystemTool::Kubernetes);
         }
 
@@ -95,11 +95,14 @@ pub fn detect_all_chain_owners(ruleset: &mut ParsedRuleset) {
         // Collect chain names and their rule refs to avoid borrow issues
         let chain_names: Vec<String> = table.chains.keys().cloned().collect();
         for name in chain_names {
-            let owner = {
-                let chain = table.chains.get(&name).unwrap();
+            let owner = if let Some(chain) = table.chains.get(&name) {
                 detect_chain_owner(&name, &chain.rules)
+            } else {
+                continue;
             };
-            table.chains.get_mut(&name).unwrap().owner = owner;
+            if let Some(chain_mut) = table.chains.get_mut(&name) {
+                chain_mut.owner = owner;
+            }
         }
     }
 }
@@ -124,6 +127,9 @@ mod tests {
                 comment: None,
                 counters: None,
                 fragment: None,
+                source_port: None,
+                dest_port: None,
+                address_family: AddressFamily::V4,
             }),
             warnings: Vec::new(),
             chain: String::new(),

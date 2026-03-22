@@ -507,3 +507,253 @@ fn test_user_chain_jump() {
     let ret_rule = my_chain.rules[1].parsed.as_ref().unwrap();
     assert_eq!(ret_rule.target, Some(Target::Return));
 }
+
+// ---------------------------------------------------------------------------
+// Fixture: k8s_node.txt
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_parse_k8s_node() {
+    let input = load_fixture("k8s_node.txt");
+    let mut ruleset = parse_iptables_save(&input).unwrap();
+
+    // Should have filter and nat tables
+    assert!(ruleset.tables.contains_key("filter"));
+    assert!(ruleset.tables.contains_key("nat"));
+
+    let filter = ruleset.tables.get("filter").unwrap();
+
+    // Kubernetes chains should exist
+    assert!(filter.chains.contains_key("KUBE-SERVICES"));
+    assert!(filter.chains.contains_key("KUBE-FORWARD"));
+    assert!(filter.chains.contains_key("KUBE-NODEPORTS"));
+    assert!(filter.chains.contains_key("KUBE-FIREWALL"));
+
+    let nat = ruleset.tables.get("nat").unwrap();
+    assert!(nat.chains.contains_key("KUBE-MARK-MASQ"));
+    assert!(nat.chains.contains_key("KUBE-POSTROUTING"));
+
+    // KUBE-SVC-* and KUBE-SEP-* chains
+    let svc_chains: Vec<_> = nat.chains.keys().filter(|k| k.starts_with("KUBE-SVC-")).collect();
+    assert!(svc_chains.len() >= 4, "expected >= 4 KUBE-SVC chains, got {}", svc_chains.len());
+    let sep_chains: Vec<_> = nat.chains.keys().filter(|k| k.starts_with("KUBE-SEP-")).collect();
+    assert!(sep_chains.len() >= 4, "expected >= 4 KUBE-SEP chains, got {}", sep_chains.len());
+
+    // Total rules across both tables should be ~50
+    let total_rules: usize = ruleset.tables.values()
+        .flat_map(|t| t.chains.values())
+        .map(|c| c.rules.len())
+        .sum();
+    assert!(total_rules >= 40, "expected >= 40 total rules, got {}", total_rules);
+
+    // DNAT rules in nat table
+    let dnat_count: usize = nat.chains.values()
+        .flat_map(|c| c.rules.iter())
+        .filter(|r| r.parsed.as_ref().map(|s| s.target == Some(Target::Dnat)).unwrap_or(false))
+        .count();
+    assert!(dnat_count >= 4, "expected >= 4 DNAT rules, got {}", dnat_count);
+
+    // System detection
+    detect_all_chain_owners(&mut ruleset);
+    let filter = ruleset.tables.get("filter").unwrap();
+    assert_eq!(
+        filter.chains.get("KUBE-SERVICES").unwrap().owner,
+        ChainOwner::System(SystemTool::Kubernetes)
+    );
+    let nat = ruleset.tables.get("nat").unwrap();
+    assert_eq!(
+        nat.chains.get("KUBE-MARK-MASQ").unwrap().owner,
+        ChainOwner::System(SystemTool::Kubernetes)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// UFW and Firewalld detection tests (issue 8)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_detect_ufw_chain() {
+    assert_eq!(
+        detect_chain_owner("ufw-user-input", &[]),
+        ChainOwner::System(SystemTool::Ufw)
+    );
+}
+
+#[test]
+fn test_detect_firewalld_chain() {
+    assert_eq!(
+        detect_chain_owner("IN_public_allow", &[]),
+        ChainOwner::System(SystemTool::Firewalld)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Legacy --state test (issue 9)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_legacy_state_module() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.matches.len(), 1);
+    assert_eq!(spec.matches[0].module, "state");
+    assert!(spec.matches[0].args.contains(&"--state".to_string()));
+    assert!(spec.matches[0].args.contains(&"ESTABLISHED,RELATED".to_string()));
+    assert_eq!(spec.target, Some(Target::Accept));
+}
+
+// ---------------------------------------------------------------------------
+// DNAT with port range (issue 10)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_dnat_port_range() {
+    let input = "*nat\n:PREROUTING ACCEPT [0:0]\n-A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 172.17.0.2:8080-8090\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let nat = ruleset.tables.get("nat").unwrap();
+    let rule = &nat.chains.get("PREROUTING").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.target, Some(Target::Dnat));
+    assert!(spec.target_args.contains(&"--to-destination".to_string()));
+    assert!(spec.target_args.contains(&"172.17.0.2:8080-8090".to_string()));
+}
+
+// ---------------------------------------------------------------------------
+// LOG with --log-level (issue 11)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_log_with_log_level() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -j LOG --log-prefix \"X: \" --log-level 4\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.target, Some(Target::Log));
+    assert!(spec.target_args.contains(&"--log-prefix".to_string()));
+    assert!(spec.target_args.contains(&"X: ".to_string()));
+    assert!(spec.target_args.contains(&"--log-level".to_string()));
+    assert!(spec.target_args.contains(&"4".to_string()));
+}
+
+// ---------------------------------------------------------------------------
+// Long comment string (issue 12)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_long_comment_256_chars() {
+    let long_comment = "A".repeat(256);
+    let input = format!(
+        "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -m comment --comment \"{}\" -j ACCEPT\nCOMMIT\n",
+        long_comment
+    );
+    let ruleset = parse_iptables_save(&input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.comment, Some(long_comment));
+}
+
+// ---------------------------------------------------------------------------
+// Negated module args with ! (issue 2 — regression test)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_negated_tcp_syn() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -p tcp -m tcp ! --syn -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    // The tcp module should have collected "!" and "--syn"
+    let tcp_match = spec.matches.iter().find(|m| m.module == "tcp").unwrap();
+    assert!(tcp_match.args.contains(&"!".to_string()));
+    assert!(tcp_match.args.contains(&"--syn".to_string()));
+}
+
+// ---------------------------------------------------------------------------
+// Target::Other for extension targets (issue 4)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_extension_target_nfqueue() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -j NFQUEUE --queue-num 1\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.target, Some(Target::Other("NFQUEUE".to_string())));
+}
+
+#[test]
+fn test_extension_target_redirect() {
+    let input = "*nat\n:PREROUTING ACCEPT [0:0]\n-A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let nat = ruleset.tables.get("nat").unwrap();
+    let rule = &nat.chains.get("PREROUTING").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.target, Some(Target::Other("REDIRECT".to_string())));
+}
+
+// ---------------------------------------------------------------------------
+// PortSpec population (issue 3)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_port_spec_single() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -p tcp -m tcp --dport 80 -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    match spec.dest_port.as_ref().unwrap() {
+        PortSpec::Single(p) => assert_eq!(*p, 80),
+        other => panic!("expected Single(80), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_port_spec_multi() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -p tcp -m multiport --dports 80,443,8080 -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    match spec.dest_port.as_ref().unwrap() {
+        PortSpec::Multi(ports) => assert_eq!(*ports, vec![80, 443, 8080]),
+        other => panic!("expected Multi([80,443,8080]), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_port_spec_range() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -p tcp -m tcp --sport 1024:65535 -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    match spec.source_port.as_ref().unwrap() {
+        PortSpec::Range(lo, hi) => {
+            assert_eq!(*lo, 1024);
+            assert_eq!(*hi, 65535);
+        }
+        other => panic!("expected Range(1024, 65535), got {:?}", other),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AddressFamily on RuleSpec (issue 13)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_address_family_defaults_to_v4() {
+    let input = "*filter\n:INPUT ACCEPT [0:0]\n-A INPUT -j ACCEPT\nCOMMIT\n";
+    let ruleset = parse_iptables_save(input).unwrap();
+    let filter = ruleset.tables.get("filter").unwrap();
+    let rule = &filter.chains.get("INPUT").unwrap().rules[0];
+    let spec = rule.parsed.as_ref().unwrap();
+    assert_eq!(spec.address_family, AddressFamily::V4);
+}

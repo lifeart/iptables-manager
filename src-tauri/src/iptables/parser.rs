@@ -213,17 +213,15 @@ fn module_value_flags(module: &str) -> &'static [&'static str] {
                          "--hashlimit-name", "--hashlimit-htable-size",
                          "--hashlimit-htable-max", "--hashlimit-htable-expire",
                          "--hashlimit-htable-gcinterval"],
-        "connlimit" => &["--connlimit-above", "--connlimit-upto", "--connlimit-mask",
-                          "--connlimit-saddr", "--connlimit-daddr"],
+        "connlimit" => &["--connlimit-above", "--connlimit-upto", "--connlimit-mask"],
         "comment" => &["--comment"],
         "set" => &["--match-set"],
         "string" => &["--string", "--hex-string", "--algo", "--from", "--to"],
-        "recent" => &["--name", "--rsource", "--rdest", "--seconds", "--hitcount",
-                       "--rttl"],
+        "recent" => &["--name", "--seconds", "--hitcount"],
         "owner" => &["--uid-owner", "--gid-owner", "--pid-owner", "--sid-owner",
                       "--cmd-owner"],
         "time" => &["--datestart", "--datestop", "--timestart", "--timestop",
-                     "--monthdays", "--weekdays", "--kerneltz"],
+                     "--monthdays", "--weekdays"],
         "mark" => &["--mark"],
         "mac" => &["--mac-source"],
         "length" => &["--length"],
@@ -257,6 +255,20 @@ fn is_bool_flag(module: &str, flag: &str) -> bool {
 }
 
 /// Parse rule tokens (after `-A CHAIN`) into a `RuleSpec`.
+///
+/// ## Dual-negation handling
+///
+/// iptables supports two negation styles for most flags:
+///   1. Prefix negation:  `! -s 10.0.0.0/8`  — the `!` appears *before* the flag.
+///   2. Infix negation:   `-s ! 10.0.0.0/8`  — the `!` appears *after* the flag,
+///      before the value.
+///
+/// Both forms are semantically identical. This parser handles them as follows:
+///   - When we encounter a token, we check `tokens[i - 1] == "!"` to detect
+///     prefix negation (the `!` token itself is consumed as a no-op earlier).
+///   - Inside each flag handler (e.g. `parse_address_arg`, `-p`), we also peek
+///     at `tokens[i + 1]` to detect infix negation (`-s ! addr`).
+///   - Both paths set the `negated` flag on the resulting spec field.
 fn parse_rule_spec(tokens: &[String], counters: Option<(u64, u64)>) -> (RuleSpec, Vec<String>) {
     let mut spec = RuleSpec {
         protocol: None,
@@ -271,6 +283,9 @@ fn parse_rule_spec(tokens: &[String], counters: Option<(u64, u64)>) -> (RuleSpec
         comment: None,
         counters,
         fragment: None,
+        source_port: None,
+        dest_port: None,
+        address_family: AddressFamily::V4,
     };
     let mut warnings: Vec<String> = Vec::new();
     let mut current_modules: Vec<String> = Vec::new(); // stack of active -m modules
@@ -364,6 +379,21 @@ fn parse_rule_spec(tokens: &[String], counters: Option<(u64, u64)>) -> (RuleSpec
                                 if j + 1 < match_spec.args.len() {
                                     spec.comment = Some(match_spec.args[j + 1].clone());
                                 }
+                            }
+                        }
+                    }
+
+                    // Extract structured port specs from module args
+                    for j in 0..match_spec.args.len() {
+                        if j + 1 < match_spec.args.len() {
+                            match match_spec.args[j].as_str() {
+                                "--sport" | "--sports" | "--source-ports" => {
+                                    spec.source_port = PortSpec::parse(&match_spec.args[j + 1]);
+                                }
+                                "--dport" | "--dports" | "--destination-ports" => {
+                                    spec.dest_port = PortSpec::parse(&match_spec.args[j + 1]);
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -527,9 +557,16 @@ fn collect_module_args(tokens: &[String], start: usize, module: &str) -> (MatchS
             "-s" | "--source" | "--src" |
             "-d" | "--destination" | "--dst" |
             "-i" | "--in-interface" | "-o" | "--out-interface" |
-            "-j" | "--jump" | "-g" | "--goto" | "-f" | "--fragment" | "!"
+            "-j" | "--jump" | "-g" | "--goto" | "-f" | "--fragment"
         ) {
             break;
+        }
+
+        // Negation marker within module args (e.g. `-m tcp ! --syn`)
+        if tok == "!" {
+            args.push(tok.clone());
+            i += 1;
+            continue;
         }
 
         if tok.starts_with("--") {

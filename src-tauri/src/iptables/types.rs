@@ -73,6 +73,9 @@ pub struct RuleSpec {
     pub comment: Option<String>,
     pub counters: Option<(u64, u64)>,
     pub fragment: Option<bool>,
+    pub source_port: Option<PortSpec>,
+    pub dest_port: Option<PortSpec>,
+    pub address_family: AddressFamily,
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +164,40 @@ pub enum PortSpec {
     Range(u16, u16),
 }
 
+impl PortSpec {
+    /// Parse a port specification string into a `PortSpec`.
+    /// Supports single port ("80"), comma-separated ("80,443,8080"), and
+    /// range with colon separator ("1024:65535").
+    pub fn parse(s: &str) -> Option<PortSpec> {
+        // Range: "1024:65535" or "1024-65535" (iptables uses : but some
+        // contexts use -)
+        if let Some(idx) = s.find(':') {
+            let lo = s[..idx].parse::<u16>().ok()?;
+            let hi = s[idx + 1..].parse::<u16>().ok()?;
+            return Some(PortSpec::Range(lo, hi));
+        }
+        // Multi: "80,443,8080"
+        if s.contains(',') {
+            let ports: Option<Vec<u16>> = s.split(',').map(|p| p.parse::<u16>().ok()).collect();
+            return ports.map(PortSpec::Multi);
+        }
+        // Single
+        s.parse::<u16>().ok().map(PortSpec::Single)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AddressFamily
+// ---------------------------------------------------------------------------
+
+/// Whether the ruleset is for IPv4, IPv6, or both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AddressFamily {
+    V4,
+    V6,
+    Both,
+}
+
 // ---------------------------------------------------------------------------
 // MatchSpec — a loaded match module with its arguments
 // ---------------------------------------------------------------------------
@@ -209,9 +246,20 @@ impl Target {
             "CT" => Target::ConntrackHelper,
             "QUEUE" => Target::Queue,
             other => {
-                // Well-known built-in targets are handled above.
-                // Everything else is a jump to a user chain.
-                Target::Jump(other.to_string())
+                // Well-known extension targets — these are iptables target
+                // extensions that are not user-defined chains.
+                const EXTENSION_TARGETS: &[&str] = &[
+                    "NFQUEUE", "NFLOG", "CLASSIFY", "CONNMARK", "TCPMSS",
+                    "NOTRACK", "REDIRECT", "TPROXY", "TRACE", "SET",
+                    "CLUSTERIP", "IDLETIMER", "AUDIT", "CHECKSUM", "NETMAP",
+                    "TEE", "SECMARK",
+                ];
+                if EXTENSION_TARGETS.contains(&other) {
+                    Target::Other(other.to_string())
+                } else {
+                    // Everything else is a jump to a user-defined chain.
+                    Target::Jump(other.to_string())
+                }
             }
         }
     }
