@@ -15,6 +15,12 @@ import { themeManager } from './services/theme';
 import { dbSync } from './db/sync';
 import { STORE_NAMES } from './db/schema';
 import { h } from './utils/dom';
+import { Sidebar } from './components/sidebar/sidebar';
+import { RuleTable } from './components/rule-table/rule-table';
+import { SidePanel } from './components/side-panel/side-panel';
+import { SafetyBanner } from './components/safety-banner/safety-banner';
+import { CommandPalette } from './components/command-palette/command-palette';
+import { ShortcutService } from './services/shortcut';
 
 function showLoadingScreen(): void {
   const app = document.getElementById('app');
@@ -34,21 +40,37 @@ function hideLoadingScreen(): void {
 }
 
 function mountApp(container: HTMLElement): void {
-  // Clear any remaining loading content
   container.innerHTML = '';
 
-  // Create the main app layout structure
-  const layout = document.createElement('div');
-  layout.className = 'app-layout';
-  layout.innerHTML = `
-    <aside class="sidebar" id="sidebar"></aside>
-    <main class="main-content" id="main-content">
-      <div class="toolbar" id="toolbar"></div>
-      <div class="content-area" id="content-area"></div>
-    </main>
-    <aside class="side-panel" id="side-panel"></aside>
-  `;
+  // Create layout skeleton
+  const layout = h('div', { className: 'app-layout' },
+    h('aside', { className: 'sidebar', id: 'sidebar' }),
+    h('main', { className: 'main-content', id: 'main-content' }),
+    h('aside', { className: 'side-panel', id: 'side-panel' }),
+  );
   container.appendChild(layout);
+
+  // Safety banner (top-level, renders when active)
+  const bannerEl = h('div', { id: 'safety-banner' });
+  container.appendChild(bannerEl);
+
+  // Command palette (top-level overlay)
+  const paletteEl = h('div', { id: 'command-palette' });
+  container.appendChild(paletteEl);
+
+  // Instantiate components
+  const sidebarEl = document.getElementById('sidebar')!;
+  const mainEl = document.getElementById('main-content')!;
+  const sidePanelEl = document.getElementById('side-panel')!;
+
+  new Sidebar(sidebarEl, store);
+  new RuleTable(mainEl, store);
+  new SidePanel(sidePanelEl, store);
+  new SafetyBanner(bannerEl, store);
+  new CommandPalette(paletteEl, store);
+
+  // Initialize keyboard shortcuts
+  new ShortcutService(store);
 }
 
 async function autoReconnect(): Promise<void> {
