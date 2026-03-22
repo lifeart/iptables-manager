@@ -25,6 +25,7 @@ export interface RuleFormData {
   source: AddressSpec;
   comment: string;
   interfaceIn: string | undefined;
+  duration?: 'permanent' | '1h' | '4h' | '24h' | '1w';
 }
 
 type ActionChoice = 'allow' | 'block' | 'log' | 'log-block';
@@ -55,6 +56,14 @@ export class RuleBuilder extends Component {
   private interfaceGroup: HTMLElement | null = null;
   private interfaceSelect: HTMLSelectElement | null = null;
   private selectedInterface = 'any';
+  private selectedDuration: 'permanent' | '1h' | '4h' | '24h' | '1w' = 'permanent';
+
+  // Rate limit UI state
+  private rateLimitEnabled = false;
+  private rateLimitMax = '';
+  private rateLimitScope: 'source' | 'global' = 'source';
+  private rateLimitPer: 'second' | 'minute' = 'second';
+  private rateLimitBurst = '';
 
   // Cached "More options" display elements
   private protocolDisplay: HTMLElement | null = null;
@@ -182,6 +191,7 @@ export class RuleBuilder extends Component {
       source: this.selectedSource,
       comment: this.commentValue,
       interfaceIn: this.selectedInterface === 'any' ? undefined : this.selectedInterface,
+      duration: this.selectedDuration,
     };
   }
 
@@ -274,6 +284,9 @@ export class RuleBuilder extends Component {
     durationSelect.appendChild(this.createOption('4h', '4 hours'));
     durationSelect.appendChild(this.createOption('24h', '24 hours'));
     durationSelect.appendChild(this.createOption('1w', '1 week'));
+    this.listen(durationSelect, 'change', () => {
+      this.selectedDuration = durationSelect.value as typeof this.selectedDuration;
+    });
     durationGroup.appendChild(durationSelect);
     this.moreOptionsContainer.appendChild(durationGroup);
 
@@ -318,6 +331,74 @@ export class RuleBuilder extends Component {
     }
     conntrackGroup.appendChild(stateContainer);
     this.moreOptionsContainer.appendChild(conntrackGroup);
+
+    // Rate Limit
+    const rateLimitGroup = this.createFieldGroup('Rate Limit');
+    const rateLimitCheckLabel = h('label', { className: 'rule-builder__checkbox-label' });
+    const rateLimitCheckbox = document.createElement('input');
+    rateLimitCheckbox.type = 'checkbox';
+    rateLimitCheckbox.className = 'rule-builder__checkbox';
+    rateLimitCheckLabel.appendChild(rateLimitCheckbox);
+    rateLimitCheckLabel.appendChild(document.createTextNode(' Enable rate limiting'));
+    rateLimitGroup.appendChild(rateLimitCheckLabel);
+
+    const rateLimitFields = h('div', {
+      className: 'rule-builder__rate-limit-fields',
+      style: { display: 'none', marginTop: '8px', gap: '6px' },
+    });
+
+    const maxLabel = document.createTextNode('Max ');
+    rateLimitFields.appendChild(maxLabel);
+    const maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.className = 'rule-builder__input';
+    maxInput.placeholder = '10';
+    maxInput.style.width = '60px';
+    maxInput.style.display = 'inline-block';
+    this.listen(maxInput, 'input', () => { this.rateLimitMax = maxInput.value; });
+    rateLimitFields.appendChild(maxInput);
+
+    rateLimitFields.appendChild(document.createTextNode(' per '));
+    const scopeSelect = document.createElement('select');
+    scopeSelect.className = 'rule-builder__select';
+    scopeSelect.style.width = 'auto';
+    scopeSelect.style.display = 'inline-block';
+    scopeSelect.appendChild(this.createOption('source', 'Source IP'));
+    scopeSelect.appendChild(this.createOption('global', 'Global'));
+    this.listen(scopeSelect, 'change', () => {
+      this.rateLimitScope = scopeSelect.value as 'source' | 'global';
+    });
+    rateLimitFields.appendChild(scopeSelect);
+
+    rateLimitFields.appendChild(document.createTextNode(' per '));
+    const perSelect = document.createElement('select');
+    perSelect.className = 'rule-builder__select';
+    perSelect.style.width = 'auto';
+    perSelect.style.display = 'inline-block';
+    perSelect.appendChild(this.createOption('second', 'Second'));
+    perSelect.appendChild(this.createOption('minute', 'Minute'));
+    this.listen(perSelect, 'change', () => {
+      this.rateLimitPer = perSelect.value as 'second' | 'minute';
+    });
+    rateLimitFields.appendChild(perSelect);
+
+    rateLimitFields.appendChild(document.createTextNode(' Burst '));
+    const burstInput = document.createElement('input');
+    burstInput.type = 'number';
+    burstInput.className = 'rule-builder__input';
+    burstInput.placeholder = '5';
+    burstInput.style.width = '60px';
+    burstInput.style.display = 'inline-block';
+    this.listen(burstInput, 'input', () => { this.rateLimitBurst = burstInput.value; });
+    rateLimitFields.appendChild(burstInput);
+
+    this.listen(rateLimitCheckbox, 'change', () => {
+      this.rateLimitEnabled = rateLimitCheckbox.checked;
+      rateLimitFields.style.display = rateLimitCheckbox.checked ? '' : 'none';
+    });
+
+    rateLimitGroup.appendChild(rateLimitFields);
+    this.moreOptionsContainer.appendChild(rateLimitGroup);
 
     // iptables preview disclosure
     const disclosure = h('details', { className: 'rule-builder__disclosure' });

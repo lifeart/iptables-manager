@@ -381,9 +381,44 @@ export class RuleTable extends Component {
         if (section.rules.length === 0) {
           // Show empty state for sections with no rules
           rowsContainer.innerHTML = '';
-          const emptyText = h('p', { className: 'rule-table__section-empty' },
-            'No rules in this section.');
-          rowsContainer.appendChild(emptyText);
+          if (section.title === 'NAT Rules') {
+            // Show NAT action links
+            const natActions = h('div', { className: 'rule-table__nat-actions', style: { padding: '8px 16px' } });
+            const portFwdLink = h('button', {
+              className: 'rule-table__nat-link',
+              type: 'button',
+              style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '13px', padding: '4px 0', display: 'block' },
+            }, '+ Port Forwarding');
+            const snatLink = h('button', {
+              className: 'rule-table__nat-link',
+              type: 'button',
+              style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '13px', padding: '4px 0', display: 'block' },
+            }, '+ Source NAT');
+            this.listen(portFwdLink, 'click', () => {
+              this.store.dispatch({
+                type: 'SET_SIDE_PANEL_CONTENT',
+                content: { type: 'host-settings' },
+              });
+              this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+            });
+            this.listen(snatLink, 'click', () => {
+              this.store.dispatch({
+                type: 'SET_SIDE_PANEL_CONTENT',
+                content: { type: 'host-settings' },
+              });
+              this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+            });
+            natActions.appendChild(portFwdLink);
+            natActions.appendChild(snatLink);
+            natActions.appendChild(h('p', {
+              style: { margin: '8px 0 0', fontSize: '12px', color: 'var(--color-text-secondary, #888)' },
+            }, 'Connect to a real server to configure NAT rules'));
+            rowsContainer.appendChild(natActions);
+          } else {
+            const emptyText = h('p', { className: 'rule-table__section-empty' },
+              'No rules in this section.');
+            rowsContainer.appendChild(emptyText);
+          }
         } else {
           // Remove any previous empty state text
           const emptyP = rowsContainer.querySelector('.rule-table__section-empty');
@@ -555,7 +590,10 @@ export class RuleTable extends Component {
     if (outgoing.length > 0) {
       sections.push({ title: 'Outgoing Traffic', rules: outgoing });
     }
-    if (nat.length > 0) {
+
+    // Show NAT section if NAT rules exist or host has IP forwarding capabilities
+    const showNat = nat.length > 0 || this.hostHasNatCapability();
+    if (showNat) {
       sections.push({ title: 'NAT Rules', rules: nat });
     }
 
@@ -593,6 +631,14 @@ export class RuleTable extends Component {
     }
 
     return groups;
+  }
+
+  private hostHasNatCapability(): boolean {
+    const host = this.store.select(selectActiveHost);
+    if (!host?.capabilities) return false;
+    // Show NAT section if host has multiple interfaces (implies routing/forwarding)
+    const ifaces = host.capabilities.interfaces;
+    return ifaces != null && ifaces.length >= 2;
   }
 
   private renderEmptyState(): void {

@@ -22,6 +22,8 @@ export class Sidebar extends Component {
   private searchTerm = '';
   private expandedGroups = new Set<string>();
   private focusedId: string | null = null;
+  private resizeHandle!: HTMLElement;
+  private isResizing = false;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -81,6 +83,22 @@ export class Sidebar extends Component {
       'aria-label': 'Add host',
     }, '+ Add Host');
     this.el.appendChild(addBtn);
+
+    // Resize handle
+    this.resizeHandle = h('div', {
+      className: 'sidebar__resize-handle',
+      style: {
+        position: 'absolute',
+        top: '0',
+        right: '0',
+        width: '4px',
+        height: '100%',
+        cursor: 'col-resize',
+        zIndex: '10',
+      },
+    });
+    this.el.style.position = 'relative';
+    this.el.appendChild(this.resizeHandle);
   }
 
   private bindEvents(): void {
@@ -184,6 +202,30 @@ export class Sidebar extends Component {
         this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
       });
     }
+
+    // Resize handle drag
+    this.listen(this.resizeHandle, 'mousedown', (e) => {
+      e.preventDefault();
+      this.isResizing = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    this.listen(document, 'mousemove', (e) => {
+      if (!this.isResizing) return;
+      const me = e as MouseEvent;
+      const newWidth = Math.min(320, Math.max(180, me.clientX));
+      this.el.style.width = `${newWidth}px`;
+      document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+    });
+
+    this.listen(document, 'mouseup', () => {
+      if (this.isResizing) {
+        this.isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
 
     // Keyboard navigation
     this.listen(this.el, 'keydown', (e) => {

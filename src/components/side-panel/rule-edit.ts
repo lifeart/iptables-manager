@@ -131,6 +131,16 @@ export class RuleEdit extends Component {
       });
     } else {
       // Add new rule
+      const durationMs: Record<string, number> = {
+        '1h': 3600_000,
+        '4h': 14400_000,
+        '24h': 86400_000,
+        '1w': 604800_000,
+      };
+      const tempExpiry = formData.duration && formData.duration !== 'permanent'
+        ? { expiresAt: Date.now() + (durationMs[formData.duration] ?? 0) }
+        : undefined;
+
       const newRule: Rule = {
         id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         label: formData.label,
@@ -146,6 +156,7 @@ export class RuleEdit extends Component {
         origin: { type: 'user' },
         position: 0,
         enabled: true,
+        temporary: tempExpiry,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
