@@ -169,7 +169,7 @@ fn trace_chain(
 
     let chain = match table.chains.get(chain_name) {
         Some(c) => c,
-        None => return TraceVerdict::Accept,
+        None => return TraceVerdict::Unsimulatable(format!("chain '{}' not found", chain_name)),
     };
 
     for rule in &chain.rules {
@@ -245,12 +245,15 @@ fn rule_matches(spec: &RuleSpec, raw: &str, packet: &SimPacket<'_>) -> bool {
         }
     }
 
-    // Interface check
+    // Interface check — when the packet has no interface specified, treat any
+    // interface rule as matching (conservative for safety — assume worst case).
     if let Some(iface_spec) = &spec.in_iface {
         let matches_iface = if let Some(pkt_iface) = packet.in_iface {
             interface_matches(&iface_spec.name, pkt_iface)
         } else {
-            iface_spec.name.ends_with('+')
+            // No interface on the packet — conservatively assume it could
+            // match any interface rule (worst case for lockout detection).
+            true
         };
         if iface_spec.negated {
             if matches_iface {

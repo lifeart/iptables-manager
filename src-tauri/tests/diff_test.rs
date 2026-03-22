@@ -23,7 +23,7 @@ fn test_diff_identical_rulesets() {
 COMMIT
 ";
     let current = make_current(text);
-    let diff = compute_diff(&current, text);
+    let diff = compute_diff(&current, text).unwrap();
     assert!(diff.changes.is_empty(), "identical rulesets should have no diff");
     assert!(diff.app_chains_only);
 }
@@ -44,7 +44,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     assert_eq!(diff.changes.len(), 1);
     match &diff.changes[0] {
         DiffEntry::Added { chain, rule_raw, position } => {
@@ -74,7 +74,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     assert_eq!(diff.changes.len(), 1);
     match &diff.changes[0] {
         DiffEntry::Removed { chain, position, .. } => {
@@ -100,7 +100,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     assert_eq!(diff.changes.len(), 1);
     match &diff.changes[0] {
         DiffEntry::Modified { chain, position, old_raw, new_raw } => {
@@ -130,7 +130,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
 
     let chain_added = diff.changes.iter().any(|c| {
         matches!(c, DiffEntry::ChainAdded { name } if name == "TR-OUTPUT")
@@ -155,7 +155,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
 
     let chain_removed = diff.changes.iter().any(|c| {
         matches!(c, DiffEntry::ChainRemoved { name } if name == "TR-OUTPUT")
@@ -182,7 +182,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     // Should NOT flag INPUT/FORWARD/OUTPUT differences
     for change in &diff.changes {
         match change {
@@ -212,7 +212,7 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     // Position 0: ACCEPT -> DROP (Modified)
     // Position 2: new rule (Added)
     assert_eq!(diff.changes.len(), 2, "changes: {:?}", diff.changes);
@@ -233,6 +233,6 @@ COMMIT
 COMMIT
 ";
     let current = make_current(current_text);
-    let diff = compute_diff(&current, desired_text);
+    let diff = compute_diff(&current, desired_text).unwrap();
     assert!(diff.app_chains_only);
 }

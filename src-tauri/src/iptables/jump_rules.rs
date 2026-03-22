@@ -30,57 +30,35 @@ const JUMP_MAP: &[(&str, &[&str])] = &[
 pub fn generate_ensure_jump_rules(current_rules: &[String]) -> Vec<String> {
     let mut commands: Vec<String> = Vec::new();
 
+    // Phase 1: Delete all existing TR-* jump rules from built-in chains.
+    // This avoids position-calculation bugs when multiple rules shift after
+    // a single delete.
     for &(builtin_chain, tr_chains) in JUMP_MAP {
-        // Collect rules that belong to this built-in chain
-        let chain_rules: Vec<&str> = current_rules
-            .iter()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                // Match both "-A INPUT ..." and "-P INPUT ..." (policy)
-                if trimmed.starts_with(&format!("-A {} ", builtin_chain)) {
-                    Some(trimmed)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // For each TR-* chain, check if a jump rule exists
-        for (desired_pos, &tr_chain) in tr_chains.iter().enumerate() {
+        for &tr_chain in tr_chains {
             let jump_target = format!("-j {}", tr_chain);
-
-            // Find the current position of this jump rule (if any)
-            let current_pos = chain_rules
-                .iter()
-                .position(|rule| rule.contains(&jump_target));
-
-            match current_pos {
-                Some(pos) if pos == desired_pos => {
-                    // Already at the correct position — nothing to do
-                }
-                Some(_pos) => {
-                    // Exists but at wrong position — delete and re-insert
-                    commands.push(format!(
-                        "iptables -w 5 -D {} -j {}",
-                        builtin_chain, tr_chain
-                    ));
-                    commands.push(format!(
-                        "iptables -w 5 -I {} {} -j {}",
-                        builtin_chain,
-                        desired_pos + 1,
-                        tr_chain
-                    ));
-                }
-                None => {
-                    // Missing — insert at the correct position
-                    commands.push(format!(
-                        "iptables -w 5 -I {} {} -j {}",
-                        builtin_chain,
-                        desired_pos + 1,
-                        tr_chain
-                    ));
-                }
+            let exists = current_rules.iter().any(|line| {
+                let trimmed = line.trim();
+                trimmed.starts_with(&format!("-A {} ", builtin_chain))
+                    && trimmed.contains(&jump_target)
+            });
+            if exists {
+                commands.push(format!(
+                    "iptables -w 5 -D {} -j {}",
+                    builtin_chain, tr_chain
+                ));
             }
+        }
+    }
+
+    // Phase 2: Insert all jump rules at the correct positions (fresh).
+    for &(builtin_chain, tr_chains) in JUMP_MAP {
+        for (desired_pos, &tr_chain) in tr_chains.iter().enumerate() {
+            commands.push(format!(
+                "iptables -w 5 -I {} {} -j {}",
+                builtin_chain,
+                desired_pos + 1,
+                tr_chain
+            ));
         }
     }
 
@@ -94,7 +72,7 @@ mod tests {
     #[test]
     fn test_empty_input_generates_all_jumps() {
         let commands = generate_ensure_jump_rules(&[]);
-        // Should generate inserts for TR-CONNTRACK, TR-INPUT, TR-OUTPUT, TR-FORWARD
+        // No deletes (nothing to delete), then 4 inserts
         assert_eq!(commands.len(), 4);
         assert!(commands[0].contains("-I INPUT 1 -j TR-CONNTRACK"));
         assert!(commands[1].contains("-I INPUT 2 -j TR-INPUT"));
@@ -103,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_existing_correct_jumps_no_commands() {
+    fn test_existing_correct_jumps_deletes_then_reinserts() {
         let rules = vec![
             "-A INPUT -j TR-CONNTRACK".to_string(),
             "-A INPUT -j TR-INPUT".to_string(),
@@ -111,7 +89,18 @@ mod tests {
             "-A FORWARD -j TR-FORWARD".to_string(),
         ];
         let commands = generate_ensure_jump_rules(&rules);
-        assert!(commands.is_empty(), "expected no commands, got: {:?}", commands);
+        // Should delete all 4 existing, then insert all 4 fresh = 8 commands
+        assert_eq!(commands.len(), 8, "expected 8 commands (4 deletes + 4 inserts), got: {:?}", commands);
+        // First 4 are deletes
+        assert!(commands[0].contains("-D INPUT -j TR-CONNTRACK"));
+        assert!(commands[1].contains("-D INPUT -j TR-INPUT"));
+        assert!(commands[2].contains("-D OUTPUT -j TR-OUTPUT"));
+        assert!(commands[3].contains("-D FORWARD -j TR-FORWARD"));
+        // Last 4 are inserts
+        assert!(commands[4].contains("-I INPUT 1 -j TR-CONNTRACK"));
+        assert!(commands[5].contains("-I INPUT 2 -j TR-INPUT"));
+        assert!(commands[6].contains("-I OUTPUT 1 -j TR-OUTPUT"));
+        assert!(commands[7].contains("-I FORWARD 1 -j TR-FORWARD"));
     }
 
     #[test]
@@ -123,8 +112,12 @@ mod tests {
             "-A FORWARD -j TR-FORWARD".to_string(),
         ];
         let commands = generate_ensure_jump_rules(&rules);
-        assert_eq!(commands.len(), 1);
-        assert!(commands[0].contains("-I INPUT 2 -j TR-INPUT"));
+        // 3 deletes + 4 inserts = 7
+        assert_eq!(commands.len(), 7);
+        // The inserts always include all 4
+        let inserts: Vec<&String> = commands.iter().filter(|c| c.contains("-I ")).collect();
+        assert_eq!(inserts.len(), 4);
+        assert!(inserts.iter().any(|c| c.contains("-I INPUT 2 -j TR-INPUT")));
     }
 
     #[test]
@@ -137,25 +130,15 @@ mod tests {
             "-A FORWARD -j TR-FORWARD".to_string(),
         ];
         let commands = generate_ensure_jump_rules(&rules);
-        // TR-CONNTRACK is at position 1 instead of 0, needs delete + reinsert
-        assert!(commands.len() >= 2);
+        // 4 deletes + 4 inserts = 8
+        assert_eq!(commands.len(), 8);
+        // Deletes come first
         assert!(commands[0].contains("-D INPUT -j TR-CONNTRACK"));
-        assert!(commands[1].contains("-I INPUT 1 -j TR-CONNTRACK"));
-    }
-
-    #[test]
-    fn test_idempotent() {
-        let rules = vec![
-            "-A INPUT -j TR-CONNTRACK".to_string(),
-            "-A INPUT -j TR-INPUT".to_string(),
-            "-A OUTPUT -j TR-OUTPUT".to_string(),
-            "-A FORWARD -j TR-FORWARD".to_string(),
-        ];
-        // Call twice — should both return empty
-        let cmd1 = generate_ensure_jump_rules(&rules);
-        let cmd2 = generate_ensure_jump_rules(&rules);
-        assert!(cmd1.is_empty());
-        assert!(cmd2.is_empty());
+        assert!(commands[1].contains("-D INPUT -j TR-INPUT"));
+        // Then fresh inserts at correct positions
+        let inserts: Vec<&String> = commands.iter().filter(|c| c.contains("-I ")).collect();
+        assert!(inserts[0].contains("-I INPUT 1 -j TR-CONNTRACK"));
+        assert!(inserts[1].contains("-I INPUT 2 -j TR-INPUT"));
     }
 
     #[test]

@@ -170,6 +170,18 @@ pub fn rule_spec_to_args(spec: &RuleSpec) -> Vec<String> {
         }
     }
 
+    // Source port
+    if let Some(ref sp) = spec.source_port {
+        args.push("--sport".to_string());
+        args.push(port_spec_to_string(sp));
+    }
+
+    // Destination port
+    if let Some(ref dp) = spec.dest_port {
+        args.push("--dport".to_string());
+        args.push(port_spec_to_string(dp));
+    }
+
     // Target
     if let Some(ref target) = spec.target {
         args.push("-j".to_string());
@@ -182,17 +194,6 @@ pub fn rule_spec_to_args(spec: &RuleSpec) -> Vec<String> {
     }
 
     args
-}
-
-/// Safely build a shell command string from a program name and arguments.
-///
-/// Uses `shell_words::join()` to properly quote/escape arguments that contain
-/// spaces, special characters, etc.
-pub fn build_shell_command(program: &str, args: &[&str]) -> String {
-    let mut all_parts: Vec<&str> = Vec::with_capacity(1 + args.len());
-    all_parts.push(program);
-    all_parts.extend_from_slice(args);
-    shell_words::join(&all_parts)
 }
 
 /// Format a single `PortSpec` as a string suitable for iptables arguments.
@@ -308,25 +309,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_shell_command_basic() {
-        let cmd = build_shell_command("iptables", &["-w", "5", "-A", "INPUT", "-j", "ACCEPT"]);
-        assert_eq!(cmd, "iptables -w 5 -A INPUT -j ACCEPT");
-    }
-
-    #[test]
-    fn test_build_shell_command_special_chars() {
-        let cmd = build_shell_command("iptables", &["-m", "comment", "--comment", "Allow SSH access"]);
-        // shell_words should quote the argument with spaces
-        assert!(cmd.contains("'Allow SSH access'") || cmd.contains("\"Allow SSH access\""));
-    }
-
-    #[test]
-    fn test_build_shell_command_empty_args() {
-        let cmd = build_shell_command("iptables", &[]);
-        assert_eq!(cmd, "iptables");
-    }
-
-    #[test]
     fn test_generate_restore_nat_table() {
         let mut chains: HashMap<String, Vec<String>> = HashMap::new();
         chains.insert(
@@ -385,6 +367,56 @@ mod tests {
         assert!(joined.contains("-p tcp"));
         assert!(joined.contains("-m multiport --dports 80,443"));
         assert!(joined.contains("-j ACCEPT"));
+    }
+
+    #[test]
+    fn test_rule_spec_to_args_dest_port() {
+        let spec = RuleSpec {
+            protocol: Some(Protocol::Tcp),
+            protocol_negated: false,
+            source: None,
+            destination: None,
+            in_iface: None,
+            out_iface: None,
+            matches: vec![],
+            target: Some(Target::Accept),
+            target_args: vec![],
+            comment: None,
+            counters: None,
+            fragment: None,
+            source_port: None,
+            dest_port: Some(PortSpec::Single(22)),
+            address_family: AddressFamily::V4,
+        };
+
+        let args = rule_spec_to_args(&spec);
+        let joined = args.join(" ");
+        assert!(joined.contains("--dport 22"), "expected --dport 22, got: {}", joined);
+    }
+
+    #[test]
+    fn test_rule_spec_to_args_source_port() {
+        let spec = RuleSpec {
+            protocol: Some(Protocol::Tcp),
+            protocol_negated: false,
+            source: None,
+            destination: None,
+            in_iface: None,
+            out_iface: None,
+            matches: vec![],
+            target: Some(Target::Accept),
+            target_args: vec![],
+            comment: None,
+            counters: None,
+            fragment: None,
+            source_port: Some(PortSpec::Single(1024)),
+            dest_port: None,
+            address_family: AddressFamily::V4,
+        };
+
+        let args = rule_spec_to_args(&spec);
+        let joined = args.join(" ");
+        assert!(joined.contains("--sport 1024"), "expected --sport 1024, got: {}", joined);
     }
 
     #[test]

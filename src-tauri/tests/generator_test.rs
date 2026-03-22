@@ -201,44 +201,5 @@ fn test_rule_spec_to_args_interfaces() {
     assert!(joined.contains("! -o eth1"), "missing negated out-interface: {}", joined);
 }
 
-// ---------------------------------------------------------------------------
-// build_shell_command
-// ---------------------------------------------------------------------------
-
-#[test]
-fn test_shell_command_basic() {
-    let cmd = build_shell_command("iptables", &["-w", "5", "-A", "INPUT", "-j", "ACCEPT"]);
-    assert_eq!(cmd, "iptables -w 5 -A INPUT -j ACCEPT");
-}
-
-#[test]
-fn test_shell_command_with_spaces() {
-    let cmd = build_shell_command(
-        "iptables",
-        &["-m", "comment", "--comment", "Allow SSH access"],
-    );
-    // shell_words should quote the argument containing spaces
-    assert!(
-        cmd.contains("'Allow SSH access'") || cmd.contains("\"Allow SSH access\""),
-        "should quote argument with spaces: {}",
-        cmd
-    );
-}
-
-#[test]
-fn test_shell_command_with_special_chars() {
-    let cmd = build_shell_command("echo", &["hello; rm -rf /"]);
-    // The dangerous string must be quoted (inside single or double quotes)
-    // so it cannot be interpreted as a separate command by the shell.
-    assert!(
-        cmd.contains("'hello; rm -rf /'") || cmd.contains("\"hello; rm -rf /\""),
-        "dangerous argument should be quoted: {}",
-        cmd
-    );
-}
-
-#[test]
-fn test_shell_command_empty_args() {
-    let cmd = build_shell_command("iptables", &[]);
-    assert_eq!(cmd, "iptables");
-}
+// build_shell_command has been removed from generator.rs in favor of
+// ssh::command::build_command. See ssh/command.rs for those tests.

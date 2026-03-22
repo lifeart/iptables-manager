@@ -180,10 +180,13 @@ async fn verify_sudo_access(executor: &dyn CommandExecutor) -> Result<(), Provis
             .map_err(|e| ProvisionError::Exec(e.to_string()))?;
         // Exit code 0 or 1 are both acceptable — we just need sudo to not reject us.
         // Exit code 1 from --help is fine for ipset. A "permission denied" from
-        // sudo will give a specific stderr message.
-        if output.stderr.contains("permission denied")
-            || output.stderr.contains("not allowed")
-            || output.stderr.contains("a password is required")
+        // sudo will give a specific stderr message. Use case-insensitive
+        // matching since error messages vary across sudo versions and locales.
+        let stderr_lower = output.stderr.to_lowercase();
+        if stderr_lower.contains("permission denied")
+            || stderr_lower.contains("not allowed")
+            || stderr_lower.contains("a password is required")
+            || output.exit_code > 1
         {
             return Err(ProvisionError::SudoDenied {
                 command: cmd_name.to_string(),

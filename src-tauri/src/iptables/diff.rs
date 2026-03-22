@@ -60,17 +60,9 @@ pub enum DiffEntry {
 ///
 /// Only app-managed chains (those starting with `TR-`) are compared.  System
 /// chains, Docker chains, fail2ban chains, etc. are ignored.
-pub fn compute_diff(current: &ParsedRuleset, desired_restore: &str) -> RulesetDiff {
+pub fn compute_diff(current: &ParsedRuleset, desired_restore: &str) -> Result<RulesetDiff, ParseError> {
     // Parse the desired restore content to get its structure
-    let desired = match parse_iptables_save(desired_restore) {
-        Ok(rs) => rs,
-        Err(_) => {
-            return RulesetDiff {
-                changes: Vec::new(),
-                app_chains_only: true,
-            };
-        }
-    };
+    let desired = parse_iptables_save(desired_restore)?;
 
     let mut changes: Vec<DiffEntry> = Vec::new();
     let mut all_app_only = true;
@@ -140,10 +132,10 @@ pub fn compute_diff(current: &ParsedRuleset, desired_restore: &str) -> RulesetDi
         }
     }
 
-    RulesetDiff {
+    Ok(RulesetDiff {
         changes,
         app_chains_only: all_app_only,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +262,7 @@ COMMIT
 ";
         let desired_text = current_text;
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         assert!(diff.changes.is_empty());
         assert!(diff.app_chains_only);
     }
@@ -291,7 +283,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         assert_eq!(diff.changes.len(), 1);
         match &diff.changes[0] {
             DiffEntry::Added { chain, position, .. } => {
@@ -318,7 +310,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         assert_eq!(diff.changes.len(), 1);
         match &diff.changes[0] {
             DiffEntry::Removed { chain, position, .. } => {
@@ -344,7 +336,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         let has_chain_added = diff.changes.iter().any(|c| matches!(c, DiffEntry::ChainAdded { name } if name == "TR-OUTPUT"));
         assert!(has_chain_added);
     }
@@ -364,7 +356,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         let has_chain_removed = diff.changes.iter().any(|c| matches!(c, DiffEntry::ChainRemoved { name } if name == "TR-OUTPUT"));
         assert!(has_chain_removed);
     }
@@ -384,7 +376,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         assert_eq!(diff.changes.len(), 1);
         match &diff.changes[0] {
             DiffEntry::Modified { chain, position, old_raw, new_raw } => {
@@ -414,7 +406,7 @@ COMMIT
 COMMIT
 ";
         let current = make_current_ruleset(current_text);
-        let diff = compute_diff(&current, desired_text);
+        let diff = compute_diff(&current, desired_text).unwrap();
         // INPUT chain differences should not appear
         assert!(diff.changes.is_empty());
     }

@@ -49,20 +49,20 @@ pub enum SafetyError {
 /// Detect the best available safety timer mechanism on the remote host.
 ///
 /// Fallback chain:
-/// 1. `iptables-apply` if available
-/// 2. `at` + verify atd is running
-/// 3. `systemd-run`
-/// 4. `nohup` (last resort)
+/// 1. `at` + verify atd is running
+/// 2. `systemd-run`
+/// 3. `nohup` (last resort)
+///
+/// Note: `iptables-apply` is intentionally excluded because it requires
+/// interactive stdin confirmation to cancel the revert timer, which our SSH
+/// execution model cannot provide.
 pub async fn detect_mechanism(executor: &dyn CommandExecutor) -> SafetyMechanism {
-    // 1. Check for iptables-apply
-    let cmd = build_command("which", &["iptables-apply"]);
-    if let Ok(output) = executor.exec(&cmd).await {
-        if output.exit_code == 0 {
-            return SafetyMechanism::IptablesApply;
-        }
-    }
+    // NOTE: iptables-apply is intentionally skipped here. It requires
+    // interactive stdin confirmation to cancel the revert, which we cannot
+    // provide through our SSH execution model. Starting directly with `at`
+    // gives us a mechanism we can properly cancel via `atrm`.
 
-    // 2. Check for `at` command and atd running
+    // 1. Check for `at` command and atd running
     let cmd = build_command("which", &["at"]);
     if let Ok(output) = executor.exec(&cmd).await {
         if output.exit_code == 0 && is_atd_running(executor).await {
@@ -70,7 +70,7 @@ pub async fn detect_mechanism(executor: &dyn CommandExecutor) -> SafetyMechanism
         }
     }
 
-    // 3. Check for systemd-run
+    // 2. Check for systemd-run
     let cmd = build_command("which", &["systemd-run"]);
     if let Ok(output) = executor.exec(&cmd).await {
         if output.exit_code == 0 {
@@ -78,7 +78,7 @@ pub async fn detect_mechanism(executor: &dyn CommandExecutor) -> SafetyMechanism
         }
     }
 
-    // 4. Fallback to nohup
+    // 3. Fallback to nohup
     SafetyMechanism::Nohup
 }
 
@@ -132,22 +132,33 @@ pub async fn schedule_revert(
 }
 
 /// Cancel a previously scheduled revert.
+///
+/// Uses the mechanism stored in `job_id` rather than a separate parameter,
+/// ensuring the correct mechanism is always used.
 pub async fn cancel_revert(
     executor: &dyn CommandExecutor,
-    mechanism: SafetyMechanism,
     job_id: &RevertJobId,
 ) -> Result<(), SafetyError> {
-    match mechanism {
+    match &job_id.mechanism {
         SafetyMechanism::IptablesApply => {
-            // iptables-apply handles confirmation via stdin; send 'y'
+            // iptables-apply is no longer used by detect_mechanism, but this
+            // arm is kept for backward compatibility with any previously
+            // scheduled jobs. iptables-apply requires interactive stdin
+            // confirmation which we cannot provide; cancellation is a no-op.
             Ok(())
         }
         SafetyMechanism::At => {
             let cmd = build_command("atrm", &[&job_id.id]);
-            executor
+            let output = executor
                 .exec(&cmd)
                 .await
                 .map_err(|e| SafetyError::CancelFailed(e.to_string()))?;
+            if output.exit_code != 0 {
+                return Err(SafetyError::CancelFailed(format!(
+                    "atrm failed (exit {}): {}",
+                    output.exit_code, output.stderr
+                )));
+            }
             Ok(())
         }
         SafetyMechanism::SystemdRun => {
@@ -230,7 +241,13 @@ async fn schedule_systemd_run(
     timeout_secs: u32,
 ) -> Result<RevertJobId, SafetyError> {
     let delay = format!("{}s", timeout_secs);
-    let unit_name = format!("traffic-rules-revert-{}", std::process::id());
+    // Use a timestamp-based identifier so the unit name survives app restarts
+    // (unlike std::process::id() which changes each launch).
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let unit_name = format!("traffic-rules-revert-{}", ts);
     let cmd = build_command(
         "sudo",
         &[
@@ -258,17 +275,40 @@ async fn schedule_nohup(
     _backup_path: &str,
     timeout_secs: u32,
 ) -> Result<RevertJobId, SafetyError> {
-    // nohup background: sleep N then run revert
-    let script = format!(
-        "sleep {} && /var/lib/traffic-rules/revert.sh",
+    // Write the revert command to a temp script on the remote host to avoid
+    // shell injection from nested quoting.
+    let script_content = format!(
+        "#!/bin/sh\nsleep {} && /var/lib/traffic-rules/revert.sh\n",
         timeout_secs
     );
-    let cmd = build_command(
+    let tmp_script = "/var/lib/traffic-rules/.nohup-revert.sh";
+
+    // Write script via stdin (safe — no shell interpolation)
+    let write_cmd = build_command("sudo", &["tee", tmp_script]);
+    let write_output = executor
+        .exec_with_stdin(&write_cmd, script_content.as_bytes())
+        .await
+        .map_err(|e| SafetyError::ScheduleFailed(e.to_string()))?;
+    if write_output.exit_code != 0 {
+        return Err(SafetyError::ScheduleFailed(write_output.stderr));
+    }
+
+    let chmod_cmd = build_command("sudo", &["chmod", "0755", tmp_script]);
+    let chmod_output = executor
+        .exec(&chmod_cmd)
+        .await
+        .map_err(|e| SafetyError::ScheduleFailed(e.to_string()))?;
+    if chmod_output.exit_code != 0 {
+        return Err(SafetyError::ScheduleFailed(chmod_output.stderr));
+    }
+
+    // Run the script via nohup
+    let run_cmd = build_command(
         "bash",
-        &["-c", &format!("nohup bash -c '{}' > /dev/null 2>&1 & echo $!", script)],
+        &["-c", &format!("nohup {} > /dev/null 2>&1 & echo $!", tmp_script)],
     );
     let output = executor
-        .exec(&cmd)
+        .exec(&run_cmd)
         .await
         .map_err(|e| SafetyError::ScheduleFailed(e.to_string()))?;
     if output.exit_code != 0 {
@@ -366,19 +406,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detect_iptables_apply() {
-        let executor = MockExecutor::new(vec![
-            ("iptables-apply", 0, "/usr/sbin/iptables-apply", ""),
-        ]);
-        let mechanism = detect_mechanism(&executor).await;
-        assert_eq!(mechanism, SafetyMechanism::IptablesApply);
-    }
-
-    #[tokio::test]
     async fn test_detect_at() {
         let executor = MockExecutor::new(vec![
-            // iptables-apply not available
-            ("iptables-apply", 1, "", ""),
             // at is available
             ("which at", 0, "/usr/bin/at", ""),
             // atd is running
@@ -391,7 +420,6 @@ mod tests {
     #[tokio::test]
     async fn test_detect_systemd_run() {
         let executor = MockExecutor::new(vec![
-            ("iptables-apply", 1, "", ""),
             ("which at", 1, "", ""),
             ("systemd-run", 0, "/usr/bin/systemd-run", ""),
         ]);
@@ -402,7 +430,6 @@ mod tests {
     #[tokio::test]
     async fn test_detect_nohup_fallback() {
         let executor = MockExecutor::new(vec![
-            ("iptables-apply", 1, "", ""),
             ("which at", 1, "", ""),
             ("systemd-run", 1, "", ""),
         ]);
@@ -413,7 +440,6 @@ mod tests {
     #[tokio::test]
     async fn test_detect_at_without_atd() {
         let executor = MockExecutor::new(vec![
-            ("iptables-apply", 1, "", ""),
             ("which at", 0, "/usr/bin/at", ""),
             // atd is NOT running
             ("is-active", 1, "inactive", ""),

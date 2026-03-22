@@ -25,8 +25,17 @@ pub fn explain_rule(spec: &RuleSpec) -> String {
         }
         Some(Target::Queue) => "queues",
         Some(Target::Other(name)) => {
-            parts.push(format!("This rule applies the {} target to", name));
-            "applies a target to"
+            // Early return like Jump — avoids duplicate message from the
+            // generic "This rule {action} {traffic}" path below.
+            let traffic_desc = describe_traffic(spec);
+            parts.push(format!("This rule applies the {} target to {}.", name, traffic_desc));
+            if let Some(service) = identify_service(spec) {
+                parts.push(format!("This is typically {}.", service));
+            }
+            if let Some(ref comment) = spec.comment {
+                parts.push(format!("Comment: \"{}\".", comment));
+            }
+            return finalize_explanation(spec, parts);
         }
         None => "matches",
     };
