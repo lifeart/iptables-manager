@@ -48,6 +48,20 @@ export class FilterBar extends Component {
     searchWrap.appendChild(this.filterCountEl);
 
     this.el.appendChild(searchWrap);
+
+    // "+ Add Rule" button
+    const addRuleBtn = h('button', {
+      className: 'filter-bar__add-rule-btn',
+      type: 'button',
+      'aria-label': 'Add rule',
+    }, '+ Add Rule');
+    this.listen(addRuleBtn, 'click', () => {
+      this.store.dispatch({
+        type: 'SET_SIDE_PANEL_CONTENT',
+        content: { type: 'rule-new' },
+      });
+    });
+    this.el.appendChild(addRuleBtn);
   }
 
   private renderSegments(): void {

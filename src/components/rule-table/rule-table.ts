@@ -37,6 +37,7 @@ export class RuleTable extends Component {
 
   private filterBar: FilterBar | null = null;
   private pendingBar!: PendingBar;
+  private addRuleBtnContainer!: HTMLElement;
   private collapsedSections = new Set<string>();
   private currentHeaderHostId: string | null = null;
 
@@ -84,6 +85,21 @@ export class RuleTable extends Component {
     // Filter bar container (conditionally rendered)
     this.filterBarContainer = h('div', { className: 'rule-table__filter-bar-container' });
     this.el.appendChild(this.filterBarContainer);
+
+    // Standalone "+ Add Rule" button (shown when filter bar is hidden, i.e. < 5 rules)
+    this.addRuleBtnContainer = h('div', { className: 'rule-table__add-rule-container' });
+    const addRuleBtn = h('button', {
+      className: 'rule-table__add-rule-btn',
+      type: 'button',
+    }, '+ Add Rule');
+    this.listen(addRuleBtn, 'click', () => {
+      this.store.dispatch({
+        type: 'SET_SIDE_PANEL_CONTENT',
+        content: { type: 'rule-new' },
+      });
+    });
+    this.addRuleBtnContainer.appendChild(addRuleBtn);
+    this.el.appendChild(this.addRuleBtnContainer);
 
     // Sections container (scrollable) — serves as the rules tab panel
     this.sectionsContainer = h('div', {
@@ -271,6 +287,10 @@ export class RuleTable extends Component {
       this.filterBarContainer.innerHTML = '';
     }
 
+    // Show standalone "+ Add Rule" button when filter bar is hidden and rules exist (1-4 rules)
+    const showStandaloneAddBtn = ruleCount > 0 && ruleCount < 5;
+    this.addRuleBtnContainer.style.display = showStandaloneAddBtn ? '' : 'none';
+
     // Update filter bar info
     this.filterBar?.updateRuleInfo(allRules, filteredRules);
   }
@@ -445,6 +465,9 @@ export class RuleTable extends Component {
     // Show/hide panels
     this.sectionsContainer.style.display = tab === 'rules' ? '' : 'none';
     this.filterBarContainer.style.display = tab === 'rules' ? '' : 'none';
+    if (tab !== 'rules') {
+      this.addRuleBtnContainer.style.display = 'none';
+    }
     if (this.activityPanel) this.activityPanel.style.display = tab === 'activity' ? '' : 'none';
     if (this.terminalPanel) this.terminalPanel.style.display = tab === 'terminal' ? '' : 'none';
 
