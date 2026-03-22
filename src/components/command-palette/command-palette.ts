@@ -13,7 +13,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { h, clearChildren } from '../../utils/dom';
+import { h, clearChildren, trapFocus } from '../../utils/dom';
 
 interface PaletteItem {
   id: string;
@@ -30,6 +30,7 @@ export class CommandPalette extends Component {
   private resultsEl: HTMLElement;
   private items: PaletteItem[] = [];
   private selectedIndex = 0;
+  private triggerElement: Element | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -42,8 +43,18 @@ export class CommandPalette extends Component {
     this.dialogEl = h('div', {
       className: 'command-palette__dialog',
       role: 'dialog',
-      'aria-label': 'Command palette',
+      'aria-modal': 'true',
+      'aria-labelledby': 'cmd-palette-title',
     });
+
+    // Hidden title for aria-labelledby
+    const title = h('span', { id: 'cmd-palette-title', className: 'sr-only' }, 'Command palette');
+    title.style.position = 'absolute';
+    title.style.width = '1px';
+    title.style.height = '1px';
+    title.style.overflow = 'hidden';
+    title.style.clip = 'rect(0,0,0,0)';
+    this.dialogEl.appendChild(title);
 
     // Search field
     this.searchInput = document.createElement('input');
@@ -72,6 +83,31 @@ export class CommandPalette extends Component {
       }
     });
 
+    // Delegated click handler on results container
+    this.listen(this.resultsEl, 'click', (e) => {
+      const row = (e.target as HTMLElement).closest('.command-palette__result') as HTMLElement | null;
+      if (!row) return;
+      const idx = parseInt(row.dataset.index ?? '', 10);
+      if (!isNaN(idx) && this.items[idx]) {
+        this.items[idx].action();
+        this.close();
+      }
+    });
+
+    // Delegated mouseenter handler on results container
+    this.listen(this.resultsEl, 'mouseover', (e) => {
+      const row = (e.target as HTMLElement).closest('.command-palette__result') as HTMLElement | null;
+      if (!row) return;
+      const idx = parseInt(row.dataset.index ?? '', 10);
+      if (!isNaN(idx) && idx !== this.selectedIndex) {
+        this.selectedIndex = idx;
+        this.updateSelection();
+      }
+    });
+
+    // Focus trapping
+    trapFocus(this.dialogEl, this.ac.signal);
+
     // Subscribe to open state
     this.subscribe(
       (s) => s.commandPaletteOpen,
@@ -86,6 +122,7 @@ export class CommandPalette extends Component {
   }
 
   private open(): void {
+    this.triggerElement = document.activeElement;
     this.overlayEl.style.display = '';
     this.dialogEl.classList.add('command-palette__dialog--open');
     this.searchInput.value = '';
@@ -102,6 +139,11 @@ export class CommandPalette extends Component {
   private hide(): void {
     this.dialogEl.classList.remove('command-palette__dialog--open');
     this.overlayEl.style.display = 'none';
+
+    // Restore focus to trigger element
+    if (this.triggerElement && this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
   }
 
   private close(): void {
@@ -124,12 +166,12 @@ export class CommandPalette extends Component {
       case 'ArrowDown':
         e.preventDefault();
         this.selectedIndex = Math.min(this.selectedIndex + 1, this.items.length - 1);
-        this.renderResults();
+        this.updateSelection();
         break;
       case 'ArrowUp':
         e.preventDefault();
         this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-        this.renderResults();
+        this.updateSelection();
         break;
       case 'Enter':
         e.preventDefault();
@@ -246,22 +288,13 @@ export class CommandPalette extends Component {
           (i === this.selectedIndex ? ' command-palette__result--selected' : ''),
         role: 'option',
         'aria-selected': String(i === this.selectedIndex),
+        dataset: { index: String(i) },
       });
 
       row.appendChild(h('span', { className: 'command-palette__result-label' }, item.label));
       if (item.detail) {
         row.appendChild(h('span', { className: 'command-palette__result-detail' }, item.detail));
       }
-
-      this.listen(row, 'click', () => {
-        item.action();
-        this.close();
-      });
-
-      this.listen(row, 'mouseenter', () => {
-        this.selectedIndex = i;
-        this.renderResults();
-      });
 
       this.resultsEl.appendChild(row);
     }
@@ -271,5 +304,17 @@ export class CommandPalette extends Component {
         h('div', { className: 'command-palette__empty' }, 'No results found.'),
       );
     }
+  }
+
+  /**
+   * Update selection styling without rebuilding all rows.
+   */
+  private updateSelection(): void {
+    const rows = this.resultsEl.querySelectorAll('.command-palette__result');
+    rows.forEach((row, i) => {
+      const isSelected = i === this.selectedIndex;
+      row.classList.toggle('command-palette__result--selected', isSelected);
+      row.setAttribute('aria-selected', String(isSelected));
+    });
   }
 }

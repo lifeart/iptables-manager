@@ -139,3 +139,39 @@ export function qsa<T extends HTMLElement = HTMLElement>(
 ): T[] {
   return Array.from(parent.querySelectorAll<T>(selector));
 }
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Trap focus within a dialog element. Returns a cleanup function.
+ * Intercepts Tab/Shift+Tab and wraps focus among focusable elements.
+ */
+export function trapFocus(dialogEl: HTMLElement, signal?: AbortSignal): void {
+  const handler = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+
+    const focusable = Array.from(
+      dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+    ).filter(el => el.offsetParent !== null);
+
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+
+  dialogEl.addEventListener('keydown', handler as EventListener, { signal });
+}

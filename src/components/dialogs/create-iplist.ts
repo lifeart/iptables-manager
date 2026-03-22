@@ -6,7 +6,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { IpList, IpListEntry } from '../../store/types';
-import { h } from '../../utils/dom';
+import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidCIDR } from '../../utils/ip-validate';
 
 function validateAddress(value: string): string | null {
@@ -32,20 +32,28 @@ export class CreateIpListDialog extends Component {
   private addEntryError!: HTMLElement;
   private createBtn!: HTMLButtonElement;
   private entries: IpListEntry[] = [];
+  private triggerElement: Element | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
+    this.triggerElement = document.activeElement;
     this.render();
     this.bindEvents();
   }
 
   private render(): void {
     this.overlay = h('div', { className: 'dialog-overlay' });
-    const dialog = h('div', { className: 'dialog-card dialog-card--create-iplist' });
+    const titleId = 'create-iplist-dialog-title';
+    const dialog = h('div', {
+      className: 'dialog-card dialog-card--create-iplist',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     // Header
     dialog.appendChild(h('div', { className: 'dialog-header' },
-      h('span', { className: 'dialog-title' }, 'Create IP List'),
+      h('span', { className: 'dialog-title', id: titleId }, 'Create IP List'),
       h('button', { className: 'dialog-close', 'aria-label': 'Close' }, '\u00D7'),
     ));
 
@@ -111,6 +119,14 @@ export class CreateIpListDialog extends Component {
 
     this.overlay.appendChild(dialog);
     this.el.appendChild(this.overlay);
+
+    // Focus trapping
+    trapFocus(dialog, this.ac.signal);
+
+    // Escape to close
+    this.listen(document, 'keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape') this.close();
+    });
 
     requestAnimationFrame(() => this.nameInput.focus());
   }
@@ -193,6 +209,9 @@ export class CreateIpListDialog extends Component {
 
   private close(): void {
     this.overlay.remove();
+    if (this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
     this.destroy();
   }
 }

@@ -8,7 +8,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { AppState, Host } from '../../store/types';
-import { h } from '../../utils/dom';
+import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidCIDR } from '../../utils/ip-validate';
 
 export class QuickBlockDialog extends Component {
@@ -18,19 +18,28 @@ export class QuickBlockDialog extends Component {
   private blockBtn!: HTMLButtonElement;
   private errorEl!: HTMLElement;
 
+  private triggerElement: Element | null = null;
+
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
+    this.triggerElement = document.activeElement;
     this.render();
     this.bindEvents();
   }
 
   private render(): void {
     this.overlay = h('div', { className: 'dialog-overlay' });
-    const dialog = h('div', { className: 'dialog-card dialog-card--quick-block' });
+    const titleId = 'quick-block-dialog-title';
+    const dialog = h('div', {
+      className: 'dialog-card dialog-card--quick-block',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     // Title
     dialog.appendChild(h('div', { className: 'dialog-header dialog-header--compact' },
-      h('span', { className: 'dialog-title' }, 'Block IP Address'),
+      h('span', { className: 'dialog-title', id: titleId }, 'Block IP Address'),
     ));
 
     const body = h('div', { className: 'dialog-body' });
@@ -96,6 +105,9 @@ export class QuickBlockDialog extends Component {
 
     this.overlay.appendChild(dialog);
     this.el.appendChild(this.overlay);
+
+    // Focus trapping
+    trapFocus(dialog, this.ac.signal);
 
     // Auto-focus
     requestAnimationFrame(() => this.ipInput.focus());
@@ -232,6 +244,9 @@ export class QuickBlockDialog extends Component {
   private close(): void {
     this.store.dispatch({ type: 'TOGGLE_QUICK_BLOCK', open: false });
     this.overlay.remove();
+    if (this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
     this.destroy();
   }
 }

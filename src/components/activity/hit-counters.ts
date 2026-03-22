@@ -29,6 +29,18 @@ export class HitCounters extends Component {
     super(container, store);
     this.container = container;
     this.container.className = 'hit-counters';
+
+    // Delegated click handler for row clicks
+    this.listen(this.container, 'click', (e) => {
+      const row = (e.target as HTMLElement).closest('.hit-counters__row') as HTMLElement | null;
+      if (!row) return;
+      const ruleId = row.dataset.ruleId;
+      if (ruleId) {
+        this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+        this.store.dispatch({ type: 'SET_SIDE_PANEL_CONTENT', content: { type: 'rule-detail', ruleId } });
+      }
+    });
+
     this.bindSubscriptions();
   }
 
@@ -138,7 +150,8 @@ export class HitCounters extends Component {
       // Sparkline
       const sparkContainer = h('span', { className: 'hit-counters__col hit-counters__col--sparkline' });
       if (row.rate > 0) {
-        const sparkline = new Sparkline(sparkContainer, statusColor);
+        const resolvedColor = this.resolveColor(statusColor);
+        const sparkline = new Sparkline(sparkContainer, resolvedColor);
         sparkline.setData([row.packets]);
         this.sparklines.set(row.ruleId, sparkline);
       }
@@ -163,6 +176,18 @@ export class HitCounters extends Component {
       case 'log': case 'log-block': return 'var(--color-log, #5856D6)';
       default: return 'var(--color-info, #007AFF)';
     }
+  }
+
+  /**
+   * Resolve a CSS variable string like "var(--color-allow, #34C759)" to a hex color
+   * for use in canvas context which cannot resolve CSS variables.
+   */
+  private resolveColor(cssValue: string): string {
+    const match = cssValue.match(/var\([^,]+,\s*(#[0-9A-Fa-f]{3,8})\)/);
+    if (match) {
+      return match[1];
+    }
+    return cssValue;
   }
 
   override destroy(): void {

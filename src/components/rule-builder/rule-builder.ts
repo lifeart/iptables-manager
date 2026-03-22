@@ -49,6 +49,12 @@ export class RuleBuilder extends Component {
   private servicePicker: ServicePicker | null = null;
   private addressPicker: AddressPicker | null = null;
 
+  // Cached "More options" display elements
+  private protocolDisplay: HTMLElement | null = null;
+  private portDisplay: HTMLElement | null = null;
+  private directionDisplay: HTMLElement | null = null;
+  private previewCodeEl: HTMLElement | null = null;
+
   constructor(container: HTMLElement, store: Store, existingRule: Rule | null) {
     super(container, store);
 
@@ -66,7 +72,7 @@ export class RuleBuilder extends Component {
 
     this.formEl = h('div', { className: 'rule-builder' });
 
-    // ─── Action ────────────────────────────────────────────────
+    // --- Action ---
     const actionGroup = this.createFieldGroup('Action');
     const segmentControl = h('div', { className: 'rule-builder__segment-control' });
     this.segmentIndicator = h('div', { className: 'rule-builder__segment-indicator' });
@@ -88,27 +94,30 @@ export class RuleBuilder extends Component {
     actionGroup.appendChild(segmentControl);
     this.formEl.appendChild(actionGroup);
 
-    // ─── Service ───────────────────────────────────────────────
+    // --- Service ---
     const serviceGroup = this.createFieldGroup('Service');
     const serviceContainer = h('div', { className: 'rule-builder__service-container' });
     this.servicePicker = new ServicePicker(serviceContainer, store, this.serviceSelection, (sel) => {
       this.serviceSelection = sel;
+      this.updateMoreOptionsDetails();
+      this.updatePreview();
     });
     this.addChild(this.servicePicker);
     serviceGroup.appendChild(serviceContainer);
     this.formEl.appendChild(serviceGroup);
 
-    // ─── Source ────────────────────────────────────────────────
+    // --- Source ---
     const sourceGroup = this.createFieldGroup('Source');
     const sourceContainer = h('div', { className: 'rule-builder__source-container' });
     this.addressPicker = new AddressPicker(sourceContainer, store, this.selectedSource, (addr) => {
       this.selectedSource = addr;
+      this.updatePreview();
     });
     this.addChild(this.addressPicker);
     sourceGroup.appendChild(sourceContainer);
     this.formEl.appendChild(sourceGroup);
 
-    // ─── Comment ──────────────────────────────────────────────
+    // --- Comment ---
     const commentGroup = this.createFieldGroup('Comment');
     this.commentInput = document.createElement('input');
     this.commentInput.type = 'text';
@@ -117,11 +126,12 @@ export class RuleBuilder extends Component {
     this.commentInput.value = this.commentValue;
     this.listen(this.commentInput, 'input', () => {
       this.commentValue = this.commentInput.value;
+      this.updatePreview();
     });
     commentGroup.appendChild(this.commentInput);
     this.formEl.appendChild(commentGroup);
 
-    // ─── More Options ─────────────────────────────────────────
+    // --- More Options ---
     const moreOptionsLink = h('button', {
       className: 'rule-builder__more-options-link',
       type: 'button',
@@ -168,6 +178,7 @@ export class RuleBuilder extends Component {
       el.classList.toggle('rule-builder__segment-btn--active', key === value);
     }
     this.updateSegmentIndicator();
+    this.updatePreview();
   }
 
   private updateSegmentIndicator(): void {
@@ -222,20 +233,20 @@ export class RuleBuilder extends Component {
     this.moreOptionsContainer.appendChild(detailsHeader);
 
     const protocolField = this.createFieldGroup('Protocol');
-    const protocolDisplay = h('span', { className: 'rule-builder__static-value' },
+    this.protocolDisplay = h('span', { className: 'rule-builder__static-value' },
       this.serviceSelection.protocol ? String(this.serviceSelection.protocol).toUpperCase() : 'Any');
-    protocolField.appendChild(protocolDisplay);
+    protocolField.appendChild(this.protocolDisplay);
     this.moreOptionsContainer.appendChild(protocolField);
 
     const portField = this.createFieldGroup('Port');
-    const portDisplay = h('span', { className: 'rule-builder__static-value' },
+    this.portDisplay = h('span', { className: 'rule-builder__static-value' },
       this.serviceSelection.ports ? this.formatPorts(this.serviceSelection.ports) : 'Any');
-    portField.appendChild(portDisplay);
+    portField.appendChild(this.portDisplay);
     this.moreOptionsContainer.appendChild(portField);
 
     const directionField = this.createFieldGroup('Direction');
-    const directionDisplay = h('span', { className: 'rule-builder__static-value' }, 'Incoming');
-    directionField.appendChild(directionDisplay);
+    this.directionDisplay = h('span', { className: 'rule-builder__static-value' }, 'Incoming');
+    directionField.appendChild(this.directionDisplay);
     this.moreOptionsContainer.appendChild(directionField);
 
     // Advanced section
@@ -264,10 +275,33 @@ export class RuleBuilder extends Component {
     const summary = h('summary', { className: 'rule-builder__disclosure-summary' },
       'Show iptables command');
     disclosure.appendChild(summary);
-    const codeBlock = h('pre', { className: 'rule-builder__code' },
-      h('code', {}, this.generateIptablesPreview()));
+    this.previewCodeEl = h('code', {}, this.generateIptablesPreview());
+    const codeBlock = h('pre', { className: 'rule-builder__code' }, this.previewCodeEl);
     disclosure.appendChild(codeBlock);
     this.moreOptionsContainer.appendChild(disclosure);
+  }
+
+  /**
+   * Update the "More options" detail fields when service selection changes.
+   */
+  private updateMoreOptionsDetails(): void {
+    if (this.protocolDisplay) {
+      this.protocolDisplay.textContent =
+        this.serviceSelection.protocol ? String(this.serviceSelection.protocol).toUpperCase() : 'Any';
+    }
+    if (this.portDisplay) {
+      this.portDisplay.textContent =
+        this.serviceSelection.ports ? this.formatPorts(this.serviceSelection.ports) : 'Any';
+    }
+  }
+
+  /**
+   * Regenerate the iptables preview text when form state changes.
+   */
+  private updatePreview(): void {
+    if (this.previewCodeEl) {
+      this.previewCodeEl.textContent = this.generateIptablesPreview();
+    }
   }
 
   private createOption(value: string, text: string): HTMLOptionElement {

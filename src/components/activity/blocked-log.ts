@@ -120,7 +120,7 @@ export class BlockedLog extends Component {
           source: { type: 'cidr', value: `${ip}/32` },
           destination: { type: 'anyone' },
           direction: 'incoming',
-          addressFamily: 'v4',
+          addressFamily: ip.includes(':') ? 'v6' : 'v4',
           origin: { type: 'user' },
           position: 0,
           enabled: true,

@@ -28,7 +28,7 @@ export class SidePanel extends Component {
     super(container, store);
 
     // Build panel structure
-    this.panelEl = h('div', { className: 'side-panel' });
+    this.panelEl = h('div', { className: 'side-panel', role: 'complementary', 'aria-label': 'Rule details' });
 
     // Header with close button
     const header = h('div', { className: 'side-panel__header' });

@@ -5,27 +5,35 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { HostGroup } from '../../store/types';
-import { h } from '../../utils/dom';
+import { h, trapFocus } from '../../utils/dom';
 
 export class CreateGroupDialog extends Component {
   private overlay!: HTMLElement;
   private nameInput!: HTMLInputElement;
   private createBtn!: HTMLButtonElement;
   private memberCheckboxes: Map<string, HTMLInputElement> = new Map();
+  private triggerElement: Element | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
+    this.triggerElement = document.activeElement;
     this.render();
     this.bindEvents();
   }
 
   private render(): void {
     this.overlay = h('div', { className: 'dialog-overlay' });
-    const dialog = h('div', { className: 'dialog-card dialog-card--create-group' });
+    const titleId = 'create-group-dialog-title';
+    const dialog = h('div', {
+      className: 'dialog-card dialog-card--create-group',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     // Header
     dialog.appendChild(h('div', { className: 'dialog-header' },
-      h('span', { className: 'dialog-title' }, 'New Group'),
+      h('span', { className: 'dialog-title', id: titleId }, 'New Group'),
       h('button', { className: 'dialog-close', 'aria-label': 'Close' }, '\u00D7'),
     ));
 
@@ -92,6 +100,14 @@ export class CreateGroupDialog extends Component {
     this.overlay.appendChild(dialog);
     this.el.appendChild(this.overlay);
 
+    // Focus trapping
+    trapFocus(dialog, this.ac.signal);
+
+    // Escape to close
+    this.listen(document, 'keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape') this.close();
+    });
+
     requestAnimationFrame(() => this.nameInput.focus());
   }
 
@@ -150,6 +166,9 @@ export class CreateGroupDialog extends Component {
 
   private close(): void {
     this.overlay.remove();
+    if (this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
     this.destroy();
   }
 }

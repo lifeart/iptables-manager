@@ -149,7 +149,9 @@ export class Activity extends Component {
     if (this.streamId) {
       try {
         await unsubscribeActivity(this.streamId);
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.warn('Failed to unsubscribe from activity stream:', err);
+      }
       this.streamId = null;
     }
 
@@ -158,7 +160,10 @@ export class Activity extends Component {
     if (hostId) {
       try {
         this.streamId = await subscribeActivity(hostId);
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.warn('Failed to subscribe to activity stream:', err);
+        this.showActivityError('Unable to load activity data');
+      }
     }
   }
 
@@ -169,7 +174,16 @@ export class Activity extends Component {
     try {
       const bans = await fetchBans(hostId);
       this.renderBans(bans);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('Failed to fetch bans:', err);
+      const existingList = this.bansSection.querySelector('.activity-view__bans-list');
+      if (existingList) existingList.remove();
+      const errorEl = h('div', { className: 'activity-view__bans-list' },
+        h('div', { className: 'activity-view__bans-empty activity-view__bans-empty--error' },
+          'Unable to load activity data'),
+      );
+      this.bansSection.appendChild(errorEl);
+    }
   }
 
   private renderBans(bans: Fail2banBan[]): void {
@@ -195,6 +209,14 @@ export class Activity extends Component {
     }
 
     this.bansSection.appendChild(list);
+  }
+
+  private showActivityError(message: string): void {
+    // Display error message in the hit counters area
+    this.hitCountersEl.innerHTML = '';
+    this.hitCountersEl.appendChild(
+      h('div', { className: 'activity-view__error' }, message),
+    );
   }
 
   private togglePause(): void {

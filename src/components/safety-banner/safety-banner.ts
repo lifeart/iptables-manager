@@ -23,6 +23,14 @@ export class SafetyBanner extends Component {
   private useCount = 0;
   private currentTimers: Map<string, SafetyTimerState> = new Map();
 
+  // Cached DOM elements for updateDisplay — created once in show()
+  private textEl: HTMLElement | null = null;
+  private revertBtn: HTMLButtonElement | null = null;
+  private compactLine: HTMLElement | null = null;
+  private compactTextSpan: HTMLElement | null = null;
+  private compactRevertBtn: HTMLButtonElement | null = null;
+  private currentHostId: string | null = null;
+
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
 
@@ -62,7 +70,46 @@ export class SafetyBanner extends Component {
   private show(): void {
     this.bannerEl.style.display = '';
     this.bannerEl.classList.add('safety-banner--visible');
-    this.bannerEl.classList.toggle('safety-banner--compact', this.useCount > 5);
+    const isCompact = this.useCount > 5;
+    this.bannerEl.classList.toggle('safety-banner--compact', isCompact);
+
+    // Build content elements once
+    clearChildren(this.contentEl);
+    this.textEl = null;
+    this.revertBtn = null;
+    this.compactLine = null;
+    this.compactTextSpan = null;
+    this.compactRevertBtn = null;
+    this.currentHostId = null;
+
+    if (isCompact) {
+      this.compactLine = h('div', { className: 'safety-banner__compact-line' });
+      this.compactTextSpan = h('span', {}, '');
+      this.compactLine.appendChild(this.compactTextSpan);
+
+      this.compactRevertBtn = document.createElement('button');
+      this.compactRevertBtn.className = 'safety-banner__revert-btn safety-banner__revert-btn--compact';
+      this.compactRevertBtn.type = 'button';
+      this.compactRevertBtn.textContent = 'Revert';
+      this.listen(this.compactRevertBtn, 'click', () => {
+        if (this.currentHostId) this.revertChanges(this.currentHostId);
+      });
+      this.compactLine.appendChild(this.compactRevertBtn);
+      this.contentEl.appendChild(this.compactLine);
+    } else {
+      this.textEl = h('p', { className: 'safety-banner__text' }, '');
+      this.contentEl.appendChild(this.textEl);
+
+      this.revertBtn = document.createElement('button');
+      this.revertBtn.className = 'safety-banner__revert-btn';
+      this.revertBtn.type = 'button';
+      this.revertBtn.textContent = 'Revert Changes';
+      this.listen(this.revertBtn, 'click', () => {
+        if (this.currentHostId) this.revertChanges(this.currentHostId);
+      });
+      this.contentEl.appendChild(this.revertBtn);
+    }
+
     this.updateDisplay();
   }
 
@@ -94,8 +141,6 @@ export class SafetyBanner extends Component {
   }
 
   private updateDisplay(): void {
-    clearChildren(this.contentEl);
-
     const isCompact = this.useCount > 5;
     const now = Date.now();
 
@@ -108,6 +153,9 @@ export class SafetyBanner extends Component {
       // Update progress bar
       this.progressBarEl.style.width = `${progress * 100}%`;
 
+      // Track current host for revert button
+      this.currentHostId = hostId;
+
       // Get host name
       const host = this.store.getState().hosts.get(hostId);
       const hostName = host ? host.name : hostId;
@@ -119,30 +167,13 @@ export class SafetyBanner extends Component {
       }
 
       if (isCompact) {
-        // Compact mode: single line
-        const line = h('div', { className: 'safety-banner__compact-line' });
-        line.appendChild(h('span', {}, `Confirming... ${remaining}s`));
-
-        const revertBtn = h('button', {
-          className: 'safety-banner__revert-btn safety-banner__revert-btn--compact',
-          type: 'button',
-        }, 'Revert');
-        this.listen(revertBtn, 'click', () => this.revertChanges(hostId));
-        line.appendChild(revertBtn);
-
-        this.contentEl.appendChild(line);
+        if (this.compactTextSpan) {
+          this.compactTextSpan.textContent = `Confirming... ${remaining}s`;
+        }
       } else {
-        // Full mode
-        const text = h('p', { className: 'safety-banner__text' },
-          `Changes applied to ${hostName}. Confirming in ${remaining} seconds`);
-        this.contentEl.appendChild(text);
-
-        const revertBtn = h('button', {
-          className: 'safety-banner__revert-btn',
-          type: 'button',
-        }, 'Revert Changes');
-        this.listen(revertBtn, 'click', () => this.revertChanges(hostId));
-        this.contentEl.appendChild(revertBtn);
+        if (this.textEl) {
+          this.textEl.textContent = `Changes applied to ${hostName}. Confirming in ${remaining} seconds`;
+        }
       }
     }
   }

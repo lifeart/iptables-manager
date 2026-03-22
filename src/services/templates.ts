@@ -467,6 +467,20 @@ const minimal: RuleTemplate = {
   description: 'INVALID drop + Established + SSH',
   generate(opts) {
     return [
+      makeRule({
+        label: 'Drop INVALID',
+        action: 'block',
+        direction: 'incoming',
+        conntrackStates: ['invalid'],
+        comment: 'Drop packets with INVALID conntrack state',
+      }),
+      makeRule({
+        label: 'Allow Established/Related',
+        action: 'allow',
+        direction: 'incoming',
+        conntrackStates: ['established', 'related'],
+        comment: 'Allow return traffic for existing connections',
+      }),
       sshRule(opts.managementIp),
       pingRule(),
       blockAllRule(),

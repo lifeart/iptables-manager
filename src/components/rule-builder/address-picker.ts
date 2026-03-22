@@ -159,12 +159,35 @@ export class AddressPicker extends Component {
   private getOptions(): AddressOption[] {
     const options: AddressOption[] = [
       { label: 'Anyone', value: { type: 'anyone' } },
-      { label: 'My Current IP', value: { type: 'cidr', value: '0.0.0.0' }, detail: 'Detected from connection' },
-      { label: 'Local Network', value: { type: 'cidr', value: '10.0.0.0/8' }, detail: 'Auto-detected' },
     ];
 
-    // IP Lists
+    // Resolve "My Current IP" from the active host's management interface
     const state = this.store.getState();
+    const activeHostId = state.activeHostId;
+    let myIp: string | null = null;
+    if (activeHostId) {
+      const host = state.hosts.get(activeHostId);
+      if (host?.capabilities) {
+        const mgmtIf = host.capabilities.managementInterface;
+        if (mgmtIf) {
+          const iface = host.capabilities.interfaces.find(i => i.name === mgmtIf);
+          if (iface && iface.addresses.length > 0) {
+            myIp = iface.addresses[0];
+          }
+        }
+      }
+    }
+
+    options.push({
+      label: 'My Current IP',
+      value: { type: 'cidr', value: myIp ?? '0.0.0.0' },
+      detail: myIp ?? 'Detecting...',
+    });
+    options.push(
+      { label: 'Local Network', value: { type: 'cidr', value: '10.0.0.0/8' }, detail: 'Auto-detected' },
+    );
+
+    // IP Lists
     for (const [, ipList] of state.ipLists) {
       options.push({
         label: ipList.name,

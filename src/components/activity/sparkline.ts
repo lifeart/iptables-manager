@@ -12,7 +12,9 @@ export class Sparkline {
   private color: string;
 
   constructor(container: HTMLElement, color = '#34C759') {
-    this.color = color;
+    // Resolve CSS variable fallback: extract hex from "var(--name, #hex)"
+    const varMatch = color.match(/var\([^,]+,\s*(#[0-9A-Fa-f]{3,8})\)/);
+    this.color = varMatch ? varMatch[1] : color;
     this.canvas = document.createElement('canvas');
     this.canvas.width = 80;
     this.canvas.height = 16;

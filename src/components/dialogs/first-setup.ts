@@ -8,7 +8,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { DetectedService, DetectedTool, Rule } from '../../store/types';
-import { h } from '../../utils/dom';
+import { h, trapFocus } from '../../utils/dom';
 
 export interface FirstSetupConfig {
   hostId: string;
@@ -38,10 +38,12 @@ export class FirstSetupDialog extends Component {
   private checkboxes: Map<string, HTMLInputElement> = new Map();
   private onCompleteCallback: ((selectedRules: Rule[]) => void) | null = null;
   private onSkipCallback: (() => void) | null = null;
+  private triggerElement: Element | null = null;
 
   constructor(container: HTMLElement, store: Store, config: FirstSetupConfig) {
     super(container, store);
     this.config = config;
+    this.triggerElement = document.activeElement;
     this.render();
   }
 
@@ -55,7 +57,13 @@ export class FirstSetupDialog extends Component {
 
   private render(): void {
     this.overlay = h('div', { className: 'dialog-overlay' });
-    const dialog = h('div', { className: 'dialog-card dialog-card--first-setup' });
+    const titleId = 'first-setup-dialog-title';
+    const dialog = h('div', {
+      className: 'dialog-card dialog-card--first-setup',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     switch (this.config.scenario) {
       case 'clean':
@@ -69,8 +77,20 @@ export class FirstSetupDialog extends Component {
         break;
     }
 
+    // Set the title id on the first dialog-title element
+    const titleEl = dialog.querySelector('.dialog-title');
+    if (titleEl) titleEl.id = titleId;
+
     this.overlay.appendChild(dialog);
     this.el.appendChild(this.overlay);
+
+    // Focus trapping
+    trapFocus(dialog, this.ac.signal);
+
+    // Escape to close
+    this.listen(document, 'keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape') this.close();
+    });
 
     // Stagger animations for suggested rules
     const ruleItems = dialog.querySelectorAll('.setup-rule-item');
@@ -326,6 +346,9 @@ export class FirstSetupDialog extends Component {
 
   private close(): void {
     this.overlay.remove();
+    if (this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
     this.destroy();
   }
 }

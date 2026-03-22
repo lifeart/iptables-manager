@@ -11,6 +11,12 @@ import { themeManager } from '../../services/theme';
 import { h } from '../../utils/dom';
 
 export class Settings extends Component {
+  // Cached element references for in-place updates
+  private themeSelect: HTMLSelectElement | null = null;
+  private safetyTimeoutSelect: HTMLSelectElement | null = null;
+  private pollIntervalSelect: HTMLSelectElement | null = null;
+  private showSystemRulesCheckbox: HTMLInputElement | null = null;
+
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
     this.render();
@@ -30,33 +36,39 @@ export class Settings extends Component {
 
     const body = h('div', { className: 'settings-panel__body' });
 
-    // ─── General Section ─────────────────────
+    // --- General Section ---
     body.appendChild(this.renderSectionHeader('General'));
 
     // Theme selector
-    body.appendChild(this.renderSelect('Theme', 'theme', settings.theme, [
+    const themeField = this.renderSelect('Theme', 'theme', settings.theme, [
       { value: 'light', label: 'Light' },
       { value: 'dark', label: 'Dark' },
       { value: 'system', label: 'System (follow OS)' },
-    ]));
+    ]);
+    this.themeSelect = themeField.querySelector('select');
+    body.appendChild(themeField);
 
     // Safety timeout
-    body.appendChild(this.renderSelect('Safety timeout', 'safetyTimeout', String(settings.defaultSafetyTimeout), [
+    const safetyField = this.renderSelect('Safety timeout', 'safetyTimeout', String(settings.defaultSafetyTimeout), [
       { value: '30', label: '30 seconds' },
       { value: '60', label: '60 seconds (recommended)' },
       { value: '120', label: '120 seconds' },
       { value: '0', label: 'Disabled (dangerous)' },
-    ]));
+    ]);
+    this.safetyTimeoutSelect = safetyField.querySelector('select');
+    body.appendChild(safetyField);
 
     // Auto-refresh interval
-    body.appendChild(this.renderSelect('Auto-refresh', 'pollInterval', String(settings.pollIntervalMs), [
+    const pollField = this.renderSelect('Auto-refresh', 'pollInterval', String(settings.pollIntervalMs), [
       { value: '10000', label: 'Every 10 seconds' },
       { value: '30000', label: 'Every 30 seconds' },
       { value: '60000', label: 'Every 60 seconds' },
       { value: '0', label: 'Manual only' },
-    ]));
+    ]);
+    this.pollIntervalSelect = pollField.querySelector('select');
+    body.appendChild(pollField);
 
-    // ─── Advanced Section ────────────────────
+    // --- Advanced Section ---
     body.appendChild(this.renderSectionHeader('Advanced'));
 
     // IP version mode
@@ -71,13 +83,15 @@ export class Settings extends Component {
       { value: 'allow', label: 'Allow' },
     ]));
 
-    // System rules visibility
-    body.appendChild(this.renderCheckbox(
-      'System rules (Docker, K8s, fail2ban)',
+    // System rules visibility — "Show system rules" with direct value
+    const sysRulesField = this.renderCheckbox(
+      'Show system rules',
       'showSystemRules',
-      !settings.showSystemRules,
-      'Hidden by default',
-    ));
+      settings.showSystemRules,
+      'Docker, K8s, fail2ban rules',
+    );
+    this.showSystemRulesCheckbox = sysRulesField.querySelector('input[type="checkbox"]');
+    body.appendChild(sysRulesField);
 
     // SSH connection timeout
     body.appendChild(this.renderNumberField('SSH connection timeout', 'sshConnTimeout', 10, 'seconds'));
@@ -85,7 +99,7 @@ export class Settings extends Component {
     // Command timeout
     body.appendChild(this.renderNumberField('Command timeout', 'cmdTimeout', 30, 'seconds'));
 
-    // ─── Data Section ────────────────────────
+    // --- Data Section ---
     body.appendChild(this.renderSectionHeader('Data'));
 
     // Export / Import
@@ -109,7 +123,7 @@ export class Settings extends Component {
       'Staged changes are stored locally and persist across app restarts.',
     ));
 
-    // ─── About Section ───────────────────────
+    // --- About Section ---
     body.appendChild(h('div', { className: 'settings-panel__separator' }));
     body.appendChild(h('div', { className: 'settings-panel__about' },
       h('p', { className: 'settings-panel__about-title' }, 'About'),
@@ -123,11 +137,29 @@ export class Settings extends Component {
   private bindSubscriptions(): void {
     this.subscribe(
       (s: AppState) => s.settings,
-      () => {
-        // Re-render on settings change — simple approach since settings panel is rarely open
-        this.render();
+      (settings) => {
+        // Update individual DOM elements instead of full re-render
+        this.updateElements(settings);
       },
     );
+  }
+
+  /**
+   * Update cached element values in-place to avoid focus loss.
+   */
+  private updateElements(settings: AppSettings): void {
+    if (this.themeSelect && this.themeSelect.value !== settings.theme) {
+      this.themeSelect.value = settings.theme;
+    }
+    if (this.safetyTimeoutSelect && this.safetyTimeoutSelect.value !== String(settings.defaultSafetyTimeout)) {
+      this.safetyTimeoutSelect.value = String(settings.defaultSafetyTimeout);
+    }
+    if (this.pollIntervalSelect && this.pollIntervalSelect.value !== String(settings.pollIntervalMs)) {
+      this.pollIntervalSelect.value = String(settings.pollIntervalMs);
+    }
+    if (this.showSystemRulesCheckbox && this.showSystemRulesCheckbox.checked !== settings.showSystemRules) {
+      this.showSystemRulesCheckbox.checked = settings.showSystemRules;
+    }
   }
 
   private renderSectionHeader(title: string): HTMLElement {
@@ -262,7 +294,7 @@ export class Settings extends Component {
         changes.pollIntervalMs = parseInt(value as string, 10);
         break;
       case 'showSystemRules':
-        changes.showSystemRules = !(value as boolean); // checkbox is "hidden by default"
+        changes.showSystemRules = value as boolean;
         break;
       default:
         // Other settings are handled but not yet mapped to AppSettings

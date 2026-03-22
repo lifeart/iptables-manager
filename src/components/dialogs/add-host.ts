@@ -8,7 +8,7 @@ import type { Store } from '../../store/index';
 import type { Host, AppState } from '../../store/types';
 import { testConnection } from '../../ipc/bridge';
 import type { TestResult } from '../../ipc/bridge';
-import { h } from '../../utils/dom';
+import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidPort } from '../../utils/ip-validate';
 
 interface ParsedInput {
@@ -91,9 +91,11 @@ export class AddHostDialog extends Component {
   private jumpHostInput!: HTMLInputElement;
 
   private onCloseCallback: (() => void) | null = null;
+  private triggerElement: Element | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
+    this.triggerElement = document.activeElement;
     this.render();
     this.bindEvents();
   }
@@ -104,11 +106,17 @@ export class AddHostDialog extends Component {
 
   private render(): void {
     this.overlay = h('div', { className: 'dialog-overlay' });
-    const dialog = h('div', { className: 'dialog-card dialog-card--add-host' });
+    const titleId = 'addhost-dialog-title';
+    const dialog = h('div', {
+      className: 'dialog-card dialog-card--add-host',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     // Header
     const header = h('div', { className: 'dialog-header' },
-      h('span', { className: 'dialog-title' }, 'Add Host'),
+      h('span', { className: 'dialog-title', id: titleId }, 'Add Host'),
       h('button', { className: 'dialog-close', 'aria-label': 'Close' }, '\u00D7'),
     );
     dialog.appendChild(header);
@@ -253,6 +261,14 @@ export class AddHostDialog extends Component {
 
     this.overlay.appendChild(dialog);
     this.el.appendChild(this.overlay);
+
+    // Focus trapping
+    trapFocus(dialog, this.ac.signal);
+
+    // Escape to close
+    this.listen(document, 'keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape') this.close();
+    });
 
     // Focus the quick input
     requestAnimationFrame(() => this.quickInput.focus());
@@ -466,6 +482,9 @@ export class AddHostDialog extends Component {
   private close(): void {
     this.overlay.remove();
     this.onCloseCallback?.();
+    if (this.triggerElement instanceof HTMLElement) {
+      this.triggerElement.focus();
+    }
     this.destroy();
   }
 }
