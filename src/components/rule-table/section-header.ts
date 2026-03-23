@@ -7,14 +7,6 @@
 import { h } from '../../utils/dom';
 import { formatCount } from '../../utils/format';
 
-function getSectionIcon(title: string): string {
-  const lower = title.toLowerCase();
-  if (lower.includes('incoming')) return '\u2193'; // ↓
-  if (lower.includes('outgoing')) return '\u2191'; // ↑
-  if (lower.includes('nat')) return '\u21C4';      // ⇄
-  return '\u2022'; // bullet fallback
-}
-
 export function createSectionHeader(
   title: string,
   ruleCount: number,
@@ -28,9 +20,6 @@ export function createSectionHeader(
     'aria-label': `${title} - ${formatCount(ruleCount, 'rule', 'rules')}`,
     dataset: { sectionTitle: title },
   });
-
-  const iconEl = h('span', { className: 'rule-table__section-icon' }, getSectionIcon(title));
-  header.appendChild(iconEl);
 
   const titleEl = h('span', { className: 'rule-table__section-title' }, title);
   header.appendChild(titleEl);
@@ -56,15 +45,6 @@ export function updateSectionHeader(
   el.classList.toggle('rule-table__section-header--collapsed', collapsed);
   el.setAttribute('aria-expanded', String(!collapsed));
   el.setAttribute('aria-label', `${title} - ${formatCount(ruleCount, 'rule', 'rules')}`);
-
-  // Update icon
-  const iconEl = el.querySelector('.rule-table__section-icon');
-  if (iconEl) {
-    const icon = getSectionIcon(title);
-    if (iconEl.textContent !== icon) {
-      iconEl.textContent = icon;
-    }
-  }
 
   const titleEl = el.querySelector('.rule-table__section-title');
   if (titleEl && titleEl.textContent !== title) {

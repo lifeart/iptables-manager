@@ -593,14 +593,6 @@ export class RuleTable extends Component {
       }
     }
 
-    // Update activity dot — active if packets in the last minute
-    const activityDot = rowEl.querySelector('.rule-table__activity-dot');
-    if (activityDot) {
-      const recentlyActive = counter
-        ? (counter.timestamp > Date.now() - 60_000 && counter.packets > 0)
-        : false;
-      activityDot.classList.toggle('rule-table__activity-dot--active', recentlyActive);
-    }
   }
 
   private formatHitCount(count: number): string {
@@ -776,10 +768,6 @@ export class RuleTable extends Component {
       className: `rule-table__host-status rule-table__host-status--${host.status}`,
     }, statusLabel);
     this.headerEl.appendChild(statusEl);
-
-    // Route map — packet flow visualization
-    const routeMap = this.buildRouteMap();
-    this.headerEl.appendChild(routeMap);
 
     const headerBtns = h('div', {
       className: 'rule-table__header-actions',

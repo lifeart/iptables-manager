@@ -25,20 +25,6 @@ function getActionDisplay(action: EffectiveRule['action']): ActionDisplay {
   }
 }
 
-function getActionIcon(action: EffectiveRule['action']): string {
-  switch (action) {
-    case 'allow': return '\u2713';
-    case 'block':
-    case 'block-reject': return '\u2715';
-    case 'log':
-    case 'log-block': return '\u25C9';
-    case 'dnat':
-    case 'snat':
-    case 'masquerade': return '\u21C4';
-    default: return '\u2713';
-  }
-}
-
 function getActionColorClass(action: EffectiveRule['action']): string {
   switch (action) {
     case 'allow': return 'rule-table__row-bar--allow';
@@ -97,10 +83,6 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipL
     dataset: { ruleId: rule.id },
   });
 
-  // Activity dot (alive indicator at far left)
-  const activityDot = h('span', { className: 'rule-table__activity-dot' });
-  row.appendChild(activityDot);
-
   // Drag handle (visible on hover)
   const dragHandle = h('span', { className: 'rule-table__drag-handle' }, '\u2807');
   row.appendChild(dragHandle);
@@ -117,7 +99,7 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipL
 
   const statusLabel = h('span', {
     className: `rule-table__status-label ${getStatusLabelClass(rule.action)}`,
-  }, `${getActionIcon(rule.action)} ${getActionDisplay(rule.action)}`);
+  }, getActionDisplay(rule.action));
   firstLine.appendChild(statusLabel);
 
   const nameText = rule.label + (rule.ports ? ` (${formatPorts(rule.ports)})` : '');
@@ -156,27 +138,6 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipL
     secondLine.appendChild(subtitleEl);
   }
   content.appendChild(secondLine);
-
-  // Third line: micro-info (interface + conntrack state) — only if present
-  const hasInterface = rule.interfaceIn || rule.interfaceOut;
-  const hasConntrack = rule.conntrackStates && rule.conntrackStates.length > 0;
-  if (hasInterface || hasConntrack) {
-    const thirdLine = h('div', { className: 'rule-table__row-third-line' });
-    if (hasInterface) {
-      const ifaceName = rule.interfaceIn || rule.interfaceOut || '';
-      const ifaceTag = h('span', { className: 'rule-table__micro-tag' }, ifaceName);
-      thirdLine.appendChild(ifaceTag);
-    }
-    if (hasInterface && hasConntrack) {
-      thirdLine.appendChild(h('span', { className: 'rule-table__micro-separator' }, '\u00B7'));
-    }
-    if (hasConntrack) {
-      const stateText = rule.conntrackStates!.map(s => s.toUpperCase()).join(',');
-      const stateTag = h('span', { className: 'rule-table__micro-tag' }, stateText);
-      thirdLine.appendChild(stateTag);
-    }
-    content.appendChild(thirdLine);
-  }
 
   row.appendChild(content);
 
@@ -238,10 +199,10 @@ export function updateRuleRow(el: HTMLElement, rule: EffectiveRule, hasPendingCh
     bar.className = `rule-table__row-bar ${getActionColorClass(rule.action)}`;
   }
 
-  // Update status label (with icon)
+  // Update status label
   const statusLabel = el.querySelector('.rule-table__status-label');
   if (statusLabel) {
-    const actionText = `${getActionIcon(rule.action)} ${getActionDisplay(rule.action)}`;
+    const actionText = getActionDisplay(rule.action);
     if (statusLabel.textContent !== actionText) {
       statusLabel.textContent = actionText;
     }

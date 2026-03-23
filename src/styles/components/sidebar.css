@@ -382,3 +382,38 @@
   cursor: col-resize;
   z-index: 10;
 }
+
+/* ── Delete Buttons (hover only) ────────────────────── */
+
+.sidebar__host-delete-btn,
+.sidebar__group-delete-btn,
+.sidebar__iplist-delete-btn {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.sidebar__host-row:hover .sidebar__host-delete-btn,
+.sidebar__group-row:hover .sidebar__group-delete-btn,
+.sidebar__iplist-row:hover .sidebar__iplist-delete-btn {
+  opacity: 1;
+}
+
+.sidebar__host-delete-btn:hover,
+.sidebar__group-delete-btn:hover,
+.sidebar__iplist-delete-btn:hover {
+  color: var(--color-block, #FF453A);
+  background: var(--color-hover);
+}
