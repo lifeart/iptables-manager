@@ -12,6 +12,7 @@ import { selectPendingChangeCount } from '../../store/selectors';
 import { formatCount } from '../../utils/format';
 import { h } from '../../utils/dom';
 import * as ipc from '../../ipc/bridge';
+import { IpcError } from '../../ipc/bridge';
 
 export class PendingBar extends Component {
   private countEl!: HTMLElement;
@@ -245,13 +246,35 @@ export class PendingBar extends Component {
         });
       }
     } catch (err) {
-      // Show error feedback inline
-      const errorMsg = err instanceof Error ? err.message : 'Apply failed';
-      const errorEl = document.createElement('span');
-      errorEl.className = 'rule-table__pending-bar-error';
-      errorEl.textContent = errorMsg;
-      this.el.appendChild(errorEl);
-      setTimeout(() => errorEl.remove(), 5000);
+      if (err instanceof IpcError && err.kind === 'LockoutDetected') {
+        const proceed = window.confirm(
+          'WARNING: These changes may lock you out!\n\n' +
+          err.detail + '\n\n' +
+          'Add an SSH rule for your IP before applying.\n\n' +
+          'Apply anyway? (DANGEROUS)'
+        );
+        if (proceed) {
+          try {
+            await ipc.applyChanges(hostId, changeset.changes);
+            this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
+          } catch (forceErr) {
+            const forceMsg = forceErr instanceof Error ? forceErr.message : 'Apply failed';
+            const forceEl = document.createElement('span');
+            forceEl.className = 'rule-table__pending-bar-error';
+            forceEl.textContent = forceMsg;
+            this.el.appendChild(forceEl);
+            setTimeout(() => forceEl.remove(), 5000);
+          }
+        }
+      } else {
+        // Show error feedback inline
+        const errorMsg = err instanceof Error ? err.message : 'Apply failed';
+        const errorEl = document.createElement('span');
+        errorEl.className = 'rule-table__pending-bar-error';
+        errorEl.textContent = errorMsg;
+        this.el.appendChild(errorEl);
+        setTimeout(() => errorEl.remove(), 5000);
+      }
     } finally {
       this.applyBtn.disabled = false;
       this.applyBtn.innerHTML = 'Apply <kbd>\u2318S</kbd>';

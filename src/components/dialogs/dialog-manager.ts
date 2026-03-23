@@ -13,6 +13,10 @@ import { AddHostDialog } from './add-host';
 import { QuickBlockDialog } from './quick-block';
 import { CreateGroupDialog } from './create-group';
 import { CreateIpListDialog } from './create-iplist';
+import { FirstSetupDialog } from './first-setup';
+import type { FirstSetupConfig } from './first-setup';
+import { MultiApplyDialog } from './multi-apply';
+import { selectActiveHost } from '../../store/selectors';
 
 export class DialogManager extends Component {
   private currentDialog: Component | null = null;
@@ -84,10 +88,47 @@ export class DialogManager extends Component {
         break;
       }
       case 'first-setup': {
-        // FirstSetupDialog requires a FirstSetupConfig which is built
-        // from host detection results. Close the dialog since there is
-        // no config to display without an active detection flow.
-        this.store.dispatch({ type: 'CLOSE_DIALOG' });
+        const host = this.store.select(selectActiveHost);
+        if (!host) {
+          this.store.dispatch({ type: 'CLOSE_DIALOG' });
+          break;
+        }
+
+        const config: FirstSetupConfig = {
+          hostId: host.id,
+          hostName: host.name,
+          scenario: 'clean',
+          services: host.capabilities?.runningServices ?? [],
+          existingRuleCount: 0,
+          ruleHealthGood: 0,
+          ruleHealthWarnings: [],
+          ruleHealthSuggestions: [],
+          detectedTools: host.capabilities?.detectedTools ?? [],
+          suggestedRules: [],
+          managementIp: undefined,
+        };
+
+        const dlg = new FirstSetupDialog(this.el, this.store, config);
+        dlg.onComplete((selectedRules) => {
+          for (let i = 0; i < selectedRules.length; i++) {
+            this.store.dispatch({
+              type: 'ADD_STAGED_CHANGE',
+              hostId: host.id,
+              change: { type: 'add', rule: selectedRules[i], position: i },
+            });
+          }
+        });
+        dlg.onSkip(() => {
+          // User skipped — no action needed
+        });
+        this.currentDialog = dlg;
+        this.addChild(dlg);
+        break;
+      }
+      case 'multi-apply': {
+        const dlg = new MultiApplyDialog(this.el, this.store);
+        this.currentDialog = dlg;
+        this.addChild(dlg);
         break;
       }
     }

@@ -22,8 +22,10 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
-import { disconnectHost, connectHost, fetchRules } from '../../ipc/bridge';
+import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket } from '../../ipc/bridge';
+import type { TestPacket } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
+import Sortable from 'sortablejs';
 
 interface RuleSection {
   title: string;
@@ -49,6 +51,14 @@ export class RuleTable extends Component {
   private activityPanel: HTMLElement | null = null;
   private terminalPanel: HTMLElement | null = null;
   private activityComponent: Activity | null = null;
+
+  // Split view
+  private splitContainer: HTMLElement | null = null;
+  private splitDivider: HTMLElement | null = null;
+  private splitBottomPanel: HTMLElement | null = null;
+  private splitActivityComponent: Activity | null = null;
+  private isDraggingSplit = false;
+  private splitRatio = 0.6;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -254,6 +264,21 @@ export class RuleTable extends Component {
     this.subscribe(
       (s: AppState) => s.operations,
       (ops) => this.updateOperationState(ops),
+    );
+
+    // Split panel toggle (Cmd+\)
+    this.subscribe(
+      (s: AppState) => s.splitPanelOpen,
+      (open) => this.updateSplitPanel(open, this.store.getState().splitPanelContent),
+    );
+
+    this.subscribe(
+      (s: AppState) => s.splitPanelContent,
+      (content) => {
+        if (this.store.getState().splitPanelOpen) {
+          this.updateSplitPanel(true, content);
+        }
+      },
     );
 
     // Initial renders
@@ -515,6 +540,29 @@ export class RuleTable extends Component {
               this.updateRowHitCount(el, rule.id, hitCounters);
             },
           );
+
+          // Initialize drag-and-drop reordering via SortableJS
+          if (activeHostId && !(rowsContainer as HTMLElement & { _sortableInit?: boolean })._sortableInit) {
+            const hostId = activeHostId;
+            new Sortable(rowsContainer, {
+              handle: '.rule-table__drag-handle',
+              animation: 150,
+              ghostClass: 'rule-table__row--ghost',
+              onEnd: (evt) => {
+                if (evt.oldIndex !== undefined && evt.newIndex !== undefined) {
+                  const ruleId = evt.item.dataset.ruleId;
+                  if (ruleId) {
+                    this.store.dispatch({
+                      type: 'ADD_STAGED_CHANGE',
+                      hostId,
+                      change: { type: 'reorder', ruleId, fromPosition: evt.oldIndex, toPosition: evt.newIndex },
+                    });
+                  }
+                }
+              },
+            });
+            (rowsContainer as HTMLElement & { _sortableInit?: boolean })._sortableInit = true;
+          }
         }
       }
     }
@@ -559,38 +607,104 @@ export class RuleTable extends Component {
       }
     }
 
-    // Terminal tab — render placeholder with sub-tab buttons
-    if (tab === 'terminal' && this.terminalPanel && this.terminalPanel.children.length === 0) {
-      const placeholder = h('div', { className: 'rule-table__terminal-placeholder' });
+    // Terminal tab — render with sub-tab buttons
+    if (tab === 'terminal' && this.terminalPanel) {
+      this.renderTerminalTab();
+    }
+  }
 
-      const subTabs = h('div', {
-        className: 'rule-table__terminal-sub-tabs',
+  private updateSplitPanel(open: boolean, content: 'activity' | 'terminal'): void {
+    if (!open) {
+      // Remove split view
+      if (this.splitContainer) {
+        // Move sectionsContainer back out of split container
+        if (this.splitContainer.parentElement) {
+          this.splitContainer.parentElement.insertBefore(this.sectionsContainer, this.splitContainer);
+        }
+        if (this.splitActivityComponent) {
+          this.removeChild(this.splitActivityComponent);
+          this.splitActivityComponent = null;
+        }
+        this.splitContainer.remove();
+        this.splitContainer = null;
+        this.splitDivider = null;
+        this.splitBottomPanel = null;
+      }
+      this.sectionsContainer.style.height = '';
+      return;
+    }
+
+    // Create split view if not already present
+    if (!this.splitContainer) {
+      this.splitContainer = h('div', { className: 'rule-table__split-container' });
+      this.splitContainer.style.display = 'flex';
+      this.splitContainer.style.flexDirection = 'column';
+      this.splitContainer.style.flex = '1';
+      this.splitContainer.style.overflow = 'hidden';
+
+      // Insert the split container where sectionsContainer was
+      this.sectionsContainer.parentElement?.insertBefore(this.splitContainer, this.sectionsContainer);
+
+      // Move sectionsContainer into split container (top panel)
+      this.sectionsContainer.style.height = `${this.splitRatio * 100}%`;
+      this.sectionsContainer.style.overflow = 'auto';
+      this.splitContainer.appendChild(this.sectionsContainer);
+
+      // Resizable divider
+      this.splitDivider = h('div', { className: 'rule-table__split-divider' });
+      this.splitDivider.style.height = '4px';
+      this.splitDivider.style.cursor = 'row-resize';
+      this.splitDivider.style.background = 'var(--border-color, #ccc)';
+      this.splitDivider.style.flexShrink = '0';
+      this.splitContainer.appendChild(this.splitDivider);
+
+      // Bottom panel
+      this.splitBottomPanel = h('div', { className: 'rule-table__split-bottom' });
+      this.splitBottomPanel.style.height = `${(1 - this.splitRatio) * 100}%`;
+      this.splitBottomPanel.style.overflow = 'auto';
+      this.splitContainer.appendChild(this.splitBottomPanel);
+
+      // Divider drag
+      this.listen(this.splitDivider, 'mousedown', (e) => {
+        e.preventDefault();
+        this.isDraggingSplit = true;
+        const onMove = (me: MouseEvent) => {
+          if (!this.isDraggingSplit || !this.splitContainer) return;
+          const rect = this.splitContainer.getBoundingClientRect();
+          const ratio = (me.clientY - rect.top) / rect.height;
+          this.splitRatio = Math.max(0.2, Math.min(0.8, ratio));
+          this.sectionsContainer.style.height = `${this.splitRatio * 100}%`;
+          if (this.splitBottomPanel) {
+            this.splitBottomPanel.style.height = `${(1 - this.splitRatio) * 100}%`;
+          }
+        };
+        const onUp = () => {
+          this.isDraggingSplit = false;
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
       });
+    }
 
-      const rawBtn = h('button', {
-        className: 'rule-table__terminal-sub-tab',
-        type: 'button',
-        disabled: true,
-      }, 'Raw Rules');
+    // Render content in bottom panel
+    if (this.splitBottomPanel) {
+      this.splitBottomPanel.innerHTML = '';
+      if (this.splitActivityComponent) {
+        this.removeChild(this.splitActivityComponent);
+        this.splitActivityComponent = null;
+      }
 
-      const tracerBtn = h('button', {
-        className: 'rule-table__terminal-sub-tab',
-        type: 'button',
-        disabled: true,
-      }, 'Packet Tracer');
-
-      subTabs.appendChild(rawBtn);
-      subTabs.appendChild(tracerBtn);
-      placeholder.appendChild(subTabs);
-
-      const message = h('div', {
-        className: 'rule-table__terminal-message',
-      });
-      message.appendChild(h('p', {},
-        'Terminal is available when connected to a real server. In this demo, explore the Rules and Activity tabs to learn about firewall management.'));
-      placeholder.appendChild(message);
-
-      this.terminalPanel.appendChild(placeholder);
+      if (content === 'activity') {
+        this.splitActivityComponent = new Activity(this.splitBottomPanel, this.store);
+        this.addChild(this.splitActivityComponent);
+      } else {
+        this.splitBottomPanel.appendChild(
+          h('div', { className: 'rule-table__split-terminal-placeholder' },
+            h('p', {}, 'Terminal panel — connect to a real server to use the terminal.')),
+        );
+      }
     }
   }
 
@@ -628,6 +742,17 @@ export class RuleTable extends Component {
       this.listen(reconnectBtn, 'click', () => this.handleReconnect(host));
       headerBtns.appendChild(reconnectBtn);
     }
+
+    // Export button
+    const exportBtn = h('button', {
+      className: 'rule-table__header-btn',
+      type: 'button',
+      title: 'Export rules',
+    }, 'Export');
+    this.listen(exportBtn, 'click', () => {
+      this.showExportDropdown(exportBtn, host.id);
+    });
+    headerBtns.appendChild(exportBtn);
 
     // History button (always shown)
     const historyBtn = h('button', {
@@ -680,6 +805,257 @@ export class RuleTable extends Component {
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId, status: 'disconnected' });
         this.store.dispatch({ type: 'CLEAR_HOST_STATE', hostId });
       });
+  }
+
+  // ── Terminal Tab ──────────────────────────────────────────────
+
+  private renderTerminalTab(): void {
+    if (!this.terminalPanel) return;
+    this.terminalPanel.innerHTML = '';
+
+    const placeholder = h('div', { className: 'rule-table__terminal-placeholder' });
+
+    // Sub-tab buttons
+    const subTabs = h('div', { className: 'rule-table__terminal-sub-tabs' });
+    const state = this.store.getState();
+    const activeSubTab = state.activeTerminalSubTab;
+
+    const subTabDefs: Array<{ id: AppState['activeTerminalSubTab']; label: string }> = [
+      { id: 'raw', label: 'Raw Rules' },
+      { id: 'tracer', label: 'Packet Tracer' },
+      { id: 'sshlog', label: 'SSH Log' },
+    ];
+
+    for (const st of subTabDefs) {
+      const btn = h('button', {
+        className: `rule-table__terminal-sub-tab${activeSubTab === st.id ? ' rule-table__terminal-sub-tab--active' : ''}`,
+        type: 'button',
+        dataset: { subTab: st.id },
+      }, st.label);
+      this.listen(btn, 'click', () => {
+        this.store.dispatch({ type: 'SET_TERMINAL_SUB_TAB', subTab: st.id });
+        this.renderTerminalTab();
+      });
+      subTabs.appendChild(btn);
+    }
+    placeholder.appendChild(subTabs);
+
+    // Content area
+    const content = h('div', { className: 'terminal__content' });
+
+    switch (activeSubTab) {
+      case 'raw':
+        this.renderRawRulesSubTab(content);
+        break;
+      case 'tracer':
+        this.renderPacketTracerSubTab(content);
+        break;
+      case 'sshlog':
+        this.renderSshLogSubTab(content);
+        break;
+    }
+
+    placeholder.appendChild(content);
+    this.terminalPanel.appendChild(placeholder);
+  }
+
+  private renderRawRulesSubTab(container: HTMLElement): void {
+    const state = this.store.getState();
+    const hostId = state.activeHostId;
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'terminal__editor';
+    textarea.spellcheck = false;
+    textarea.rows = 30;
+    textarea.value = '# Connect to a host to see rules';
+
+    if (hostId) {
+      textarea.value = '# Loading...';
+      fetchRules(hostId).then((ruleSet) => {
+        textarea.value = ruleSet.rawIptablesSave || '# No rules loaded';
+      }).catch(() => {
+        textarea.value = '# Failed to load rules';
+      });
+    }
+
+    container.appendChild(textarea);
+  }
+
+  private renderPacketTracerSubTab(container: HTMLElement): void {
+    const form = h('div', { className: 'terminal__tracer-form' });
+
+    const fields: Array<{ id: string; label: string; placeholder: string }> = [
+      { id: 'sourceIp', label: 'Source IP', placeholder: '192.168.1.100' },
+      { id: 'destIp', label: 'Destination IP', placeholder: '10.0.1.10' },
+      { id: 'destPort', label: 'Destination Port', placeholder: '80' },
+    ];
+
+    const inputs: Record<string, HTMLInputElement> = {};
+    for (const f of fields) {
+      const field = h('div', { className: 'terminal__tracer-field' });
+      field.appendChild(h('label', { className: 'dialog-label', for: `tracer-${f.id}` }, f.label));
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = `tracer-${f.id}`;
+      input.className = 'dialog-input dialog-input--ip';
+      input.placeholder = f.placeholder;
+      inputs[f.id] = input;
+      field.appendChild(input);
+      form.appendChild(field);
+    }
+
+    // Protocol selector
+    const protoField = h('div', { className: 'terminal__tracer-field' });
+    protoField.appendChild(h('label', { className: 'dialog-label', for: 'tracer-protocol' }, 'Protocol'));
+    const protoSelect = document.createElement('select');
+    protoSelect.id = 'tracer-protocol';
+    protoSelect.className = 'dialog-select';
+    for (const proto of ['tcp', 'udp', 'icmp']) {
+      const opt = document.createElement('option');
+      opt.value = proto;
+      opt.textContent = proto.toUpperCase();
+      protoSelect.appendChild(opt);
+    }
+    protoField.appendChild(protoSelect);
+    form.appendChild(protoField);
+
+    // Trace button
+    const traceBtn = h('button', {
+      className: 'dialog-btn dialog-btn--primary',
+      type: 'button',
+      style: { marginTop: '12px' },
+    }, 'Trace');
+
+    // Result area
+    const resultArea = h('div', { className: 'terminal__tracer-result' });
+
+    this.listen(traceBtn, 'click', () => {
+      const state = this.store.getState();
+      const hostId = state.activeHostId;
+      if (!hostId) {
+        resultArea.textContent = 'No host selected.';
+        return;
+      }
+
+      const packet: TestPacket = {
+        sourceIp: inputs['sourceIp'].value.trim() || '0.0.0.0',
+        destIp: inputs['destIp'].value.trim() || '0.0.0.0',
+        destPort: parseInt(inputs['destPort'].value, 10) || 0,
+        protocol: protoSelect.value as 'tcp' | 'udp' | 'icmp',
+      };
+
+      resultArea.textContent = 'Tracing...';
+      tracePacket(hostId, packet).then((result) => {
+        resultArea.innerHTML = '';
+        resultArea.appendChild(h('div', { className: 'terminal__tracer-verdict' },
+          `Verdict: ${result.verdict}`));
+        if (result.chain.length > 0) {
+          resultArea.appendChild(h('div', { className: 'terminal__tracer-chain' },
+            `Chain path: ${result.chain.join(' -> ')}`));
+        }
+        resultArea.appendChild(h('div', { className: 'terminal__tracer-explanation' },
+          result.explanation));
+      }).catch((err) => {
+        resultArea.textContent = `Trace failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      });
+    });
+
+    form.appendChild(traceBtn);
+    container.appendChild(form);
+    container.appendChild(resultArea);
+  }
+
+  private renderSshLogSubTab(container: HTMLElement): void {
+    const state = this.store.getState();
+    const hostId = state.activeHostId;
+    const hostState = hostId ? state.hostStates.get(hostId) : undefined;
+    const sshLog = hostState?.sshCommandLog ?? [];
+
+    const logContainer = h('div', { className: 'terminal__ssh-log' });
+
+    if (sshLog.length === 0) {
+      // Show demo entries for demo hosts
+      const demoEntries = [
+        { timestamp: Date.now() - 300000, command: 'iptables-save', output: '', exitCode: 0 },
+        { timestamp: Date.now() - 240000, command: 'iptables -L -n --line-numbers', output: '', exitCode: 0 },
+        { timestamp: Date.now() - 180000, command: 'cat /proc/sys/net/netfilter/nf_conntrack_count', output: '', exitCode: 0 },
+      ];
+
+      for (const entry of demoEntries) {
+        const ts = new Date(entry.timestamp).toLocaleTimeString();
+        const line = h('div', { className: 'terminal__ssh-log-entry' },
+          h('span', { className: 'terminal__ssh-log-time' }, ts),
+          h('span', { className: 'terminal__ssh-log-cmd' }, `$ ${entry.command}`),
+        );
+        logContainer.appendChild(line);
+      }
+    } else {
+      for (const entry of sshLog) {
+        const ts = new Date(entry.timestamp).toLocaleTimeString();
+        const line = h('div', { className: 'terminal__ssh-log-entry' },
+          h('span', { className: 'terminal__ssh-log-time' }, ts),
+          h('span', { className: 'terminal__ssh-log-cmd' }, `$ ${entry.command}`),
+        );
+        logContainer.appendChild(line);
+      }
+    }
+
+    container.appendChild(logContainer);
+  }
+
+  // ── Export Dropdown ─────────────────────────────────────────
+
+  private showExportDropdown(anchorBtn: HTMLElement, hostId: string): void {
+    // Remove existing dropdown if any
+    const existing = document.querySelector('.rule-table__export-dropdown');
+    if (existing) { existing.remove(); return; }
+
+    const dropdown = h('div', { className: 'rule-table__export-dropdown' });
+    const options: Array<{ label: string; format: 'shell' | 'ansible' | 'iptables-save' }> = [
+      { label: 'Shell Script', format: 'shell' },
+      { label: 'Ansible Playbook', format: 'ansible' },
+      { label: 'iptables-save', format: 'iptables-save' },
+    ];
+
+    for (const opt of options) {
+      const btn = h('button', {
+        className: 'rule-table__export-option',
+        type: 'button',
+      }, opt.label);
+
+      this.listen(btn, 'click', () => {
+        dropdown.remove();
+        exportRules(hostId, opt.format).then((result) => {
+          const ext = opt.format === 'ansible' ? '.yml' : opt.format === 'shell' ? '.sh' : '.rules';
+          const blob = new Blob([result], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${hostId}${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }).catch(() => {
+          // Export error — silently fail
+        });
+      });
+      dropdown.appendChild(btn);
+    }
+
+    anchorBtn.style.position = 'relative';
+    anchorBtn.appendChild(dropdown);
+
+    // Close on outside click
+    const closeHandler = (e: Event) => {
+      if (!dropdown.contains(e.target as Node) && e.target !== anchorBtn) {
+        dropdown.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    requestAnimationFrame(() => {
+      document.addEventListener('click', closeHandler);
+    });
   }
 
   private groupRulesByDirection(rules: EffectiveRule[]): RuleSection[] {

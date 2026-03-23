@@ -506,6 +506,11 @@ export class AddHostDialog extends Component {
         .then((ruleSet) => {
           const rules = convertRuleSet(ruleSet);
           this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
+
+          // If the host has no existing rules, open the first-setup wizard
+          if (rules.length === 0) {
+            this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'first-setup' });
+          }
         })
         .catch(() => {
           // Rule fetch failure after connect is handled by the empty state UI

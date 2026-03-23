@@ -32,6 +32,17 @@
   cursor: not-allowed;
 }
 
+.rule-table__terminal-sub-tab--active {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  border-color: var(--color-primary);
+}
+
+.rule-table__terminal-sub-tab--active:hover {
+  opacity: 0.9;
+  background: var(--color-primary);
+}
+
 .rule-table__terminal-message {
   padding: 48px var(--space-spacious);
   text-align: center;
@@ -44,4 +55,139 @@
   line-height: 1.6;
   max-width: 400px;
   margin: 0 auto;
+}
+
+/* ── Terminal Content ──────────────────────────────── */
+
+.terminal__content {
+  padding: var(--space-comfortable) var(--space-spacious);
+}
+
+/* Raw Rules Editor */
+.terminal__editor {
+  width: 100%;
+  min-height: 400px;
+  padding: var(--space-default);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  line-height: 1.5;
+  box-sizing: border-box;
+  tab-size: 4;
+}
+
+.terminal__editor:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+/* Packet Tracer */
+.terminal__tracer-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-default);
+  margin-bottom: var(--space-comfortable);
+}
+
+.terminal__tracer-field {
+  flex: 1;
+  min-width: 150px;
+}
+
+.terminal__tracer-result {
+  padding: var(--space-default);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  min-height: 40px;
+}
+
+.terminal__tracer-verdict {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: var(--space-compact);
+}
+
+.terminal__tracer-chain {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-compact);
+}
+
+.terminal__tracer-explanation {
+  color: var(--color-text-secondary);
+}
+
+/* SSH Log */
+.terminal__ssh-log {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-default);
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.terminal__ssh-log-entry {
+  display: flex;
+  gap: var(--space-default);
+  padding: 3px 0;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.terminal__ssh-log-entry:last-child {
+  border-bottom: none;
+}
+
+.terminal__ssh-log-time {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.terminal__ssh-log-cmd {
+  color: var(--color-text-primary);
+}
+
+/* ── Export Dropdown ──────────────────────────────── */
+
+.rule-table__export-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  z-index: 100;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.rule-table__export-option {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.rule-table__export-option:hover {
+  background: var(--color-hover);
+}
+
+.rule-table__export-option:not(:last-child) {
+  border-bottom: 1px solid var(--color-separator);
 }

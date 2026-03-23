@@ -83,6 +83,10 @@ export function createRuleRow(rule: EffectiveRule, hasPendingChange = false, ipL
     dataset: { ruleId: rule.id },
   });
 
+  // Drag handle (visible on hover)
+  const dragHandle = h('span', { className: 'rule-table__drag-handle' }, '\u2807');
+  row.appendChild(dragHandle);
+
   // Status bar (left edge, 3px wide)
   const bar = h('div', { className: `rule-table__row-bar ${getActionColorClass(rule.action)}` });
   row.appendChild(bar);

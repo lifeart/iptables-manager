@@ -426,6 +426,17 @@ export function loadDemoData(store: Store): void {
     max: 65_536,
   });
 
+  // Add SSH command log demo entries for web-01
+  const sshDemoEntries = [
+    { hostId: HOST_WEB01, command: 'iptables-save', output: '*filter\n:INPUT DROP...', exitCode: 0, timestamp: ts(10) },
+    { hostId: HOST_WEB01, command: 'iptables -L -n --line-numbers', output: 'Chain INPUT (policy DROP)...', exitCode: 0, timestamp: ts(8) },
+    { hostId: HOST_WEB01, command: 'cat /proc/sys/net/netfilter/nf_conntrack_count', output: '1247', exitCode: 0, timestamp: ts(5) },
+    { hostId: HOST_WEB01, command: 'iptables -Z', output: '', exitCode: 0, timestamp: ts(3) },
+  ];
+  for (const entry of sshDemoEntries) {
+    store.dispatch({ type: 'ADD_SSH_LOG_ENTRY', hostId: HOST_WEB01, entry });
+  }
+
   // Select web-01 as the active host
   store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: HOST_WEB01 });
 }

@@ -272,6 +272,34 @@
   font-weight: 500;
 }
 
+/* ── Drag Handle ────────────────────────────────────── */
+
+.rule-table__drag-handle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  cursor: grab;
+  color: var(--color-text-tertiary);
+  font-size: 14px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.rule-table__row:hover .rule-table__drag-handle {
+  display: flex;
+}
+
+.rule-table__drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Ghost row during drag */
+.rule-table__row--ghost {
+  opacity: 0.3;
+  background: var(--color-primary-hover-bg);
+}
+
 /* ── Rule Row ────────────────────────────────────────── */
 
 .rule-table__rows {

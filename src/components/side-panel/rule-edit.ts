@@ -126,6 +126,20 @@ export class RuleEdit extends Component {
             source: formData.source,
             comment: formData.comment,
             interfaceIn: formData.interfaceIn,
+            rateLimit: formData.rateLimit
+              ? {
+                  rate: formData.rateLimit.rate,
+                  per: formData.rateLimit.per as 'second' | 'minute' | 'hour',
+                  perSource: formData.rateLimit.perSource,
+                  burst: formData.rateLimit.burst,
+                }
+              : undefined,
+            customMatches: formData.customConditions?.length
+              ? formData.customConditions.map(c => ({
+                  module: c.field.toLowerCase().replace(' ', '_'),
+                  args: `${c.operator} ${c.value}`,
+                }))
+              : undefined,
           },
         },
       });
@@ -163,6 +177,20 @@ export class RuleEdit extends Component {
         position: 0,
         enabled: true,
         temporary: tempExpiry,
+        rateLimit: formData.rateLimit
+          ? {
+              rate: formData.rateLimit.rate,
+              per: formData.rateLimit.per as 'second' | 'minute' | 'hour',
+              perSource: formData.rateLimit.perSource,
+              burst: formData.rateLimit.burst,
+            }
+          : undefined,
+        customMatches: formData.customConditions?.length
+          ? formData.customConditions.map(c => ({
+              module: c.field.toLowerCase().replace(' ', '_'),
+              args: `${c.operator} ${c.value}`,
+            }))
+          : undefined,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

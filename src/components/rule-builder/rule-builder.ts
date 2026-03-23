@@ -36,6 +36,7 @@ export interface RuleFormData {
   duration?: 'permanent' | '1h' | '4h' | '24h' | '1w';
   blockType?: 'drop' | 'reject';
   customConditions?: CustomCondition[];
+  rateLimit?: { rate: number; per: string; perSource: boolean; burst: number };
 }
 
 type ActionChoice = 'allow' | 'block' | 'log' | 'log-block';
@@ -258,6 +259,15 @@ export class RuleBuilder extends Component {
 
     if (this.customConditions.length > 0) {
       data.customConditions = [...this.customConditions];
+    }
+
+    if (this.rateLimitEnabled) {
+      data.rateLimit = {
+        rate: parseInt(this.rateLimitMax, 10) || 0,
+        per: this.rateLimitPer,
+        perSource: this.rateLimitScope === 'source',
+        burst: parseInt(this.rateLimitBurst, 10) || 0,
+      };
     }
 
     return data;

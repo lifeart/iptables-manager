@@ -257,6 +257,7 @@ export type DialogType =
   | 'create-group'
   | 'create-iplist'
   | 'first-setup'
+  | 'multi-apply'
   | null;
 
 export interface OperationState {

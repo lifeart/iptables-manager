@@ -4,13 +4,18 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState } from '../../store/types';
+import type { AppState, Rule } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
+import { RuleBuilder } from '../rule-builder/rule-builder';
 
 export class GroupEdit extends Component {
   private groupId: string;
   private nameInput!: HTMLInputElement;
   private memberListEl!: HTMLElement;
+  private rulesListEl!: HTMLElement;
+  private ruleBuilderContainer: HTMLElement | null = null;
+  private ruleBuilder: RuleBuilder | null = null;
+  private pendingGroupRules: Rule[] = [];
   private saveBtn!: HTMLButtonElement;
 
   constructor(container: HTMLElement, store: Store, groupId: string) {
@@ -49,6 +54,27 @@ export class GroupEdit extends Component {
 
     this.renderMemberList();
 
+    // Rules section
+    this.el.appendChild(h('h3', { className: 'side-panel__subtitle' }, 'Group Rules'));
+    this.rulesListEl = h('div', { className: 'side-panel__group-rules-list' });
+    this.el.appendChild(this.rulesListEl);
+
+    // Initialize pending rules from the group's existing rules
+    this.pendingGroupRules = [...group.rules];
+    this.renderGroupRules();
+
+    const addRuleBtn = h('button', {
+      className: 'dialog-btn dialog-btn--secondary',
+      type: 'button',
+    }, '+ Add Group Rule');
+    this.listen(addRuleBtn, 'click', () => this.showRuleBuilder());
+    this.el.appendChild(addRuleBtn);
+
+    // Rule builder container (hidden until "+ Add Group Rule" is clicked)
+    this.ruleBuilderContainer = h('div', { className: 'side-panel__group-rule-builder' });
+    this.ruleBuilderContainer.style.display = 'none';
+    this.el.appendChild(this.ruleBuilderContainer);
+
     // Save button
     this.saveBtn = document.createElement('button');
     this.saveBtn.className = 'dialog-btn dialog-btn--primary';
@@ -82,6 +108,108 @@ export class GroupEdit extends Component {
     }
   }
 
+  private renderGroupRules(): void {
+    clearChildren(this.rulesListEl);
+
+    if (this.pendingGroupRules.length === 0) {
+      this.rulesListEl.appendChild(
+        h('p', { className: 'side-panel__empty' }, 'No group rules yet.'),
+      );
+      return;
+    }
+
+    for (let i = 0; i < this.pendingGroupRules.length; i++) {
+      const rule = this.pendingGroupRules[i];
+      const row = h('div', { className: 'side-panel__group-rule-row' });
+      row.appendChild(h('span', {}, `${rule.label} (${rule.action})`));
+      const removeBtn = h('button', {
+        className: 'dialog-btn dialog-btn--text',
+        type: 'button',
+      }, 'Remove');
+      const ruleIndex = i;
+      this.listen(removeBtn, 'click', () => {
+        this.pendingGroupRules.splice(ruleIndex, 1);
+        this.renderGroupRules();
+      });
+      row.appendChild(removeBtn);
+      this.rulesListEl.appendChild(row);
+    }
+  }
+
+  private showRuleBuilder(): void {
+    if (!this.ruleBuilderContainer) return;
+    this.ruleBuilderContainer.style.display = '';
+
+    // Clean up previous builder
+    if (this.ruleBuilder) {
+      this.removeChild(this.ruleBuilder);
+      this.ruleBuilder = null;
+    }
+
+    this.ruleBuilderContainer.innerHTML = '';
+    this.ruleBuilder = new RuleBuilder(this.ruleBuilderContainer, this.store, null);
+    this.addChild(this.ruleBuilder);
+
+    const btnRow = h('div', { className: 'side-panel__group-rule-builder-actions' });
+    const addBtn = h('button', {
+      className: 'dialog-btn dialog-btn--primary',
+      type: 'button',
+    }, 'Add Rule');
+    const cancelBtn = h('button', {
+      className: 'dialog-btn dialog-btn--secondary',
+      type: 'button',
+    }, 'Cancel');
+
+    this.listen(addBtn, 'click', () => {
+      if (!this.ruleBuilder) return;
+      const formData = this.ruleBuilder.getFormData();
+
+      let resolvedAction: Rule['action'] = formData.action;
+      if ((formData.action === 'block' || formData.action === 'log-block') && formData.blockType === 'reject') {
+        resolvedAction = 'block-reject';
+      }
+
+      const newRule: Rule = {
+        id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        label: formData.label,
+        action: resolvedAction,
+        protocol: formData.protocol,
+        ports: formData.ports,
+        source: formData.source,
+        destination: { type: 'anyone' },
+        direction: 'incoming',
+        addressFamily: 'both',
+        interfaceIn: formData.interfaceIn,
+        comment: formData.comment,
+        origin: { type: 'group', groupId: this.groupId },
+        position: this.pendingGroupRules.length,
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      this.pendingGroupRules.push(newRule);
+      this.renderGroupRules();
+      this.hideRuleBuilder();
+    });
+
+    this.listen(cancelBtn, 'click', () => this.hideRuleBuilder());
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(addBtn);
+    this.ruleBuilderContainer.appendChild(btnRow);
+  }
+
+  private hideRuleBuilder(): void {
+    if (!this.ruleBuilderContainer) return;
+    this.ruleBuilderContainer.style.display = 'none';
+    if (this.ruleBuilder) {
+      this.removeChild(this.ruleBuilder);
+      this.ruleBuilder = null;
+    }
+    this.ruleBuilderContainer.innerHTML = '';
+  }
+
   private save(): void {
     const state = this.store.getState();
     const group = state.groups.get(this.groupId);
@@ -99,7 +227,7 @@ export class GroupEdit extends Component {
     this.store.dispatch({
       type: 'UPDATE_GROUP',
       groupId: this.groupId,
-      changes: { name: newName, memberHostIds },
+      changes: { name: newName, memberHostIds, rules: this.pendingGroupRules },
     });
 
     // Close the panel
