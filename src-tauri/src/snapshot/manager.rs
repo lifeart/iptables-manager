@@ -326,13 +326,10 @@ fn filter_tr_chains(input: &str) -> String {
                 // Direct TR- chain rule
                 table_lines.push(line.to_string());
                 has_tr_content = true;
-            } else if BUILTIN_CHAINS.contains(&chain_name) {
-                // Check if this built-in chain rule jumps to a TR- chain
-                if jumps_to_tr_chain(line) {
-                    table_lines.push(line.to_string());
-                    has_tr_content = true;
-                }
             }
+            // NOTE: We deliberately EXCLUDE jump rules from built-in chains
+            // (e.g., "-A INPUT -j TR-INPUT"). These are managed by ensure_jump_rules()
+            // and including them in the backup causes duplication on --noflush restore.
         }
     }
 
@@ -390,9 +387,10 @@ COMMIT
         assert!(filtered.contains("-A TR-CONNTRACK"));
         assert!(filtered.contains("-A TR-INPUT -i lo -j ACCEPT"));
         assert!(filtered.contains("COMMIT"));
-        // Should include jump rules from built-in chains to TR- chains
-        assert!(filtered.contains("-A INPUT -j TR-CONNTRACK"));
-        assert!(filtered.contains("-A INPUT -j TR-INPUT"));
+        // Should NOT include jump rules from built-in chains — these are managed
+        // separately by ensure_jump_rules() and would cause duplication on --noflush restore
+        assert!(!filtered.contains("-A INPUT -j TR-CONNTRACK"));
+        assert!(!filtered.contains("-A INPUT -j TR-INPUT"));
         // Should NOT contain Docker or built-in chain declarations
         assert!(!filtered.contains(":INPUT"));
         assert!(!filtered.contains(":DOCKER"));
