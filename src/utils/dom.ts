@@ -12,12 +12,6 @@ type ElementAttributes = {
 
 /**
  * Create an HTML element with attributes and children.
- *
- * @example
- *   h('div', { className: 'card' },
- *     h('h2', {}, text('Title')),
- *     h('p', { className: 'body' }, text('Content')),
- *   )
  */
 export function h(
   tag: string,
@@ -66,85 +60,18 @@ export function h(
   return el;
 }
 
-/**
- * Create a text node.
- */
-export function text(content: string): Text {
-  return document.createTextNode(content);
-}
-
-/**
- * Add one or more CSS classes to an element.
- */
-export function addClass(el: HTMLElement, ...classNames: string[]): void {
-  for (const cls of classNames) {
-    if (cls) {
-      el.classList.add(cls);
-    }
-  }
-}
-
-/**
- * Remove one or more CSS classes from an element.
- */
-export function removeClass(el: HTMLElement, ...classNames: string[]): void {
-  for (const cls of classNames) {
-    if (cls) {
-      el.classList.remove(cls);
-    }
-  }
-}
-
-/**
- * Toggle a CSS class on an element.
- */
-export function toggleClass(el: HTMLElement, className: string, force?: boolean): void {
-  el.classList.toggle(className, force);
-}
-
-/**
- * Set text content of an element, only if changed.
- */
-export function setText(el: HTMLElement, content: string): void {
-  if (el.textContent !== content) {
-    el.textContent = content;
-  }
-}
-
-/**
- * Remove all children from an element.
- */
+/** Remove all children from an element. */
 export function clearChildren(el: HTMLElement): void {
   while (el.firstChild) {
     el.removeChild(el.firstChild);
   }
 }
 
-/**
- * Query a single element within a parent, typed.
- */
-export function qs<T extends HTMLElement = HTMLElement>(
-  parent: HTMLElement | Document,
-  selector: string,
-): T | null {
-  return parent.querySelector<T>(selector);
-}
-
-/**
- * Query all elements within a parent, typed.
- */
-export function qsa<T extends HTMLElement = HTMLElement>(
-  parent: HTMLElement | Document,
-  selector: string,
-): T[] {
-  return Array.from(parent.querySelectorAll<T>(selector));
-}
-
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Trap focus within a dialog element. Returns a cleanup function.
+ * Trap focus within a dialog element.
  * Intercepts Tab/Shift+Tab and wraps focus among focusable elements.
  */
 export function trapFocus(dialogEl: HTMLElement, signal?: AbortSignal): void {

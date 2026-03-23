@@ -1,1 +1,1 @@
-export {};
+// Terminal components are lazy-loaded
