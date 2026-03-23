@@ -412,7 +412,7 @@ impl CommandExecutor for OpensshExecutor {
     async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
         let output = self
             .session
-            .shell(command)
+            .raw_command(command)
             .output()
             .await
             .map_err(|e| ExecError::Transport(format!("SSH exec failed: {}", e)))?;
@@ -434,7 +434,7 @@ impl CommandExecutor for OpensshExecutor {
 
         let mut child = self
             .session
-            .shell(command)
+            .raw_command(command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
