@@ -34,15 +34,29 @@ pub fn run() {
             ipc::commands::rules_apply,
             ipc::commands::rules_revert,
             ipc::commands::rules_confirm,
+            ipc::commands::rules_trace,
+            ipc::commands::rules_check_duplicate,
+            ipc::commands::rules_detect_conflicts,
             ipc::commands::explain_rule_cmd,
             ipc::commands::export_rules,
             // Activity polling commands
             ipc::commands::activity_subscribe,
             ipc::commands::activity_unsubscribe,
-            ipc::commands::fetch_hit_counters,
-            ipc::commands::fetch_conntrack_table,
-            ipc::commands::fetch_bans,
+            ipc::commands::activity_fetch_hit_counters,
+            ipc::commands::activity_fetch_conntrack_table,
+            ipc::commands::activity_fetch_conntrack,
+            ipc::commands::activity_fetch_bans,
             ipc::commands::fetch_activity,
+            // Snapshot commands
+            ipc::commands::snapshot_create,
+            ipc::commands::snapshot_list,
+            ipc::commands::snapshot_restore,
+            // IP list commands
+            ipc::commands::iplist_sync,
+            ipc::commands::iplist_delete,
+            // Credential commands
+            ipc::commands::cred_store,
+            ipc::commands::cred_delete,
             // Safety timer commands
             ipc::commands::set_safety_timer,
             ipc::commands::clear_safety_timer,

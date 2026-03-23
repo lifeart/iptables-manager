@@ -409,7 +409,7 @@ pub async fn activity_unsubscribe(host_id: String) -> Result<(), IpcError> {
 
 /// Fetch hit counters from `iptables -L -v -n -x` on the remote host.
 #[tauri::command]
-pub async fn fetch_hit_counters(
+pub async fn activity_fetch_hit_counters(
     host_id: String,
     pool: State<'_, PoolState>,
 ) -> Result<Vec<crate::activity::monitor::HitCounter>, IpcError> {
@@ -427,7 +427,7 @@ pub async fn fetch_hit_counters(
 
 /// One-shot conntrack data fetch: returns `{ current, max, percent }`.
 #[tauri::command]
-pub async fn fetch_conntrack_table(
+pub async fn activity_fetch_conntrack_table(
     host_id: String,
     pool: State<'_, PoolState>,
 ) -> Result<crate::activity::monitor::ConntrackUsage, IpcError> {
@@ -445,7 +445,7 @@ pub async fn fetch_conntrack_table(
 
 /// One-shot fail2ban ban list fetch.
 #[tauri::command]
-pub async fn fetch_bans(
+pub async fn activity_fetch_bans(
     host_id: String,
     pool: State<'_, PoolState>,
 ) -> Result<Vec<crate::activity::monitor::Fail2banBan>, IpcError> {
@@ -643,6 +643,288 @@ pub async fn host_provision(
         ],
         revert_script_installed: true,
         sudo_verified: true,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Conntrack summary (activity_fetch_conntrack)
+// ---------------------------------------------------------------------------
+
+/// Fetch conntrack usage summary (current, max).
+/// This is a lightweight alias distinct from `activity_fetch_conntrack_table`.
+#[tauri::command]
+pub async fn activity_fetch_conntrack(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<crate::activity::monitor::ConntrackUsage, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::activity::monitor::fetch_conntrack_usage(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+// ---------------------------------------------------------------------------
+// Credential stub commands
+// ---------------------------------------------------------------------------
+
+/// Store a credential (stub — actual credential storage is handled client-side via OS keychain).
+#[tauri::command]
+pub async fn cred_store(
+    _host_id: String,
+    _credential: serde_json::Value,
+) -> Result<(), IpcError> {
+    Ok(())
+}
+
+/// Delete a credential (stub — actual credential storage is handled client-side via OS keychain).
+#[tauri::command]
+pub async fn cred_delete(
+    _host_id: String,
+) -> Result<(), IpcError> {
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// IP list commands
+// ---------------------------------------------------------------------------
+
+/// Delete an ipset on the remote host.
+#[tauri::command]
+pub async fn iplist_delete(
+    host_id: String,
+    ip_list_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::ipset::manager::delete_ipset(&proxy, &ip_list_id)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+/// Sync (refresh) an ipset on the remote host.
+/// For now this re-creates the set with no entries; the frontend should
+/// send the full entry list in a follow-up if needed.
+#[tauri::command]
+pub async fn iplist_sync(
+    host_id: String,
+    ip_list_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    let empty: Vec<String> = Vec::new();
+    crate::ipset::manager::sync_ipset(
+        &proxy,
+        &ip_list_id,
+        &empty,
+        &crate::iptables::types::AddressFamily::V4,
+    )
+    .await
+    .map_err(|e| IpcError::CommandFailed {
+        stderr: e.to_string(),
+        exit_code: 1,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Rules analysis commands
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateCheckResult {
+    pub is_duplicate: bool,
+    pub existing_rule_id: Option<String>,
+    pub similarity: f64,
+}
+
+/// Check if a rule is a duplicate of an existing rule (stub).
+#[tauri::command]
+pub async fn rules_check_duplicate(
+    _host_id: String,
+    _rule: serde_json::Value,
+) -> Result<DuplicateCheckResult, IpcError> {
+    Ok(DuplicateCheckResult {
+        is_duplicate: false,
+        existing_rule_id: None,
+        similarity: 0.0,
+    })
+}
+
+/// Detect conflicts among the current rules on a host.
+///
+/// Returns an empty list for now; a full implementation requires converting
+/// ParsedRuleset into EffectiveRule[], which is planned for a future iteration.
+#[tauri::command]
+pub async fn rules_detect_conflicts(
+    _host_id: String,
+) -> Result<Vec<crate::iptables::conflict::RuleConflict>, IpcError> {
+    Ok(Vec::new())
+}
+
+/// Trace a test packet through the current iptables ruleset.
+#[tauri::command]
+pub async fn rules_trace(
+    host_id: String,
+    packet: crate::iptables::tracer::TestPacket,
+    pool: State<'_, PoolState>,
+) -> Result<crate::iptables::tracer::TraceResult, IpcError> {
+    // Fetch current rules
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let ruleset = parse_iptables_save(&output.stdout).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to parse iptables-save output: {}", e),
+        exit_code: 1,
+    })?;
+
+    Ok(crate::iptables::tracer::trace_packet(&ruleset, &packet))
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot commands
+// ---------------------------------------------------------------------------
+
+/// Create a snapshot of the current iptables rules on the remote host.
+#[tauri::command]
+pub async fn snapshot_create(
+    host_id: String,
+    _description: Option<String>,
+    pool: State<'_, PoolState>,
+) -> Result<crate::snapshot::manager::SnapshotMeta, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    let data = crate::snapshot::manager::create_snapshot(&proxy, &host_id)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })?;
+    Ok(crate::snapshot::manager::SnapshotMeta {
+        id: data.id,
+        host_id: data.host_id,
+        timestamp: data.timestamp,
+        description: data.description,
+        remote_path_v4: data.remote_path_v4,
+    })
+}
+
+/// List snapshots stored on the remote host.
+#[tauri::command]
+pub async fn snapshot_list(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<Vec<crate::snapshot::manager::SnapshotMeta>, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::snapshot::manager::list_remote_snapshots(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+/// Restore a snapshot on the remote host.
+#[tauri::command]
+pub async fn snapshot_restore(
+    host_id: String,
+    snapshot_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<ApplyResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    // List snapshots to find the one we want
+    let snapshots = crate::snapshot::manager::list_remote_snapshots(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })?;
+
+    let meta = snapshots.iter().find(|s| s.id == snapshot_id).ok_or_else(|| {
+        IpcError::CommandFailed {
+            stderr: format!("snapshot not found: {}", snapshot_id),
+            exit_code: 1,
+        }
+    })?;
+
+    // Read the snapshot file from the remote host
+    let remote_path = meta.remote_path_v4.as_deref().ok_or_else(|| {
+        IpcError::CommandFailed {
+            stderr: "snapshot has no remote path".to_string(),
+            exit_code: 1,
+        }
+    })?;
+    let cat_cmd = build_command("sudo", &["cat", remote_path]);
+    let cat_output = pool.execute(&host_id, &cat_cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to read snapshot: {}", e),
+        }
+    })?;
+    if cat_output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: cat_output.stderr,
+            exit_code: cat_output.exit_code,
+        });
+    }
+
+    let snapshot_data = crate::snapshot::manager::SnapshotData {
+        id: meta.id.clone(),
+        host_id: meta.host_id.clone(),
+        iptables_save_v4: cat_output.stdout,
+        iptables_save_v6: None,
+        timestamp: meta.timestamp,
+        description: meta.description.clone(),
+        remote_path_v4: meta.remote_path_v4.clone(),
+        remote_path_v6: None,
+    };
+
+    crate::snapshot::manager::restore_snapshot(&proxy, &snapshot_data)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })?;
+
+    Ok(ApplyResult {
+        success: true,
+        safety_timer_active: false,
+        safety_timer_expiry: None,
+        remote_job_id: None,
     })
 }
 
