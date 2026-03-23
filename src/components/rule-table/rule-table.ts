@@ -592,7 +592,9 @@ export class RuleTable extends Component {
   private switchTabContent(tab: AppState['activeTab']): void {
     // Show/hide panels
     this.sectionsContainer.style.display = tab === 'rules' ? '' : 'none';
+    // Show/hide content areas based on active tab
     this.filterBarContainer.style.display = tab === 'rules' ? '' : 'none';
+    this.sectionsContainer.style.display = tab === 'rules' ? '' : 'none';
     if (tab !== 'rules') {
       this.addRuleBtnContainer.style.display = 'none';
     }

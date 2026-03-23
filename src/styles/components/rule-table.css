@@ -275,19 +275,20 @@
 /* ── Drag Handle ────────────────────────────────────── */
 
 .rule-table__drag-handle {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 20px;
   cursor: grab;
-  color: var(--color-text-tertiary);
+  color: transparent;
   font-size: 14px;
   flex-shrink: 0;
   user-select: none;
+  transition: color 0.1s;
 }
 
 .rule-table__row:hover .rule-table__drag-handle {
-  display: flex;
+  color: var(--color-text-tertiary);
 }
 
 .rule-table__drag-handle:active {
