@@ -19,6 +19,8 @@ import { RuleEdit } from './rule-edit';
 import { SnapshotHistory } from './snapshot-history';
 import { PortForwardBuilder, SourceNatBuilder } from './nat-builder';
 import { Settings as SettingsPanel } from '../settings/settings';
+import { GroupEdit } from './group-edit';
+import { IpListEdit } from './iplist-edit';
 
 export class SidePanel extends Component {
   private panelEl: HTMLElement;
@@ -162,6 +164,18 @@ export class SidePanel extends Component {
         const hostSettingsComp = new SettingsPanel(this.contentEl, this.store);
         this.currentContent = hostSettingsComp;
         this.addChild(hostSettingsComp);
+        break;
+      }
+      case 'group-edit': {
+        const groupEdit = new GroupEdit(this.contentEl, this.store, content.groupId);
+        this.currentContent = groupEdit;
+        this.addChild(groupEdit);
+        break;
+      }
+      case 'iplist-edit': {
+        const ipListEdit = new IpListEdit(this.contentEl, this.store, content.ipListId);
+        this.currentContent = ipListEdit;
+        this.addChild(ipListEdit);
         break;
       }
     }

@@ -182,14 +182,6 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, hosts };
     }
 
-    case 'SET_HOST_CAPABILITIES': {
-      const existing = state.hosts.get(action.hostId);
-      if (!existing) return state;
-      const hosts = cloneMap(state.hosts);
-      hosts.set(action.hostId, { ...existing, capabilities: action.capabilities, updatedAt: Date.now() });
-      return { ...state, hosts };
-    }
-
     // ─── Group Management ────────────────────────────────
     case 'ADD_GROUP': {
       const groups = cloneMap(state.groups);

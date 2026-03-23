@@ -42,6 +42,15 @@ export function createGroupRow(group: HostGroup, isExpanded: boolean): HTMLEleme
     String(group.memberHostIds.length));
   row.appendChild(countEl);
 
+  // Delete button (visible on hover)
+  const deleteBtn = h('button', {
+    className: 'sidebar__group-delete-btn',
+    type: 'button',
+    'aria-label': `Delete group ${group.name}`,
+    dataset: { deleteGroupId: group.id },
+  }, '\u00D7');
+  row.appendChild(deleteBtn);
+
   return row;
 }
 

@@ -247,7 +247,9 @@ export type SidePanelContent =
   | { type: 'port-forward' }
   | { type: 'source-nat' }
   | { type: 'settings' }
-  | { type: 'host-settings' };
+  | { type: 'host-settings' }
+  | { type: 'group-edit'; groupId: string }
+  | { type: 'iplist-edit'; ipListId: string };
 
 export type DialogType =
   | 'add-host'

@@ -163,6 +163,15 @@ export function createHostRow(host: Host, isActive: boolean): HTMLElement {
   const chevron = createChevronSvg();
   row.appendChild(chevron);
 
+  // Delete button (visible on hover)
+  const deleteBtn = h('button', {
+    className: 'sidebar__host-delete-btn',
+    type: 'button',
+    'aria-label': `Delete ${host.name}`,
+    dataset: { deleteHostId: host.id },
+  }, '\u00D7');
+  row.appendChild(deleteBtn);
+
   return row;
 }
 

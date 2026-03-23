@@ -9,12 +9,12 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, Host, HostGroup, IpList } from '../../store/types';
+import type { AppState, Host, HostGroup, IpList, SidePanelContent } from '../../store/types';
 import { reconcileList } from '../reconciler';
 import { createHostRow, updateHostRow } from './host-row';
 import { createGroupRow, updateGroupRow } from './group-row';
 import { h } from '../../utils/dom';
-import { fetchRules } from '../../ipc/bridge';
+import { fetchRules, deleteHost } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 
 type ScaleMode = 'all' | 'medium' | 'large';
@@ -185,6 +185,13 @@ export class Sidebar extends Component {
 
     // Click delegation for host rows (in both hosts and recent containers)
     const handleHostClick = (e: Event) => {
+      // Check if delete button was clicked
+      const deleteBtn = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-delete-btn');
+      if (deleteBtn?.dataset.deleteHostId) {
+        e.stopPropagation();
+        this.confirmDeleteHost(deleteBtn.dataset.deleteHostId);
+        return;
+      }
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-row');
       if (row?.dataset.hostId) {
         const hostId = row.dataset.hostId;
@@ -198,6 +205,22 @@ export class Sidebar extends Component {
 
     // Click delegation for group rows and nested member hosts
     this.listen(this.groupsContainer, 'click', (e) => {
+      // Check if host delete button was clicked inside group
+      const hostDeleteBtn = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-delete-btn');
+      if (hostDeleteBtn?.dataset.deleteHostId) {
+        e.stopPropagation();
+        this.confirmDeleteHost(hostDeleteBtn.dataset.deleteHostId);
+        return;
+      }
+
+      // Check if group delete button was clicked
+      const groupDeleteBtn = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__group-delete-btn');
+      if (groupDeleteBtn?.dataset.deleteGroupId) {
+        e.stopPropagation();
+        this.confirmDeleteGroup(groupDeleteBtn.dataset.deleteGroupId);
+        return;
+      }
+
       // Check if a member host row was clicked
       const memberRow = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__host-row');
       if (memberRow?.dataset.hostId) {
@@ -209,6 +232,16 @@ export class Sidebar extends Component {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__group-row');
       if (row?.dataset.groupId) {
         const groupId = row.dataset.groupId;
+        // Check if the group name was clicked (open edit panel)
+        const nameEl = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__group-name');
+        if (nameEl) {
+          this.store.dispatch({
+            type: 'SET_SIDE_PANEL_CONTENT',
+            content: { type: 'group-edit', groupId } as SidePanelContent,
+          });
+          this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
+          return;
+        }
         if (this.expandedGroups.has(groupId)) {
           this.expandedGroups.delete(groupId);
         } else {
@@ -224,51 +257,25 @@ export class Sidebar extends Component {
       }
     });
 
-    // Click delegation for IP list rows — highlight and show toast
+    // Click delegation for IP list rows — open edit panel or delete
     this.listen(this.ipListsContainer, 'click', (e) => {
+      // Check if delete button was clicked
+      const deleteBtn = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__iplist-delete-btn');
+      if (deleteBtn?.dataset.deleteIplistId) {
+        e.stopPropagation();
+        this.confirmDeleteIpList(deleteBtn.dataset.deleteIplistId);
+        return;
+      }
+
       const row = (e.target as HTMLElement).closest<HTMLElement>('.sidebar__iplist-row');
       if (row?.dataset.iplistId) {
-        // Briefly highlight the clicked row to give visual feedback
-        const allRows = this.ipListsContainer.querySelectorAll('.sidebar__iplist-row');
-        for (const r of allRows) {
-          r.classList.remove('sidebar__iplist-row--selected');
-        }
-        row.classList.add('sidebar__iplist-row--selected');
-
-        // Show the IP list entries in a tooltip-like detail
         const ipListId = row.dataset.iplistId;
-        const state = this.store.getState();
-        const ipList = state.ipLists.get(ipListId);
-        if (ipList) {
-          // Remove any existing detail popover
-          const existing = this.el.querySelector('.sidebar__iplist-detail');
-          if (existing) existing.remove();
-
-          const detail = h('div', { className: 'sidebar__iplist-detail' });
-          detail.appendChild(h('div', { className: 'sidebar__iplist-detail-title' }, ipList.name));
-          for (const entry of ipList.entries) {
-            const entryEl = h('div', { className: 'sidebar__iplist-detail-entry' });
-            entryEl.appendChild(h('span', { className: 'sidebar__iplist-detail-addr' }, entry.address));
-            if (entry.comment) {
-              entryEl.appendChild(h('span', { className: 'sidebar__iplist-detail-comment' }, entry.comment));
-            }
-            detail.appendChild(entryEl);
-          }
-          if (ipList.entries.length === 0) {
-            detail.appendChild(h('div', { className: 'sidebar__iplist-detail-empty' }, 'No addresses in this list.'));
-          }
-          const closeBtn = h('button', {
-            className: 'sidebar__iplist-detail-close',
-            type: 'button',
-            'aria-label': 'Close',
-          }, '\u00D7');
-          this.listen(closeBtn, 'click', () => {
-            detail.remove();
-            row.classList.remove('sidebar__iplist-row--selected');
-          });
-          detail.insertBefore(closeBtn, detail.firstChild);
-          row.parentElement?.appendChild(detail);
-        }
+        // Open the IP list edit panel
+        this.store.dispatch({
+          type: 'SET_SIDE_PANEL_CONTENT',
+          content: { type: 'iplist-edit', ipListId } as SidePanelContent,
+        });
+        this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
       }
     });
 
@@ -375,13 +382,22 @@ export class Sidebar extends Component {
     const state = this.store.getState();
     const host = state.hosts.get(hostId);
     if (host && host.status === 'connected') {
+      const operationId = `fetchRules-${hostId}-${Date.now()}`;
+      this.store.dispatch({
+        type: 'START_OPERATION',
+        operationId,
+        operationType: 'fetchRules',
+        hostId,
+      });
       fetchRules(hostId)
         .then((ruleSet) => {
           const rules = convertRuleSet(ruleSet);
           this.store.dispatch({ type: 'SET_HOST_RULES', hostId, rules });
+          this.store.dispatch({ type: 'COMPLETE_OPERATION', operationId });
         })
-        .catch(() => {
-          // Rule fetch failure is handled by the empty state UI
+        .catch((err) => {
+          const errorMsg = err instanceof Error ? err.message : 'Failed to fetch rules';
+          this.store.dispatch({ type: 'FAIL_OPERATION', operationId, error: errorMsg });
         });
     }
   }
@@ -537,6 +553,15 @@ export class Sidebar extends Component {
       String(list.entries.length));
     row.appendChild(countEl);
 
+    // Delete button (visible on hover)
+    const deleteBtn = h('button', {
+      className: 'sidebar__iplist-delete-btn',
+      type: 'button',
+      'aria-label': `Delete ${list.name}`,
+      dataset: { deleteIplistId: list.id },
+    }, '\u00D7');
+    row.appendChild(deleteBtn);
+
     return row;
   }
 
@@ -603,5 +628,47 @@ export class Sidebar extends Component {
       }
       this.renderGroups();
     }
+  }
+
+  private confirmDeleteHost(hostId: string): void {
+    const state = this.store.getState();
+    const host = state.hosts.get(hostId);
+    if (!host) return;
+
+    const confirmed = window.confirm(`Delete ${host.name}? This removes it from the app.`);
+    if (!confirmed) return;
+
+    // If this was the active host, clear it
+    if (state.activeHostId === hostId) {
+      this.store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: null });
+    }
+    this.store.dispatch({ type: 'CLOSE_DIALOG' });
+    this.store.dispatch({ type: 'REMOVE_HOST', hostId });
+    // Also notify the backend
+    deleteHost(hostId, false).catch(() => {
+      // Backend delete failure is non-critical; host is already removed from local state
+    });
+  }
+
+  private confirmDeleteGroup(groupId: string): void {
+    const state = this.store.getState();
+    const group = state.groups.get(groupId);
+    if (!group) return;
+
+    const confirmed = window.confirm(`Delete group "${group.name}"? Member hosts will not be deleted.`);
+    if (!confirmed) return;
+
+    this.store.dispatch({ type: 'REMOVE_GROUP', groupId });
+  }
+
+  private confirmDeleteIpList(ipListId: string): void {
+    const state = this.store.getState();
+    const ipList = state.ipLists.get(ipListId);
+    if (!ipList) return;
+
+    const confirmed = window.confirm(`Delete IP list "${ipList.name}"? Rules referencing this list may be affected.`);
+    if (!confirmed) return;
+
+    this.store.dispatch({ type: 'REMOVE_IP_LIST', ipListId });
   }
 }

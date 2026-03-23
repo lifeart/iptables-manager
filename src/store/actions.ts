@@ -11,7 +11,6 @@ import type {
   SshLogEntry,
   AppSettings,
   HostStatus,
-  HostCapabilities,
   SidePanelContent,
   AppState,
   IpListEntry,
@@ -120,12 +119,6 @@ export interface SetHostStatusAction {
   type: 'SET_HOST_STATUS';
   hostId: string;
   status: HostStatus;
-}
-
-export interface SetHostCapabilitiesAction {
-  type: 'SET_HOST_CAPABILITIES';
-  hostId: string;
-  capabilities: HostCapabilities;
 }
 
 // ─── Group Management ─────────────────────────────────────────
@@ -304,7 +297,6 @@ export type Action =
   | UpdateHostAction
   | RemoveHostAction
   | SetHostStatusAction
-  | SetHostCapabilitiesAction
   | AddGroupAction
   | UpdateGroupAction
   | RemoveGroupAction

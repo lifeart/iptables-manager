@@ -7,7 +7,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { AppState } from '../../store/types';
 import { selectActiveHost } from '../../store/selectors';
-import { onHitCounters, onBlockedEntry, onConntrack, subscribeActivity, unsubscribeActivity, fetchBans } from '../../ipc/bridge';
+import { onHitCounters, onBlockedEntry, onConntrack, subscribeActivity, unsubscribeActivity, fetchBans, fetchHitCounters, fetchConntrack } from '../../ipc/bridge';
 import type { Fail2banBan } from '../../ipc/bridge';
 import { h } from '../../utils/dom';
 import { formatTimeAgo } from '../../utils/format';
@@ -29,6 +29,7 @@ export class Activity extends Component {
 
   private paused = false;
   private streamId: string | null = null;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -145,6 +146,9 @@ export class Activity extends Component {
   }
 
   private async onHostChanged(): Promise<void> {
+    // Clean up previous polling
+    this.stopPolling();
+
     // Unsubscribe from old stream
     if (this.streamId) {
       try {
@@ -156,13 +160,57 @@ export class Activity extends Component {
     }
 
     // Subscribe to new host
-    const hostId = this.store.getState().activeHostId;
-    if (hostId) {
-      try {
-        this.streamId = await subscribeActivity(hostId);
-      } catch {
-        this.showActivityError('Unable to load activity data');
-      }
+    const state = this.store.getState();
+    const hostId = state.activeHostId;
+    if (!hostId) return;
+
+    const host = state.hosts.get(hostId);
+    if (!host) return;
+
+    try {
+      this.streamId = await subscribeActivity(hostId);
+    } catch {
+      this.showActivityError('Unable to load activity data');
+    }
+
+    // For real connected hosts (not demo), poll for activity data
+    if (host.status === 'connected') {
+      this.fetchActivityData(hostId);
+      const pollMs = state.settings.pollIntervalMs || 30000;
+      this.pollInterval = setInterval(() => {
+        if (!this.paused) {
+          this.fetchActivityData(hostId);
+        }
+      }, pollMs);
+    }
+  }
+
+  private async fetchActivityData(hostId: string): Promise<void> {
+    try {
+      const [counters, conntrack] = await Promise.all([
+        fetchHitCounters(hostId),
+        fetchConntrack(hostId),
+      ]);
+      this.store.dispatch({
+        type: 'UPDATE_HIT_COUNTERS',
+        hostId,
+        counters,
+      });
+      this.store.dispatch({
+        type: 'SET_CONNTRACK_USAGE',
+        hostId,
+        current: conntrack.current,
+        max: conntrack.max,
+      });
+    } catch {
+      // Polling failure is non-critical — next poll will retry
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.pollInterval !== null) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
     }
   }
 
@@ -229,6 +277,7 @@ export class Activity extends Component {
   }
 
   override destroy(): void {
+    this.stopPolling();
     if (this.streamId) {
       unsubscribeActivity(this.streamId).catch(() => {});
     }

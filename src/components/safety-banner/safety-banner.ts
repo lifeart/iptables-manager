@@ -161,8 +161,9 @@ export class SafetyBanner extends Component {
       const hostName = host ? host.name : hostId;
 
       if (remaining <= 0) {
-        // Timer expired, clear it
+        // Timer expired — auto-confirm changes and clear
         this.store.dispatch({ type: 'CLEAR_SAFETY_TIMER', hostId });
+        this.confirmChanges(hostId);
         continue;
       }
 
@@ -175,6 +176,15 @@ export class SafetyBanner extends Component {
           this.textEl.textContent = `Changes applied to ${hostName}. Confirming in ${remaining} seconds`;
         }
       }
+    }
+  }
+
+  private async confirmChanges(hostId: string): Promise<void> {
+    try {
+      const { confirmChanges: confirmIpc } = await import('../../ipc/bridge');
+      await confirmIpc(hostId);
+    } catch {
+      // Confirm failure is non-critical
     }
   }
 

@@ -230,6 +230,10 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return [] as T;
     case 'activity:fetch-bans':
       return [] as T;
+    case 'activity:fetch-hit-counters':
+      return [] as T;
+    case 'activity:fetch-conntrack':
+      return { current: 0, max: 0 } as T;
     default:
       return undefined as T;
   }
@@ -265,6 +269,8 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'activity:unsubscribe': 'activity_unsubscribe',
   'activity:fetch-conntrack-table': 'activity_fetch_conntrack_table',
   'activity:fetch-bans': 'activity_fetch_bans',
+  'activity:fetch-hit-counters': 'activity_fetch_hit_counters',
+  'activity:fetch-conntrack': 'activity_fetch_conntrack',
 };
 
 function mapCommandName(cmd: string): string {
@@ -399,6 +405,12 @@ export const fetchConntrackTable = (hostId: string) =>
 
 export const fetchBans = (hostId: string) =>
   ipcCall<Fail2banBan[]>('activity:fetch-bans', { hostId });
+
+export const fetchHitCounters = (hostId: string) =>
+  ipcCall<HitCounter[]>('activity:fetch-hit-counters', { hostId });
+
+export const fetchConntrack = (hostId: string) =>
+  ipcCall<{ current: number; max: number }>('activity:fetch-conntrack', { hostId });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

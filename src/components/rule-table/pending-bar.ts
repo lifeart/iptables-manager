@@ -220,11 +220,30 @@ export class PendingBar extends Component {
     const changeset = state.stagedChanges.get(hostId);
     if (!changeset || changeset.changes.length === 0) return;
 
+    const host = state.hosts.get(hostId);
+    const isRealHost = host && host.status === 'connected';
+
     try {
       this.applyBtn.disabled = true;
       this.applyBtn.textContent = 'Applying...';
-      await ipc.applyChanges(hostId, changeset.changes);
+
+      const result = await ipc.applyChanges(hostId, changeset.changes);
       this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
+
+      // Set safety timer for real connected hosts
+      if (isRealHost) {
+        const timeoutSec = state.settings.defaultSafetyTimeout || 60;
+        const now = Date.now();
+        this.store.dispatch({
+          type: 'SET_SAFETY_TIMER',
+          timer: {
+            hostId,
+            expiresAt: now + timeoutSec * 1000,
+            remoteJobId: result.remoteJobId ?? '',
+            startedAt: now,
+          },
+        });
+      }
     } catch (err) {
       // Show error feedback inline
       const errorMsg = err instanceof Error ? err.message : 'Apply failed';

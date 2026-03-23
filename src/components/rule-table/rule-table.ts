@@ -8,7 +8,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, EffectiveRule, HitCounter, Host } from '../../store/types';
+import type { AppState, EffectiveRule, HitCounter, Host, OperationState } from '../../store/types';
 import {
   selectActiveHost,
   selectEffectiveRules,
@@ -42,6 +42,8 @@ export class RuleTable extends Component {
   private addRuleBtnContainer!: HTMLElement;
   private collapsedSections = new Set<string>();
   private currentHeaderHostId: string | null = null;
+  private loadingOverlay: HTMLElement | null = null;
+  private errorBanner: HTMLElement | null = null;
 
   // Tab content panels
   private activityPanel: HTMLElement | null = null;
@@ -248,10 +250,61 @@ export class RuleTable extends Component {
       () => this.renderRules(),
     );
 
+    // Operations — show loading/error states for fetchRules
+    this.subscribe(
+      (s: AppState) => s.operations,
+      (ops) => this.updateOperationState(ops),
+    );
+
     // Initial renders
     this.updateTabStyling();
     this.renderRules();
     this.updateFilterBar();
+  }
+
+  private updateOperationState(operations: Map<string, OperationState>): void {
+    const state = this.store.getState();
+    const hostId = state.activeHostId;
+    let fetchOp: OperationState | null = null;
+
+    // Find the most recent fetchRules operation for the active host
+    for (const op of operations.values()) {
+      if (op.type === 'fetchRules' && op.hostId === hostId) {
+        if (!fetchOp || op.startedAt > fetchOp.startedAt) {
+          fetchOp = op;
+        }
+      }
+    }
+
+    // Loading spinner
+    if (fetchOp?.status === 'pending') {
+      if (!this.loadingOverlay) {
+        this.loadingOverlay = h('div', { className: 'rule-table__loading-overlay' },
+          h('div', { className: 'rule-table__loading-spinner' }),
+          h('span', {}, 'Loading rules...'),
+        );
+        this.sectionsContainer.appendChild(this.loadingOverlay);
+      }
+    } else {
+      if (this.loadingOverlay) {
+        this.loadingOverlay.remove();
+        this.loadingOverlay = null;
+      }
+    }
+
+    // Error banner
+    if (fetchOp?.status === 'error') {
+      if (!this.errorBanner) {
+        this.errorBanner = h('div', { className: 'rule-table__error-banner' });
+        this.sectionsContainer.insertBefore(this.errorBanner, this.sectionsContainer.firstChild);
+      }
+      this.errorBanner.textContent = fetchOp.error ?? 'Failed to load rules';
+    } else {
+      if (this.errorBanner) {
+        this.errorBanner.remove();
+        this.errorBanner = null;
+      }
+    }
   }
 
   private updateTabStyling(): void {
@@ -592,17 +645,27 @@ export class RuleTable extends Component {
 
   private handleReconnect(host: Host): void {
     this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'connecting' });
+    const operationId = `fetchRules-${host.id}-${Date.now()}`;
     connectHost(host.id, host.connection.hostname, host.connection.port, host.connection.username, host.connection.authMethod, host.connection.keyPath)
       .then(() => {
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'connected' });
+        this.store.dispatch({
+          type: 'START_OPERATION',
+          operationId,
+          operationType: 'fetchRules',
+          hostId: host.id,
+        });
         return fetchRules(host.id);
       })
       .then((ruleData) => {
         const rules = convertRuleSet(ruleData);
         this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
+        this.store.dispatch({ type: 'COMPLETE_OPERATION', operationId });
       })
-      .catch(() => {
+      .catch((err) => {
         this.store.dispatch({ type: 'SET_HOST_STATUS', hostId: host.id, status: 'unreachable' });
+        const errorMsg = err instanceof Error ? err.message : 'Connection failed';
+        this.store.dispatch({ type: 'FAIL_OPERATION', operationId, error: errorMsg });
       });
   }
 
