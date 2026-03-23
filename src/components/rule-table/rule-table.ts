@@ -528,6 +528,9 @@ export class RuleTable extends Component {
               const rowEl = createRuleRow(rule, pendingRuleIds.has(rule.id), ipListNames);
               if (rule.section === 'default-policy') {
                 rowEl.classList.add('rule-table__row--default-policy');
+                if (rule.action === 'allow') {
+                  rowEl.classList.add('rule-table__row--default-policy-accept');
+                }
               }
               // Set hit count
               this.updateRowHitCount(rowEl, rule.id, hitCounters);
@@ -536,6 +539,7 @@ export class RuleTable extends Component {
             (el, rule) => {
               updateRuleRow(el, rule, pendingRuleIds.has(rule.id), ipListNames);
               el.classList.toggle('rule-table__row--default-policy', rule.section === 'default-policy');
+              el.classList.toggle('rule-table__row--default-policy-accept', rule.section === 'default-policy' && rule.action === 'allow');
               // Update hit count
               this.updateRowHitCount(el, rule.id, hitCounters);
             },
@@ -580,6 +584,22 @@ export class RuleTable extends Component {
     const text = count > 0 ? this.formatHitCount(count) : '';
     if (hitCountEl.textContent !== text) {
       hitCountEl.textContent = text;
+      // Briefly flash the updating class for animated counter
+      if (text) {
+        hitCountEl.classList.add('rule-table__hit-count--updating');
+        setTimeout(() => {
+          hitCountEl.classList.remove('rule-table__hit-count--updating');
+        }, 500);
+      }
+    }
+
+    // Update activity dot — active if packets in the last minute
+    const activityDot = rowEl.querySelector('.rule-table__activity-dot');
+    if (activityDot) {
+      const recentlyActive = counter
+        ? (counter.timestamp > Date.now() - 60_000 && counter.packets > 0)
+        : false;
+      activityDot.classList.toggle('rule-table__activity-dot--active', recentlyActive);
     }
   }
 
@@ -587,6 +607,42 @@ export class RuleTable extends Component {
     if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
     if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
     return String(count);
+  }
+
+  private buildRouteMap(): HTMLElement {
+    const map = h('div', { className: 'rule-table__route-map' });
+
+    // Determine the active chain based on current filter/tab
+    const state = this.store.getState();
+    const filterTab = state.ruleFilter.tab;
+
+    // Row 1: Internet -> PREROUTING -> INPUT -> Local Machine
+    //                               -> FORWARD -> POSTROUTING -> Out
+    const chains: Array<{ name: string; activeFor: string[] }> = [
+      { name: 'PREROUTING', activeFor: ['all'] },
+      { name: 'INPUT', activeFor: ['all', 'allow', 'block'] },
+      { name: 'FORWARD', activeFor: [] },
+      { name: 'OUTPUT', activeFor: ['all'] },
+      { name: 'POSTROUTING', activeFor: [] },
+    ];
+
+    // Build line 1: Internet -> [PREROUTING] -> [INPUT] -> Local
+    map.appendChild(h('span', { className: 'rule-table__route-map-label' }, 'Internet'));
+    map.appendChild(h('span', { className: 'rule-table__route-map-arrow' }, '\u2192'));
+
+    for (const chain of chains) {
+      const isActive = chain.activeFor.includes(filterTab);
+      const node = h('span', {
+        className: 'rule-table__route-map-node' + (isActive ? ' rule-table__route-map-node--active' : ''),
+        dataset: { chain: chain.name },
+      }, chain.name);
+      map.appendChild(node);
+      map.appendChild(h('span', { className: 'rule-table__route-map-arrow' }, '\u2192'));
+    }
+
+    map.appendChild(h('span', { className: 'rule-table__route-map-label' }, 'Out'));
+
+    return map;
   }
 
   private switchTabContent(tab: AppState['activeTab']): void {
@@ -720,6 +776,10 @@ export class RuleTable extends Component {
       className: `rule-table__host-status rule-table__host-status--${host.status}`,
     }, statusLabel);
     this.headerEl.appendChild(statusEl);
+
+    // Route map — packet flow visualization
+    const routeMap = this.buildRouteMap();
+    this.headerEl.appendChild(routeMap);
 
     const headerBtns = h('div', {
       className: 'rule-table__header-actions',

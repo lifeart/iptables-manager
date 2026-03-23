@@ -219,26 +219,32 @@
 .rule-table__section-header {
   display: flex;
   align-items: center;
-  gap: var(--space-compact);
-  padding: var(--space-comfortable) var(--space-spacious);
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border-radius: 6px;
+  margin: 8px 0;
   cursor: pointer;
   user-select: none;
   position: sticky;
   top: 0;
-  background: var(--color-background);
   z-index: 1;
 }
 
 .rule-table__section-header::before,
 .rule-table__section-header::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
+  content: none;
 }
 
-.rule-table__section-header::before {
-  max-width: 24px;
+.rule-table__section-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .rule-table__section-title {
@@ -310,18 +316,19 @@
 .rule-table__row {
   display: flex;
   align-items: center;
-  height: var(--row-height);
-  max-height: var(--row-height);
+  min-height: var(--row-height);
   padding: 0 var(--space-spacious) 0 calc(var(--status-bar-width) + var(--space-default));
   cursor: pointer;
   position: relative;
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
   border-bottom: 1px solid var(--color-separator);
   box-sizing: border-box;
+  border-radius: 6px;
 }
 
 .rule-table__row:hover {
   background: var(--color-hover);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .rule-table__row:hover .rule-table__overflow-btn {
@@ -351,7 +358,7 @@
   text-decoration: line-through;
 }
 
-/* Status bar (3px left edge) */
+/* Status bar (left edge) */
 .rule-table__row-bar {
   position: absolute;
   left: 0;
@@ -362,20 +369,24 @@
   z-index: 1;
 }
 
+.rule-table__row--selected .rule-table__row-bar {
+  width: 4px;
+}
+
 .rule-table__row-bar--allow {
-  background: var(--color-allow);
+  background: linear-gradient(to bottom, var(--color-allow), color-mix(in srgb, var(--color-allow) 60%, transparent));
 }
 
 .rule-table__row-bar--block {
-  background: var(--color-block);
+  background: linear-gradient(to bottom, var(--color-block), color-mix(in srgb, var(--color-block) 60%, transparent));
 }
 
 .rule-table__row-bar--log {
-  background: var(--color-log);
+  background: linear-gradient(to bottom, var(--color-log), color-mix(in srgb, var(--color-log) 60%, transparent));
 }
 
 .rule-table__row-bar--fwd {
-  background: var(--color-info);
+  background: linear-gradient(to bottom, var(--color-info), color-mix(in srgb, var(--color-info) 60%, transparent));
 }
 
 /* Row content (name + protocol lines) */
@@ -395,31 +406,39 @@
   gap: var(--space-compact);
 }
 
-/* Status label (ALLOW/BLOCK/LOG/FWD) */
+/* Status label (ALLOW/BLOCK/LOG/FWD) — pill badges */
 .rule-table__status-label {
   font-family: var(--font-mono);
-  font-size: var(--font-size-status-label);
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  width: 52px;
+  padding: 2px 8px;
+  border-radius: 4px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .rule-table__status-label--allow {
-  color: var(--color-allow);
+  background: rgba(48, 209, 88, 0.15);
+  color: #30D158;
 }
 
 .rule-table__status-label--block {
-  color: var(--color-block);
+  background: rgba(255, 69, 58, 0.15);
+  color: #FF453A;
 }
 
 .rule-table__status-label--log {
-  color: var(--color-log);
+  background: rgba(94, 92, 230, 0.15);
+  color: #5E5CE6;
 }
 
 .rule-table__status-label--fwd {
-  color: var(--color-info);
+  background: rgba(255, 159, 10, 0.15);
+  color: #FF9F0A;
 }
 
 /* Rule name */
@@ -529,6 +548,11 @@
   text-align: right;
   width: 48px;
   flex-shrink: 0;
+  transition: color 0.3s ease;
+  font-variant-numeric: tabular-nums;
+}
+.rule-table__hit-count--updating {
+  color: var(--color-allow);
 }
 
 /* Overflow menu button */
@@ -725,12 +749,23 @@
   text-decoration: line-through;
 }
 
-/* ── "Everything Else" dashed separator ──────────────── */
+/* ── "Everything Else" banner row ────────────────────── */
 
 .rule-table__row--default-policy {
-  border-top: 2px dashed var(--color-border);
-  margin-top: var(--space-compact);
-  opacity: 0.7;
+  background: rgba(255, 69, 58, 0.06);
+  border: 1px dashed rgba(255, 69, 58, 0.3);
+  border-radius: 8px;
+  margin: 8px 0;
+  padding: 12px 16px;
+  opacity: 1;
+}
+.rule-table__row--default-policy .rule-table__status-label {
+  font-size: 11px;
+}
+
+.rule-table__row--default-policy-accept {
+  background: rgba(48, 209, 88, 0.06);
+  border-color: rgba(48, 209, 88, 0.3);
 }
 
 /* ── Header Buttons ─────────────────────────────────────── */
@@ -937,4 +972,96 @@
 
 .rule-table__pending-bar-tooltip-item {
   padding: 1px 0;
+}
+
+/* ── Route Map (packet flow diagram) ────────────────── */
+
+.rule-table__route-map {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px var(--space-spacious);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  line-height: 1.6;
+}
+
+.rule-table__route-map-node {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.rule-table__route-map-node:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.rule-table__route-map-node--active {
+  background: var(--color-primary-hover-bg);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.rule-table__route-map-arrow {
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+}
+
+.rule-table__route-map-label {
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ── Activity Dot (alive indicator) ─────────────────── */
+
+.rule-table__activity-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-disabled);
+}
+
+.rule-table__activity-dot--active {
+  background: var(--color-allow);
+  animation: activity-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes activity-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Micro Info Line (third line: interface + conntrack) */
+
+.rule-table__row-third-line {
+  display: flex;
+  align-items: center;
+  padding-left: 60px;
+  gap: 6px;
+}
+
+.rule-table__micro-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  background: var(--color-surface);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.rule-table__micro-separator {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
 }
