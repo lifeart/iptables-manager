@@ -76,6 +76,21 @@ pub struct ApplyResult {
     pub remote_job_id: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityData {
+    pub hit_counters: Vec<crate::activity::monitor::HitCounter>,
+    pub conntrack_current: u64,
+    pub conntrack_max: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SafetyTimerResult {
+    pub job_id: String,
+    pub mechanism: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConnectionParams {
@@ -370,8 +385,181 @@ pub async fn rules_revert(
 pub async fn rules_confirm(
     host_id: String,
 ) -> Result<(), IpcError> {
-    // Safety timer cancellation is handled client-side for now
     let _ = host_id;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Activity polling IPC commands
+// ---------------------------------------------------------------------------
+
+/// Subscribe to activity polling for a host (no-op; frontend polls via fetch_* calls).
+#[tauri::command]
+pub async fn activity_subscribe(host_id: String) -> Result<(), IpcError> {
+    let _ = host_id;
+    Ok(())
+}
+
+/// Unsubscribe from activity polling for a host (no-op; frontend stops calling fetch_*).
+#[tauri::command]
+pub async fn activity_unsubscribe(host_id: String) -> Result<(), IpcError> {
+    let _ = host_id;
+    Ok(())
+}
+
+/// Fetch hit counters from `iptables -L -v -n -x` on the remote host.
+#[tauri::command]
+pub async fn fetch_hit_counters(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<Vec<crate::activity::monitor::HitCounter>, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::activity::monitor::fetch_hit_counters(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+/// One-shot conntrack data fetch: returns `{ current, max, percent }`.
+#[tauri::command]
+pub async fn fetch_conntrack_table(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<crate::activity::monitor::ConntrackUsage, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::activity::monitor::fetch_conntrack_usage(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+/// One-shot fail2ban ban list fetch.
+#[tauri::command]
+pub async fn fetch_bans(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<Vec<crate::activity::monitor::Fail2banBan>, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+    crate::activity::monitor::fetch_fail2ban_bans(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
+/// Fetch all activity data at once for a connected host.
+#[tauri::command]
+pub async fn fetch_activity(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<ActivityData, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    let hit_counters = crate::activity::monitor::fetch_hit_counters(&proxy)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: format!("hit counters: {}", e),
+            exit_code: 1,
+        })?;
+
+    let conntrack = crate::activity::monitor::fetch_conntrack_usage(&proxy).await;
+    let (conntrack_current, conntrack_max) = match conntrack {
+        Ok(usage) => (usage.current, usage.max),
+        Err(_) => (0, 0), // conntrack may not be available
+    };
+
+    Ok(ActivityData {
+        hit_counters,
+        conntrack_current,
+        conntrack_max,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Safety timer IPC commands
+// ---------------------------------------------------------------------------
+
+/// Schedule a safety revert timer on the remote host.
+#[tauri::command]
+pub async fn set_safety_timer(
+    host_id: String,
+    timeout_secs: u32,
+    pool: State<'_, PoolState>,
+) -> Result<SafetyTimerResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Detect the best available mechanism
+    let mechanism = crate::safety::timer::detect_mechanism(&proxy).await;
+
+    // Schedule the revert
+    let backup_path = "/var/lib/traffic-rules/snapshots/pre-apply.rules";
+    let job = crate::safety::timer::schedule_revert(&proxy, mechanism, backup_path, timeout_secs)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: format!("safety timer: {}", e),
+            exit_code: 1,
+        })?;
+
+    Ok(SafetyTimerResult {
+        job_id: job.id,
+        mechanism: format!("{:?}", job.mechanism),
+    })
+}
+
+/// Cancel a previously scheduled safety revert timer.
+#[tauri::command]
+pub async fn clear_safety_timer(
+    host_id: String,
+    job_id: String,
+    mechanism: Option<String>,
+    pool: State<'_, PoolState>,
+) -> Result<(), IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Determine the mechanism from the string, defaulting to At
+    let mech = match mechanism.as_deref() {
+        Some("At") => crate::safety::timer::SafetyMechanism::At,
+        Some("SystemdRun") => crate::safety::timer::SafetyMechanism::SystemdRun,
+        Some("Nohup") => crate::safety::timer::SafetyMechanism::Nohup,
+        Some("IptablesApply") => crate::safety::timer::SafetyMechanism::IptablesApply,
+        _ => crate::safety::timer::SafetyMechanism::At,
+    };
+
+    let revert_job = crate::safety::timer::RevertJobId {
+        mechanism: mech,
+        id: job_id,
+    };
+
+    crate::safety::timer::cancel_revert(&proxy, &revert_job)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: format!("cancel safety timer: {}", e),
+            exit_code: 1,
+        })?;
+
     Ok(())
 }
 

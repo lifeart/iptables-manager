@@ -36,6 +36,16 @@ pub fn run() {
             ipc::commands::rules_confirm,
             ipc::commands::explain_rule_cmd,
             ipc::commands::export_rules,
+            // Activity polling commands
+            ipc::commands::activity_subscribe,
+            ipc::commands::activity_unsubscribe,
+            ipc::commands::fetch_hit_counters,
+            ipc::commands::fetch_conntrack_table,
+            ipc::commands::fetch_bans,
+            ipc::commands::fetch_activity,
+            // Safety timer commands
+            ipc::commands::set_safety_timer,
+            ipc::commands::clear_safety_timer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
