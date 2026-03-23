@@ -125,50 +125,31 @@ async function bootstrap(): Promise<void> {
   showLoadingScreen();
 
   try {
-    // 1. Initialize IndexedDB
-    await initDB();
-
-    // 2. Load persisted state
-    const data = await loadPersistedState();
-
-    // 3. Check for orphaned safety timers
-    if (data.safetyTimers.length > 0) {
-      // Orphaned safety timers are hydrated into store and handled
-      // by SafetyBanner which auto-expires or offers manual revert.
+    // 1. Initialize IndexedDB (best effort — app works without it)
+    try {
+      await initDB();
+    } catch {
+      // IndexedDB may fail in some environments — continue without persistence
     }
 
-    // 4. Hydrate store
-    store.dispatch({
-      type: 'HYDRATE',
-      payload: {
-        hosts: data.hosts,
-        groups: data.groups,
-        ipLists: data.ipLists,
-        stagedChanges: data.stagedChanges,
-        safetyTimers: data.safetyTimers,
-        settings: data.settings,
-      },
-    });
-
-    // 5. Initialize theme from settings
+    // 2. Initialize theme
     themeManager.init(store.getState().settings.theme);
 
-    // 6. Mount app
+    // 3. Mount app
     hideLoadingScreen();
     const appContainer = document.getElementById('app');
     if (appContainer) {
       mountApp(appContainer);
     }
 
-    // 7. Load demo data in dev mode (always, since rules are ephemeral)
+    // 4. Load demo data (always — provides the initial experience)
     loadDemoData(store);
 
-    // 8. Wire dbSync to store for persistence
-    wireDbSync();
-
-    // 9. Auto-reconnect to last active host
-    if (store.getState().settings.autoReconnect) {
-      autoReconnect().catch(() => {});
+    // 5. Wire dbSync to store for persistence (best effort)
+    try {
+      wireDbSync();
+    } catch {
+      // Persistence may fail — app still works with in-memory state
     }
   } catch (e) {
     // Bootstrap failure is shown in the UI error screen below
