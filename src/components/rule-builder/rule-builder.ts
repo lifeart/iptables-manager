@@ -420,8 +420,8 @@ export class RuleBuilder extends Component {
 
     const rateLimitFields = h('div', {
       className: 'rule-builder__rate-limit-fields',
-      style: { display: 'none', marginTop: '8px', gap: '6px' },
     });
+    rateLimitFields.style.display = 'none';
 
     const maxLabel = document.createTextNode('Max ');
     rateLimitFields.appendChild(maxLabel);
@@ -429,16 +429,12 @@ export class RuleBuilder extends Component {
     maxInput.type = 'number';
     maxInput.className = 'rule-builder__input';
     maxInput.placeholder = '10';
-    maxInput.style.width = '60px';
-    maxInput.style.display = 'inline-block';
     this.listen(maxInput, 'input', () => { this.rateLimitMax = maxInput.value; });
     rateLimitFields.appendChild(maxInput);
 
     rateLimitFields.appendChild(document.createTextNode(' per '));
     const scopeSelect = document.createElement('select');
     scopeSelect.className = 'rule-builder__select';
-    scopeSelect.style.width = 'auto';
-    scopeSelect.style.display = 'inline-block';
     scopeSelect.appendChild(this.createOption('source', 'Source IP'));
     scopeSelect.appendChild(this.createOption('global', 'Global'));
     this.listen(scopeSelect, 'change', () => {
@@ -449,8 +445,6 @@ export class RuleBuilder extends Component {
     rateLimitFields.appendChild(document.createTextNode(' per '));
     const perSelect = document.createElement('select');
     perSelect.className = 'rule-builder__select';
-    perSelect.style.width = 'auto';
-    perSelect.style.display = 'inline-block';
     perSelect.appendChild(this.createOption('second', 'Second'));
     perSelect.appendChild(this.createOption('minute', 'Minute'));
     this.listen(perSelect, 'change', () => {
@@ -463,8 +457,6 @@ export class RuleBuilder extends Component {
     burstInput.type = 'number';
     burstInput.className = 'rule-builder__input';
     burstInput.placeholder = '5';
-    burstInput.style.width = '60px';
-    burstInput.style.display = 'inline-block';
     this.listen(burstInput, 'input', () => { this.rateLimitBurst = burstInput.value; });
     rateLimitFields.appendChild(burstInput);
 

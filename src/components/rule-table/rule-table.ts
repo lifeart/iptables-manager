@@ -118,8 +118,8 @@ export class RuleTable extends Component {
       id: 'tabpanel-activity',
       role: 'tabpanel',
       'aria-labelledby': 'tab-activity',
-      style: { display: 'none' },
     });
+    this.activityPanel.style.display = 'none';
     this.el.appendChild(this.activityPanel);
 
     // Terminal tab panel (hidden by default)
@@ -128,8 +128,8 @@ export class RuleTable extends Component {
       id: 'tabpanel-terminal',
       role: 'tabpanel',
       'aria-labelledby': 'tab-terminal',
-      style: { display: 'none' },
     });
+    this.terminalPanel.style.display = 'none';
     this.el.appendChild(this.terminalPanel);
 
     // Pending bar at bottom
@@ -363,16 +363,14 @@ export class RuleTable extends Component {
           rowsContainer.innerHTML = '';
           if (section.title === 'NAT Rules') {
             // Show NAT action links
-            const natActions = h('div', { className: 'rule-table__nat-actions', style: { padding: '8px 16px' } });
+            const natActions = h('div', { className: 'rule-table__nat-actions' });
             const portFwdLink = h('button', {
               className: 'rule-table__nat-link',
               type: 'button',
-              style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '13px', padding: '4px 0', display: 'block' },
             }, '+ Port Forwarding');
             const snatLink = h('button', {
               className: 'rule-table__nat-link',
               type: 'button',
-              style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '13px', padding: '4px 0', display: 'block' },
             }, '+ Source NAT');
             this.listen(portFwdLink, 'click', () => {
               this.store.dispatch({
@@ -391,7 +389,7 @@ export class RuleTable extends Component {
             natActions.appendChild(portFwdLink);
             natActions.appendChild(snatLink);
             natActions.appendChild(h('p', {
-              style: { margin: '8px 0 0', fontSize: '12px', color: 'var(--color-text-secondary, #888)' },
+              className: 'rule-table__nat-hint',
             }, 'Set up port forwarding or source NAT for this host'));
             rowsContainer.appendChild(natActions);
           } else {
@@ -514,21 +512,18 @@ export class RuleTable extends Component {
 
       const subTabs = h('div', {
         className: 'rule-table__terminal-sub-tabs',
-        style: { display: 'flex', gap: '8px', padding: '16px 24px 0' },
       });
 
       const rawBtn = h('button', {
         className: 'rule-table__terminal-sub-tab',
         type: 'button',
         disabled: true,
-        style: { opacity: '0.5', cursor: 'not-allowed', padding: '6px 16px', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'var(--color-bg-secondary, #1a1a1a)', color: 'var(--color-text-secondary, #888)' },
       }, 'Raw Rules');
 
       const tracerBtn = h('button', {
         className: 'rule-table__terminal-sub-tab',
         type: 'button',
         disabled: true,
-        style: { opacity: '0.5', cursor: 'not-allowed', padding: '6px 16px', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'var(--color-bg-secondary, #1a1a1a)', color: 'var(--color-text-secondary, #888)' },
       }, 'Packet Tracer');
 
       subTabs.appendChild(rawBtn);
@@ -537,11 +532,9 @@ export class RuleTable extends Component {
 
       const message = h('div', {
         className: 'rule-table__terminal-message',
-        style: { padding: '48px 24px', textAlign: 'center', color: 'var(--color-text-secondary, #888)' },
       });
-      message.appendChild(h('p', {
-        style: { fontSize: '14px', margin: '0' },
-      }, 'Terminal is available when connected to a real server. In this demo, explore the Rules and Activity tabs to learn about firewall management.'));
+      message.appendChild(h('p', {},
+        'Terminal is available when connected to a real server. In this demo, explore the Rules and Activity tabs to learn about firewall management.'));
       placeholder.appendChild(message);
 
       this.terminalPanel.appendChild(placeholder);
@@ -560,26 +553,24 @@ export class RuleTable extends Component {
     this.headerEl.appendChild(statusEl);
 
     const headerBtns = h('div', {
-      style: { marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center' },
+      className: 'rule-table__header-actions',
     });
 
     if (host.status === 'connected') {
       // Disconnect button
       const disconnectBtn = h('button', {
-        className: 'rule-table__disconnect-btn',
+        className: 'rule-table__header-btn rule-table__header-btn--disconnect',
         type: 'button',
         title: 'Disconnect from host',
-        style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-block, #f85149)' },
       }, 'Disconnect');
       this.listen(disconnectBtn, 'click', () => this.handleDisconnect(host.id));
       headerBtns.appendChild(disconnectBtn);
     } else if (host.status === 'disconnected' || host.status === 'unreachable') {
       // Reconnect button
       const reconnectBtn = h('button', {
-        className: 'rule-table__reconnect-btn',
+        className: 'rule-table__header-btn rule-table__header-btn--reconnect',
         type: 'button',
         title: 'Reconnect to host',
-        style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: 'none', background: 'var(--color-primary, #007AFF)', color: '#fff' },
       }, 'Reconnect');
       this.listen(reconnectBtn, 'click', () => this.handleReconnect(host));
       headerBtns.appendChild(reconnectBtn);
@@ -587,10 +578,9 @@ export class RuleTable extends Component {
 
     // History button (always shown)
     const historyBtn = h('button', {
-      className: 'rule-table__history-btn',
+      className: 'rule-table__header-btn',
       type: 'button',
       title: 'Snapshot History',
-      style: { padding: '4px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', border: '1px solid var(--color-border, #333)', background: 'transparent', color: 'var(--color-text-secondary, #888)' },
     }, 'History');
     this.listen(historyBtn, 'click', () => {
       this.store.dispatch({ type: 'SET_SIDE_PANEL_CONTENT', content: { type: 'snapshot-history' } });

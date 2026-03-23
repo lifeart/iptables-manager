@@ -370,3 +370,15 @@
 .sidebar:hover::after {
   background: var(--color-primary);
 }
+
+/* ── Resize Handle ──────────────────────────────────────── */
+
+.sidebar__resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}

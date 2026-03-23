@@ -167,3 +167,10 @@
   color: var(--color-text-secondary, #86868B);
   margin: 0;
 }
+
+/* Import error */
+.settings-panel__import-error {
+  color: var(--color-block);
+  font-size: 13px;
+  padding: var(--space-compact) 0;
+}

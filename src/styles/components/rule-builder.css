@@ -470,6 +470,207 @@
   margin: 0;
 }
 
+/* ─── Condition Row ──────────────────────────────────────────── */
+
+.rule-builder__condition-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  margin-bottom: var(--space-compact);
+}
+
+.rule-builder__condition-field,
+.rule-builder__condition-operator {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.rule-builder__condition-value {
+  flex: 1;
+}
+
+.rule-builder__condition-remove {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color var(--transition-fast);
+}
+
+.rule-builder__condition-remove:hover {
+  color: var(--color-block);
+}
+
+.rule-builder__add-condition-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  padding: var(--space-compact) 0;
+  transition: opacity var(--transition-fast);
+}
+
+.rule-builder__add-condition-btn:hover {
+  opacity: 0.8;
+}
+
+/* ─── Rate Limit Fields ──────────────────────────────────────── */
+
+.rule-builder__rate-limit-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--space-compact);
+  gap: var(--space-compact);
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.rule-builder__rate-limit-fields .rule-builder__input {
+  width: 60px;
+  display: inline-block;
+}
+
+.rule-builder__rate-limit-fields .rule-builder__select {
+  width: auto;
+  display: inline-block;
+}
+
+/* ─── NAT Builder ────────────────────────────────────────────── */
+
+.nat-builder {
+  display: flex;
+  flex-direction: column;
+}
+
+.nat-builder__description {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-comfortable);
+  line-height: 1.5;
+}
+
+.nat-builder__field-group {
+  margin-bottom: var(--space-default);
+}
+
+.nat-builder__target-row {
+  display: flex;
+  gap: var(--space-compact);
+  margin-bottom: var(--space-default);
+  align-items: center;
+}
+
+.nat-builder__target-row .rule-builder__input:first-child {
+  flex: 2;
+}
+
+.nat-builder__target-row .rule-builder__input:last-of-type {
+  flex: 1;
+}
+
+.nat-builder__port-label {
+  align-self: center;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.nat-builder__checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  margin: var(--space-default) 0;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.nat-builder__radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-compact);
+  margin-bottom: var(--space-compact);
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.nat-builder__radio-label input[type="radio"] {
+  margin-top: 2px;
+}
+
+.nat-builder__snat-ip-input {
+  margin-top: var(--space-compact);
+}
+
+.nat-builder__error {
+  color: var(--color-block);
+  font-size: 12px;
+  min-height: 20px;
+  margin-top: var(--space-tight);
+}
+
+.nat-builder__btn-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-compact);
+  margin-top: var(--space-comfortable);
+}
+
+.nat-builder__btn-cancel {
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-family);
+  transition: background var(--transition-fast);
+}
+
+.nat-builder__btn-cancel:hover {
+  background: var(--color-hover);
+}
+
+.nat-builder__btn-primary {
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  transition: opacity var(--transition-fast);
+}
+
+.nat-builder__btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* ─── Side Panel Title ───────────────────────────────────────── */
+
+.side-panel__title {
+  font-size: var(--font-size-page-title);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-default);
+}
+
 /* ─── Dark Theme ──────────────────────────────────────────────── */
 
 @media (prefers-color-scheme: dark) {

@@ -38,7 +38,7 @@ export class PortForwardBuilder extends Component {
 
     // Description
     form.appendChild(h('p', {
-      style: { fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' },
+      className: 'nat-builder__description',
     }, 'Forward incoming traffic on a port to an internal server.'));
 
     // External port
@@ -55,16 +55,15 @@ export class PortForwardBuilder extends Component {
     const fwdLabel = h('label', { className: 'rule-builder__field-label' }, 'Forward it to');
     form.appendChild(fwdLabel);
 
-    const targetRow = h('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } });
+    const targetRow = h('div', { className: 'nat-builder__target-row' });
     this.targetIpInput = document.createElement('input');
     this.targetIpInput.type = 'text';
     this.targetIpInput.className = 'rule-builder__input';
     this.targetIpInput.placeholder = 'IP address (e.g. 10.0.1.5)';
-    this.targetIpInput.style.flex = '2';
     targetRow.appendChild(this.targetIpInput);
 
     const portLabel = h('span', {
-      style: { alignSelf: 'center', color: 'var(--color-text-secondary)', fontSize: '13px' },
+      className: 'nat-builder__port-label',
     }, 'port');
     targetRow.appendChild(portLabel);
 
@@ -73,7 +72,6 @@ export class PortForwardBuilder extends Component {
     this.targetPortInput.className = 'rule-builder__input';
     this.targetPortInput.placeholder = '80';
     this.targetPortInput.inputMode = 'numeric';
-    this.targetPortInput.style.flex = '1';
     targetRow.appendChild(this.targetPortInput);
     form.appendChild(targetRow);
 
@@ -107,7 +105,7 @@ export class PortForwardBuilder extends Component {
 
     // Hairpin NAT
     const hairpinRow = h('label', {
-      style: { display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0', fontSize: '13px', cursor: 'pointer' },
+      className: 'nat-builder__checkbox-label',
     });
     this.hairpinCheckbox = document.createElement('input');
     this.hairpinCheckbox.type = 'checkbox';
@@ -117,16 +115,15 @@ export class PortForwardBuilder extends Component {
 
     // Error message
     this.errorEl = h('div', {
-      style: { color: 'var(--color-block)', fontSize: '12px', minHeight: '20px', marginTop: '4px' },
+      className: 'nat-builder__error',
     });
     form.appendChild(this.errorEl);
 
     // Buttons
-    const btnRow = h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' } });
+    const btnRow = h('div', { className: 'nat-builder__btn-row' });
     const cancelBtn = h('button', {
-      className: 'rule-builder__btn-secondary',
+      className: 'nat-builder__btn-cancel',
       type: 'button',
-      style: { padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-primary)', cursor: 'pointer', fontSize: '13px' },
     }, 'Cancel');
     this.listen(cancelBtn, 'click', () => {
       this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: false });
@@ -134,8 +131,8 @@ export class PortForwardBuilder extends Component {
     btnRow.appendChild(cancelBtn);
 
     const addBtn = h('button', {
+      className: 'nat-builder__btn-primary',
       type: 'button',
-      style: { padding: '6px 16px', borderRadius: '6px', border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' },
     }, 'Add Forward');
     this.listen(addBtn, 'click', () => this.onSave());
     btnRow.appendChild(addBtn);
@@ -201,7 +198,7 @@ export class PortForwardBuilder extends Component {
   }
 
   private fieldGroup(label: string): HTMLElement {
-    const group = h('div', { style: { marginBottom: '12px' } });
+    const group = h('div', { className: 'nat-builder__field-group' });
     group.appendChild(h('label', { className: 'rule-builder__field-label' }, label));
     return group;
   }
@@ -237,7 +234,7 @@ export class SourceNatBuilder extends Component {
 
     form.appendChild(h('h2', { className: 'side-panel__title' }, 'New Source NAT Rule'));
     form.appendChild(h('p', {
-      style: { fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' },
+      className: 'nat-builder__description',
     }, 'Translate source addresses for outgoing traffic (e.g. VPN clients accessing the internet).'));
 
     // Traffic from (source subnet)
@@ -278,7 +275,7 @@ export class SourceNatBuilder extends Component {
     const methodGroup = this.fieldGroup('Method');
 
     const masqLabel = h('label', {
-      style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px', cursor: 'pointer' },
+      className: 'nat-builder__radio-label',
     });
     const masqRadio = document.createElement('input');
     masqRadio.type = 'radio';
@@ -291,7 +288,7 @@ export class SourceNatBuilder extends Component {
     methodGroup.appendChild(masqLabel);
 
     const snatLabel = h('label', {
-      style: { display: 'flex', alignItems: 'start', gap: '8px', fontSize: '13px', cursor: 'pointer' },
+      className: 'nat-builder__radio-label',
     });
     const snatRadio = document.createElement('input');
     snatRadio.type = 'radio';
@@ -303,9 +300,8 @@ export class SourceNatBuilder extends Component {
     snatText.appendChild(document.createTextNode('SNAT (static IP — better performance for datacenters)'));
     this.snatIpInput = document.createElement('input');
     this.snatIpInput.type = 'text';
-    this.snatIpInput.className = 'rule-builder__input';
+    this.snatIpInput.className = 'rule-builder__input nat-builder__snat-ip-input';
     this.snatIpInput.placeholder = 'Static IP (e.g. 198.51.100.1)';
-    this.snatIpInput.style.marginTop = '6px';
     this.snatIpInput.disabled = true;
     snatText.appendChild(this.snatIpInput);
     snatLabel.appendChild(snatText);
@@ -328,15 +324,15 @@ export class SourceNatBuilder extends Component {
 
     // Error
     this.errorEl = h('div', {
-      style: { color: 'var(--color-block)', fontSize: '12px', minHeight: '20px', marginTop: '4px' },
+      className: 'nat-builder__error',
     });
     form.appendChild(this.errorEl);
 
     // Buttons
-    const btnRow = h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' } });
+    const btnRow = h('div', { className: 'nat-builder__btn-row' });
     const cancelBtn = h('button', {
+      className: 'nat-builder__btn-cancel',
       type: 'button',
-      style: { padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-primary)', cursor: 'pointer', fontSize: '13px' },
     }, 'Cancel');
     this.listen(cancelBtn, 'click', () => {
       this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: false });
@@ -344,8 +340,8 @@ export class SourceNatBuilder extends Component {
     btnRow.appendChild(cancelBtn);
 
     const addBtn = h('button', {
+      className: 'nat-builder__btn-primary',
       type: 'button',
-      style: { padding: '6px 16px', borderRadius: '6px', border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '500' },
     }, 'Add NAT Rule');
     this.listen(addBtn, 'click', () => this.onSave());
     btnRow.appendChild(addBtn);
@@ -404,7 +400,7 @@ export class SourceNatBuilder extends Component {
   }
 
   private fieldGroup(label: string): HTMLElement {
-    const group = h('div', { style: { marginBottom: '12px' } });
+    const group = h('div', { className: 'nat-builder__field-group' });
     group.appendChild(h('label', { className: 'rule-builder__field-label' }, label));
     return group;
   }

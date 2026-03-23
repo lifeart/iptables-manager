@@ -48,8 +48,8 @@ export class FilterBar extends Component {
       className: 'filter-bar__search-clear',
       type: 'button',
       'aria-label': 'Clear filter',
-      style: { display: 'none' },
     }, '\u00D7');
+    searchClearBtn.style.display = 'none';
     searchWrap.appendChild(searchClearBtn);
 
     // Filter count

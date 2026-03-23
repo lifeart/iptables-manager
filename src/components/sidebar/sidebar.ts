@@ -161,17 +161,7 @@ export class Sidebar extends Component {
     // Resize handle
     this.resizeHandle = h('div', {
       className: 'sidebar__resize-handle',
-      style: {
-        position: 'absolute',
-        top: '0',
-        right: '0',
-        width: '4px',
-        height: '100%',
-        cursor: 'col-resize',
-        zIndex: '10',
-      },
     });
-    this.el.style.position = 'relative';
     this.el.appendChild(this.resizeHandle);
   }
 

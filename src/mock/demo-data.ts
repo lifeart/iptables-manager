@@ -373,7 +373,26 @@ export const demoSnapshots: Snapshot[] = [
 // ─── Load into store ────────────────────────────────────────
 
 export function loadDemoData(store: Store): void {
-  // Add hosts
+  // Only load demo data if no hosts exist yet
+  // (prevents duplicates when IndexedDB has persisted hosts from previous session)
+  if (store.getState().hosts.size > 0) {
+    // But still load ephemeral data (rules, hit counters, blocked log)
+    // since those aren't persisted
+    store.dispatch({ type: 'SET_HOST_RULES', hostId: HOST_WEB01, rules: web01Rules });
+    store.dispatch({ type: 'SET_HOST_RULES', hostId: HOST_DB01, rules: db01Rules });
+    store.dispatch({ type: 'UPDATE_HIT_COUNTERS', hostId: HOST_WEB01, counters: web01HitCounters });
+    for (const entry of web01BlockedLog) {
+      store.dispatch({ type: 'ADD_BLOCKED_ENTRY', hostId: HOST_WEB01, entry });
+    }
+    store.dispatch({ type: 'SET_CONNTRACK_USAGE', hostId: HOST_WEB01, current: 1_247, max: 65_536 });
+    // Set active host if none selected
+    if (!store.getState().activeHostId) {
+      store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: HOST_WEB01 });
+    }
+    return;
+  }
+
+  // First time — add hosts
   for (const host of hosts) {
     store.dispatch({ type: 'ADD_HOST', host });
   }

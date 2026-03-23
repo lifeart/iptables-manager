@@ -46,7 +46,6 @@ export class PendingBar extends Component {
     this.showChangesLink = h('button', {
       className: 'rule-table__pending-bar-show-changes',
       type: 'button',
-      style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '12px', padding: '0 8px' },
     }, 'Show changes');
     this.el.appendChild(this.showChangesLink);
 
@@ -61,7 +60,7 @@ export class PendingBar extends Component {
 
     // Apply button (wrapped in container for tooltip positioning)
     const applyContainer = h('div', {
-      style: { position: 'relative', display: 'inline-block' },
+      className: 'rule-table__pending-bar-apply-wrap',
     });
     this.applyBtn = document.createElement('button');
     this.applyBtn.className = 'rule-table__pending-bar-apply';
@@ -72,8 +71,8 @@ export class PendingBar extends Component {
     // Expandable changes list (below the bar)
     this.changesListEl = h('div', {
       className: 'rule-table__pending-bar-changes-list',
-      style: { display: 'none', padding: '8px 16px', fontSize: '12px', borderTop: '1px solid var(--color-border, #333)' },
     });
+    this.changesListEl.style.display = 'none';
     this.el.appendChild(this.changesListEl);
   }
 
@@ -161,12 +160,12 @@ export class PendingBar extends Component {
     for (let i = 0; i < changes.length; i++) {
       const change = changes[i];
       const row = h('div', {
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0' },
+        className: 'rule-table__pending-bar-change-row',
       });
       row.appendChild(h('span', {}, this.describeChange(change)));
       const undoBtn = h('button', {
+        className: 'rule-table__pending-bar-undo-btn',
         type: 'button',
-        style: { background: 'none', border: 'none', color: 'var(--color-accent, #58a6ff)', cursor: 'pointer', fontSize: '11px', padding: '0 4px' },
       }, 'undo');
       const changeIndex = i;
       this.listen(undoBtn, 'click', () => {
@@ -184,7 +183,7 @@ export class PendingBar extends Component {
     }
     if (changes.length === 0) {
       this.changesListEl.appendChild(h('span', {
-        style: { color: 'var(--color-text-secondary, #888)' },
+        className: 'rule-table__pending-bar-empty',
       }, 'No pending changes'));
     }
   }
@@ -196,25 +195,10 @@ export class PendingBar extends Component {
 
     this.tooltipEl = h('div', {
       className: 'rule-table__pending-bar-tooltip',
-      style: {
-        position: 'absolute',
-        bottom: '100%',
-        right: '0',
-        marginBottom: '6px',
-        background: 'var(--color-bg-secondary, #1a1a1a)',
-        border: '1px solid var(--color-border, #333)',
-        borderRadius: '6px',
-        padding: '8px 12px',
-        fontSize: '12px',
-        whiteSpace: 'nowrap',
-        zIndex: '100',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        color: 'var(--color-text, #eee)',
-      },
     });
     for (const change of changes) {
       this.tooltipEl.appendChild(h('div', {
-        style: { padding: '1px 0' },
+        className: 'rule-table__pending-bar-tooltip-item',
       }, this.describeChange(change)));
     }
     // Append to the apply button's parent container (which has position: relative)
@@ -247,7 +231,6 @@ export class PendingBar extends Component {
       const errorEl = document.createElement('span');
       errorEl.className = 'rule-table__pending-bar-error';
       errorEl.textContent = errorMsg;
-      errorEl.style.cssText = 'color: var(--color-block, #FF3B30); font-size: 12px; margin-left: 8px;';
       this.el.appendChild(errorEl);
       setTimeout(() => errorEl.remove(), 5000);
     } finally {

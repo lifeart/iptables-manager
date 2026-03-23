@@ -160,10 +160,8 @@ async function bootstrap(): Promise<void> {
       mountApp(appContainer);
     }
 
-    // 7. Load demo data if no real hosts exist
-    if (store.getState().hosts.size === 0) {
-      loadDemoData(store);
-    }
+    // 7. Load demo data in dev mode (always, since rules are ephemeral)
+    loadDemoData(store);
 
     // 8. Wire dbSync to store for persistence
     wireDbSync();
