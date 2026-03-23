@@ -75,13 +75,28 @@ export class GroupEdit extends Component {
     this.ruleBuilderContainer.style.display = 'none';
     this.el.appendChild(this.ruleBuilderContainer);
 
+    // Button row
+    const btnRow = h('div', { className: 'side-panel__btn-row' });
+
     // Save button
     this.saveBtn = document.createElement('button');
     this.saveBtn.className = 'dialog-btn dialog-btn--primary';
     this.saveBtn.type = 'button';
     this.saveBtn.textContent = 'Save';
     this.listen(this.saveBtn, 'click', () => this.save());
-    this.el.appendChild(this.saveBtn);
+    btnRow.appendChild(this.saveBtn);
+
+    // Apply to All Members button
+    const applyAllBtn = h('button', {
+      className: 'dialog-btn dialog-btn--secondary',
+      type: 'button',
+    }, 'Apply to All Members');
+    this.listen(applyAllBtn, 'click', () => {
+      this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'multi-apply' });
+    });
+    btnRow.appendChild(applyAllBtn);
+
+    this.el.appendChild(btnRow);
   }
 
   private renderMemberList(): void {
