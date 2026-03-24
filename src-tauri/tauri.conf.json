@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.lifeart.traffic-rules",
   "build": {
-    "frontendDist": "../src",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npx vite",
     "beforeBuildCommand": "npx vite build"
@@ -29,7 +29,8 @@
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png"
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
     ]
   }
 }
