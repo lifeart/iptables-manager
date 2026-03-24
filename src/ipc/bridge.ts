@@ -299,10 +299,13 @@ async function ipcCall<T>(cmd: string, args?: Record<string, unknown>): Promise<
     } else {
       err = e as Record<string, unknown>;
     }
-    throw new IpcError(
-      (err.kind as string) ?? 'Unknown',
-      (err.detail as string) ?? String(e),
-    );
+    const kind = typeof err.kind === 'string' ? err.kind : 'Unknown';
+    const detail = typeof err.detail === 'string'
+      ? err.detail
+      : typeof err.detail === 'object' && err.detail !== null
+        ? JSON.stringify(err.detail)
+        : String(e);
+    throw new IpcError(kind, detail);
   }
 }
 

@@ -142,8 +142,11 @@ async function bootstrap(): Promise<void> {
       mountApp(appContainer);
     }
 
-    // 4. Load demo data (always — provides the initial experience)
-    loadDemoData(store);
+    // 4. Load demo data ONLY in browser mode (not inside Tauri)
+    const IS_TAURI = '__TAURI_INTERNALS__' in window;
+    if (!IS_TAURI) {
+      loadDemoData(store);
+    }
 
     // 5. Wire dbSync to store for persistence (best effort)
     try {

@@ -196,6 +196,9 @@ export class RuleTable extends Component {
       selectActiveHost,
       (host) => {
         if (host) {
+          // Show tabs (welcome screen may have hidden them)
+          this.tabsEl.style.display = '';
+
           const needsRebuild = this.currentHeaderHostId !== host.id
             || this.currentHeaderStatus !== host.status;
 
@@ -212,7 +215,9 @@ export class RuleTable extends Component {
           }
         } else {
           this.currentHeaderHostId = null;
+          this.currentHeaderStatus = null;
           this.headerEl.innerHTML = '';
+          this.renderWelcomeScreen();
         }
       },
     );
@@ -1223,6 +1228,39 @@ export class RuleTable extends Component {
 
     empty.appendChild(actions);
     this.sectionsContainer.appendChild(empty);
+  }
+
+  private renderWelcomeScreen(): void {
+    this.sectionsContainer.innerHTML = '';
+    this.filterBarContainer.style.display = 'none';
+    this.addRuleBtnContainer.style.display = 'none';
+    this.tabsEl.style.display = 'none';
+
+    const welcome = h('div', { className: 'rule-table__empty' });
+    welcome.appendChild(h('p', { className: 'rule-table__empty-title' }, 'Welcome to Traffic Rules'));
+    welcome.appendChild(h('p', { className: 'rule-table__empty-subtitle' },
+      'Connect to a Linux server to manage its firewall, or explore the demo.'));
+
+    const actions = h('div', { className: 'rule-table__empty-actions' });
+
+    const addHostBtn = h('button', {
+      className: 'rule-table__empty-btn rule-table__empty-btn--primary',
+    }, 'Connect to Server');
+    this.listen(addHostBtn, 'click', () => {
+      this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
+    });
+    actions.appendChild(addHostBtn);
+
+    const demoBtn = h('button', { className: 'rule-table__empty-btn' }, 'Try Demo');
+    this.listen(demoBtn, 'click', () => {
+      import('../../mock/demo-data').then(({ loadDemoData }) => {
+        loadDemoData(this.store);
+      });
+    });
+    actions.appendChild(demoBtn);
+
+    welcome.appendChild(actions);
+    this.sectionsContainer.appendChild(welcome);
   }
 
   private handleSetupSuggestedRules(): void {
