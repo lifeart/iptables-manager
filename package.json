@@ -1,19 +1,19 @@
 {
-  "name": "iptables-manager",
-  "version": "1.0.0",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "name": "traffic-rules",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop app for managing iptables on remote Linux servers via SSH",
   "scripts": {
     "dev": "tauri dev",
+    "dev:web": "vite --port 1420",
     "build": "tauri build",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "tsc --noEmit",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:all": "npm run check && npm run test",
+    "lint": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "lifeart",
+  "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",
     "@types/sortablejs": "^1.15.9",
