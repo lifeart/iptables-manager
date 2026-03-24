@@ -339,21 +339,6 @@ fn filter_tr_chains(input: &str) -> String {
     out
 }
 
-/// Check if a rule line contains `-j TR-*` (jumps to a TR- chain).
-fn jumps_to_tr_chain(line: &str) -> bool {
-    let tokens: Vec<&str> = line.split_whitespace().collect();
-    for (i, token) in tokens.iter().enumerate() {
-        if (*token == "-j" || *token == "--jump" || *token == "-g" || *token == "--goto")
-            && i + 1 < tokens.len()
-        {
-            if tokens[i + 1].starts_with("TR-") {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
