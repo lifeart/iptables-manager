@@ -478,6 +478,14 @@
   font-size: 14px;
 }
 
+.setup-rule-indicator--allow {
+  color: var(--color-allow, #34C759);
+}
+
+.setup-rule-indicator--block {
+  color: var(--color-block, #FF3B30);
+}
+
 .setup-rule-label {
   font-size: var(--font-size-rule-name, 14px);
   font-weight: 500;

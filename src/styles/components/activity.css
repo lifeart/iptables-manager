@@ -225,16 +225,62 @@
   background: var(--color-primary-hover-bg, rgba(0, 122, 255, 0.06));
 }
 
+/* ─── Offender Alert ──────────────────────────── */
+
+.blocked-log__offender-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-default, 12px);
+  padding: var(--space-default, 12px) var(--space-comfortable, 16px);
+  margin-bottom: var(--space-default, 12px);
+  background: var(--color-warning-bg, rgba(255, 149, 0, 0.08));
+  border: 1px solid var(--color-warning, #FF9500);
+  border-radius: var(--radius-md, 6px);
+}
+
+.blocked-log__offender-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary, #1D1D1F);
+}
+
+.blocked-log__offender-actions {
+  display: flex;
+  gap: var(--space-compact, 8px);
+  flex-shrink: 0;
+}
+
 /* ─── Bans Section ──────────────────────────── */
 
 .activity-view__bans-section {
   margin-bottom: var(--space-comfortable, 16px);
 }
 
+.activity-view__bans-list {
+  display: flex;
+  flex-direction: column;
+}
+
 .activity-view__bans-empty {
   font-size: var(--font-size-rule-protocol, 12px);
   color: var(--color-text-secondary, #86868B);
   padding: var(--space-compact, 8px) 0;
+}
+
+.activity-view__bans-empty--error {
+  color: var(--color-block, #FF3B30);
+}
+
+.activity-view__error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-default, 12px);
+  background: var(--color-diff-removed-bg, rgba(255, 59, 48, 0.08));
+  color: var(--color-block, #FF3B30);
+  border-radius: var(--radius-md, 6px);
+  font-size: 13px;
 }
 
 .activity-view__ban-row {

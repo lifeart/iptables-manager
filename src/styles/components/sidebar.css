@@ -235,6 +235,12 @@
   color: var(--color-primary);
 }
 
+.sidebar__status-filter-pill--active {
+  background: var(--color-primary);
+  color: var(--color-primary-text, #FFFFFF);
+  border-color: var(--color-primary);
+}
+
 .sidebar__section-header {
   font-size: var(--font-size-caption);
   font-weight: 600;
