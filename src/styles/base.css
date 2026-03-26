@@ -182,3 +182,50 @@ html, body {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
+
+/* ── Apple-style Checkbox ───────────────────────────── */
+
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--color-text-tertiary);
+  border-radius: 4px;
+  background: var(--color-background);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1.5px;
+  left: 4.5px;
+  width: 4.5px;
+  height: 8px;
+  border: solid var(--color-primary-text, #fff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ── Apple-style Smooth Press ───────────────────────── */
+
+.rule-table__pending-bar-apply:active,
+.empty-state__cta:active,
+.rule-table__empty-btn:active,
+.blocked-log__block-btn:active {
+  transform: scale(0.97);
+}

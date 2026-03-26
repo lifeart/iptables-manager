@@ -289,6 +289,10 @@
   opacity: 0.9;
 }
 
+.dialog-btn--primary:active {
+  transform: scale(0.97);
+}
+
 .dialog-btn--primary:disabled {
   background: var(--color-disabled, #C7C7CC);
   color: var(--color-text-tertiary, #AEAEB2);
@@ -303,6 +307,10 @@
 
 .dialog-btn--secondary:hover {
   background: var(--color-primary-hover-bg, rgba(0, 122, 255, 0.06));
+}
+
+.dialog-btn--secondary:active {
+  transform: scale(0.97);
 }
 
 .dialog-btn--text {

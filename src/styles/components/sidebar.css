@@ -430,6 +430,10 @@
   color: var(--color-primary);
 }
 
+.sidebar__add-btn:active {
+  transform: scale(0.97);
+}
+
 /* ── Resize Handle (visual) ──────────────────────────── */
 
 .sidebar::after {
