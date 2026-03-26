@@ -7,6 +7,7 @@
     "dev": "tauri dev",
     "dev:web": "vite --port 1420",
     "build": "tauri build",
+    "tauri": "tauri",
     "check": "tsc --noEmit",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:all": "npm run check && npm run test",

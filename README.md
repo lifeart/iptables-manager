@@ -15,10 +15,10 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend).
 
 ## Screenshot
 
-The app runs in dark mode by default:
+![Traffic Rules — iptables manager](docs/screenshot.png)
 
 - **Sidebar**: hosts with status indicators, groups, IP lists
-- **Rule table**: colored action badges, hit counts, drag-to-reorder
+- **Rule table**: colored action badges (green=allow, red=drop), hit counts, drag-to-reorder
 - **Side panel**: rule detail/edit, port forwarding, source NAT builders
 - **Activity tab**: live hit counters with sparklines, blocked traffic log
 - **Terminal tab**: raw iptables editor, packet tracer, SSH command log
@@ -190,6 +190,29 @@ Test how a packet would be processed: enter source IP, destination, port, protoc
 | Persistence | IndexedDB (browser) | — |
 | Credentials | OS keychain via `keyring` crate | — |
 | Drag & drop | SortableJS | — |
+
+## Live demo
+
+Try the app in your browser (no install required):
+**[https://lifeart.github.io/iptables-manager/](https://lifeart.github.io/iptables-manager/)**
+
+The demo runs with mock data — 3 sample hosts, firewall rules, hit counters, and snapshots.
+
+## Releasing
+
+1. Bump the version in all three files:
+   - `package.json` (`version`)
+   - `src-tauri/Cargo.toml` (`version`)
+   - `src-tauri/tauri.conf.json` (`version`)
+2. Update `CHANGELOG.md` with the new version and changes
+3. Commit and tag:
+   ```bash
+   git add -A && git commit -m "release: v0.2.0"
+   git tag v0.2.0
+   git push origin master --tags
+   ```
+4. The release workflow builds macOS (.dmg), Linux (.deb, .AppImage), and Windows (.msi) artifacts and creates a **draft** GitHub Release at [github.com/lifeart/iptables-manager/releases](https://github.com/lifeart/iptables-manager/releases)
+5. Review the draft, edit release notes if needed, then publish
 
 ## License
 

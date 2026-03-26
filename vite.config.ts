@@ -3,7 +3,11 @@ import { defineConfig } from 'vite';
 // @tauri-apps/cli sets these environment variables
 const host = process.env.TAURI_DEV_HOST;
 
+const isTauri = !!process.env.TAURI_ENV_PLATFORM;
+
 export default defineConfig({
+  // Use subpath for GitHub Pages; root for Tauri
+  base: isTauri ? '/' : '/iptables-manager/',
   // prevent vite from obscuring rust errors
   clearScreen: false,
   server: {
