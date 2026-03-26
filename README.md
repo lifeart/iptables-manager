@@ -211,7 +211,7 @@ The demo runs with mock data — 3 sample hosts, firewall rules, hit counters, a
    git tag v0.2.0
    git push origin master --tags
    ```
-4. The release workflow builds macOS (.dmg), Linux (.deb, .AppImage), and Windows (.msi) artifacts and creates a **draft** GitHub Release at [github.com/lifeart/iptables-manager/releases](https://github.com/lifeart/iptables-manager/releases)
+4. The release workflow builds macOS (.dmg) and Linux (.deb, .AppImage) artifacts and creates a **draft** GitHub Release at [github.com/lifeart/iptables-manager/releases](https://github.com/lifeart/iptables-manager/releases)
 5. Review the draft, edit release notes if needed, then publish
 
 ## License
