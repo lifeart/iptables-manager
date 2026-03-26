@@ -165,6 +165,76 @@
   flex-shrink: 0;
 }
 
+.sidebar__section--recent {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-compact);
+}
+
+.sidebar__section--all-hosts {
+  border-top: 1px solid var(--color-border);
+}
+
+/* ── List Containers ─────────────────────────────────── */
+
+.sidebar__host-list,
+.sidebar__group-list,
+.sidebar__iplist-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__host-list--recent {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+/* ── All Hosts Row (100+ hosts) ──────────────────────── */
+
+.sidebar__all-hosts-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--space-default);
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.sidebar__all-hosts-row:hover {
+  background: var(--color-hover);
+}
+
+/* ── Status Filter Pill (31+ hosts) ──────────────────── */
+
+.sidebar__status-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-tight);
+  height: 24px;
+  margin: var(--space-tight) var(--space-default);
+  padding: 0 var(--space-compact);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__status-filter-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 .sidebar__section-header {
   font-size: var(--font-size-caption);
   font-weight: 600;
