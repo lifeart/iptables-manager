@@ -9,7 +9,7 @@
   background: #1C1C1E;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-banner);
-  z-index: 1000;
+  z-index: 1100;
   padding: var(--space-comfortable) var(--space-spacious);
   transition: transform 300ms cubic-bezier(0.16, 1.36, 0.3, 1);
 }

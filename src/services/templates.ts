@@ -488,6 +488,226 @@ const minimal: RuleTemplate = {
   },
 };
 
+const kubernetesNode: RuleTemplate = {
+  id: 'kubernetes-node',
+  name: 'Kubernetes Node',
+  description: 'API server + Kubelet + etcd + CNI',
+  generate(opts) {
+    return [
+      makeRule({
+        label: 'Allow Kubernetes API',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 6443 },
+        direction: 'incoming',
+        comment: 'Kubernetes API server',
+      }),
+      makeRule({
+        label: 'Allow Kubelet',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 10250 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Kubelet API (internal only)',
+      }),
+      makeRule({
+        label: 'Allow etcd',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'multi', ports: [2379, 2380] },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'etcd client and peer (internal only)',
+      }),
+      makeRule({
+        label: 'Allow NodePort Range',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'range', from: 30000, to: 32767 },
+        direction: 'incoming',
+        comment: 'Kubernetes NodePort services',
+      }),
+      makeRule({
+        label: 'Allow Flannel/Calico VXLAN',
+        action: 'allow',
+        protocol: 'udp',
+        ports: { type: 'single', port: 8472 },
+        direction: 'incoming',
+        comment: 'CNI overlay network (VXLAN)',
+      }),
+      sshRule(opts.managementIp),
+      pingRule(),
+      blockAllRule(),
+    ];
+  },
+};
+
+const monitoringStack: RuleTemplate = {
+  id: 'monitoring-stack',
+  name: 'Monitoring Stack',
+  description: 'Prometheus + Grafana + Alertmanager + exporters',
+  generate(opts) {
+    return [
+      makeRule({
+        label: 'Allow Grafana',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 3000 },
+        direction: 'incoming',
+        comment: 'Grafana dashboard',
+      }),
+      makeRule({
+        label: 'Allow Prometheus',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 9090 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Prometheus (internal only)',
+      }),
+      makeRule({
+        label: 'Allow Alertmanager',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 9093 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Alertmanager (internal only)',
+      }),
+      makeRule({
+        label: 'Allow Node Exporter',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 9100 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Node Exporter metrics (internal only)',
+      }),
+      sshRule(opts.managementIp),
+      pingRule(),
+      blockAllRule(),
+    ];
+  },
+};
+
+const loadBalancer: RuleTemplate = {
+  id: 'load-balancer',
+  name: 'Load Balancer',
+  description: 'HTTP/HTTPS + health checks + stats',
+  generate(opts) {
+    return [
+      makeRule({
+        label: 'Allow HTTP',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 80 },
+        direction: 'incoming',
+        comment: 'HTTP traffic',
+      }),
+      makeRule({
+        label: 'Allow HTTPS',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 443 },
+        direction: 'incoming',
+        comment: 'HTTPS traffic',
+      }),
+      makeRule({
+        label: 'Allow Stats Page',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 8090 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'HAProxy/nginx stats (internal only)',
+      }),
+      sshRule(opts.managementIp),
+      pingRule(),
+      blockAllRule(),
+    ];
+  },
+};
+
+const ciCdServer: RuleTemplate = {
+  id: 'ci-cd-server',
+  name: 'CI/CD Server',
+  description: 'Jenkins/GitLab runner + webhooks + agents',
+  generate(opts) {
+    return [
+      makeRule({
+        label: 'Allow Web UI',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'multi', ports: [80, 443] },
+        direction: 'incoming',
+        comment: 'CI/CD web interface',
+      }),
+      makeRule({
+        label: 'Allow Build Agents',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 50000 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Jenkins agent / GitLab runner (internal only)',
+      }),
+      makeRule({
+        label: 'Allow Docker Registry',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 5000 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Private Docker registry (internal only)',
+      }),
+      sshRule(opts.managementIp),
+      pingRule(),
+      blockAllRule(),
+    ];
+  },
+};
+
+const messageBroker: RuleTemplate = {
+  id: 'message-broker',
+  name: 'Message Broker',
+  description: 'Kafka/RabbitMQ + management UI',
+  generate(opts) {
+    return [
+      makeRule({
+        label: 'Allow Kafka',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 9092 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'Kafka broker (internal only)',
+      }),
+      makeRule({
+        label: 'Allow RabbitMQ',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 5672 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'RabbitMQ AMQP (internal only)',
+      }),
+      makeRule({
+        label: 'Allow Management UI',
+        action: 'allow',
+        protocol: 'tcp',
+        ports: { type: 'single', port: 15672 },
+        source: { type: 'cidr', value: '10.0.0.0/8' },
+        direction: 'incoming',
+        comment: 'RabbitMQ Management (internal only)',
+      }),
+      sshRule(opts.managementIp),
+      pingRule(),
+      blockAllRule(),
+    ];
+  },
+};
+
 // ─── Exports ─────────────────────────────────────────────────
 
 export const allTemplates: RuleTemplate[] = [
@@ -500,6 +720,11 @@ export const allTemplates: RuleTemplate[] = [
   vpnWireGuard,
   vpnOpenVPN,
   ipsecGateway,
+  kubernetesNode,
+  monitoringStack,
+  loadBalancer,
+  ciCdServer,
+  messageBroker,
   lockdown,
   minimal,
 ];

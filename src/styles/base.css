@@ -160,3 +160,25 @@ html, body {
   color: var(--color-text-tertiary);
   margin-top: 4px;
 }
+
+/* ── Global Focus States ────────────────────────────── */
+.rule-table__header-btn:focus-visible,
+.rule-table__add-rule-btn:focus-visible,
+.filter-bar__add-rule-btn:focus-visible,
+.rule-table__pending-bar-discard:focus-visible,
+.rule-table__pending-bar-show-changes:focus-visible,
+.rule-table__empty-btn:focus-visible,
+.sidebar__add-btn:focus-visible,
+.sidebar__all-hosts-row:focus-visible,
+.sidebar__status-filter-pill:focus-visible,
+.blocked-log__block-btn:focus-visible,
+.rule-builder__more-options-link:focus-visible,
+.rule-builder__add-condition-btn:focus-visible,
+.rule-table__terminal-sub-tab:focus-visible,
+.nat-builder__btn-primary:focus-visible,
+.nat-builder__btn-cancel:focus-visible,
+.side-panel__entry-remove-btn:focus-visible,
+.empty-state__cta:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}

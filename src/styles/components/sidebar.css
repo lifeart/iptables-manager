@@ -104,7 +104,7 @@
 
 .sidebar__iplist-detail {
   position: relative;
-  background: var(--color-bg-secondary, #1e1e1e);
+  background: var(--color-elevated, #1e1e1e);
   border: 1px solid var(--color-border, #333);
   border-radius: var(--radius-md, 6px);
   margin: 4px var(--space-default, 12px) 8px;

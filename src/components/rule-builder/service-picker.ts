@@ -31,20 +31,79 @@ const SERVICE_PRESETS: ServicePreset[] = [
   // Common
   { label: 'Web Traffic (80, 443)', ports: [80, 443], protocol: 'tcp', category: 'Common' },
   { label: 'SSH (22)', ports: [22], protocol: 'tcp', category: 'Common' },
-  { label: 'Email (25, 587, 993)', ports: [25, 587, 993], protocol: 'tcp', category: 'Common' },
   { label: 'DNS (53)', ports: [53], protocol: 'tcp', category: 'Common' },
-  { label: 'Monitoring (9090, 9100)', ports: [9090, 9100], protocol: 'tcp', category: 'Common' },
   { label: 'Ping', ports: [], protocol: 'icmp', category: 'Common' },
+  { label: 'NTP (123)', ports: [123], protocol: 'udp', category: 'Common' },
+  { label: 'DHCP (67, 68)', ports: [67, 68], protocol: 'udp', category: 'Common' },
+  { label: 'Syslog (514)', ports: [514], protocol: 'udp', category: 'Common' },
+  // Email
+  { label: 'SMTP (25, 587)', ports: [25, 587], protocol: 'tcp', category: 'Email' },
+  { label: 'IMAP (143, 993)', ports: [143, 993], protocol: 'tcp', category: 'Email' },
+  { label: 'POP3 (110, 995)', ports: [110, 995], protocol: 'tcp', category: 'Email' },
+  { label: 'Email All (25, 587, 143, 993)', ports: [25, 587, 143, 993], protocol: 'tcp', category: 'Email' },
+  // Remote access
+  { label: 'RDP (3389)', ports: [3389], protocol: 'tcp', category: 'Remote Access' },
+  { label: 'VNC (5900)', ports: [5900], protocol: 'tcp', category: 'Remote Access' },
+  { label: 'Telnet (23)', ports: [23], protocol: 'tcp', category: 'Remote Access' },
   // VPN
   { label: 'WireGuard (51820)', ports: [51820], protocol: 'udp', category: 'VPN' },
   { label: 'OpenVPN (1194)', ports: [1194], protocol: 'udp', category: 'VPN' },
   { label: 'IPSec/IKE (500, 4500)', ports: [500, 4500], protocol: 'udp', category: 'VPN' },
   { label: 'IPSec Data', ports: [], protocol: 'esp', category: 'VPN' },
+  { label: 'L2TP (1701)', ports: [1701], protocol: 'udp', category: 'VPN' },
   // Databases
   { label: 'PostgreSQL (5432)', ports: [5432], protocol: 'tcp', category: 'Databases' },
   { label: 'MySQL (3306)', ports: [3306], protocol: 'tcp', category: 'Databases' },
   { label: 'MongoDB (27017)', ports: [27017], protocol: 'tcp', category: 'Databases' },
   { label: 'Redis (6379)', ports: [6379], protocol: 'tcp', category: 'Databases' },
+  { label: 'MSSQL (1433)', ports: [1433], protocol: 'tcp', category: 'Databases' },
+  { label: 'Elasticsearch (9200)', ports: [9200], protocol: 'tcp', category: 'Databases' },
+  { label: 'Cassandra (9042)', ports: [9042], protocol: 'tcp', category: 'Databases' },
+  { label: 'Memcached (11211)', ports: [11211], protocol: 'tcp', category: 'Databases' },
+  { label: 'InfluxDB (8086)', ports: [8086], protocol: 'tcp', category: 'Databases' },
+  { label: 'CockroachDB (26257)', ports: [26257], protocol: 'tcp', category: 'Databases' },
+  // Message Brokers
+  { label: 'RabbitMQ (5672)', ports: [5672], protocol: 'tcp', category: 'Message Brokers' },
+  { label: 'Kafka (9092)', ports: [9092], protocol: 'tcp', category: 'Message Brokers' },
+  { label: 'NATS (4222)', ports: [4222], protocol: 'tcp', category: 'Message Brokers' },
+  { label: 'MQTT (1883)', ports: [1883], protocol: 'tcp', category: 'Message Brokers' },
+  { label: 'MQTT over TLS (8883)', ports: [8883], protocol: 'tcp', category: 'Message Brokers' },
+  // Containers & Orchestration
+  { label: 'Kubernetes API (6443)', ports: [6443], protocol: 'tcp', category: 'Containers' },
+  { label: 'Docker API (2375)', ports: [2375], protocol: 'tcp', category: 'Containers' },
+  { label: 'Docker API TLS (2376)', ports: [2376], protocol: 'tcp', category: 'Containers' },
+  { label: 'etcd (2379, 2380)', ports: [2379, 2380], protocol: 'tcp', category: 'Containers' },
+  { label: 'Kubelet (10250)', ports: [10250], protocol: 'tcp', category: 'Containers' },
+  { label: 'Consul (8500)', ports: [8500], protocol: 'tcp', category: 'Containers' },
+  { label: 'Vault (8200)', ports: [8200], protocol: 'tcp', category: 'Containers' },
+  { label: 'Nomad (4646)', ports: [4646], protocol: 'tcp', category: 'Containers' },
+  { label: 'Docker Registry (5000)', ports: [5000], protocol: 'tcp', category: 'Containers' },
+  // Monitoring & Observability
+  { label: 'Prometheus (9090)', ports: [9090], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Node Exporter (9100)', ports: [9100], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Grafana (3000)', ports: [3000], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Alertmanager (9093)', ports: [9093], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Jaeger (16686)', ports: [16686], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Zipkin (9411)', ports: [9411], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'OpenTelemetry (4317, 4318)', ports: [4317, 4318], protocol: 'tcp', category: 'Monitoring' },
+  { label: 'Kibana (5601)', ports: [5601], protocol: 'tcp', category: 'Monitoring' },
+  // Proxy & Load Balancing
+  { label: 'HTTP Proxy Alt (8080)', ports: [8080], protocol: 'tcp', category: 'Proxy' },
+  { label: 'Squid Proxy (3128)', ports: [3128], protocol: 'tcp', category: 'Proxy' },
+  { label: 'SOCKS Proxy (1080)', ports: [1080], protocol: 'tcp', category: 'Proxy' },
+  // Directory & Auth
+  { label: 'LDAP (389, 636)', ports: [389, 636], protocol: 'tcp', category: 'Directory' },
+  { label: 'Kerberos (88)', ports: [88], protocol: 'tcp', category: 'Directory' },
+  // File Transfer
+  { label: 'FTP (21)', ports: [21], protocol: 'tcp', category: 'File Transfer' },
+  { label: 'TFTP (69)', ports: [69], protocol: 'udp', category: 'File Transfer' },
+  { label: 'rsync (873)', ports: [873], protocol: 'tcp', category: 'File Transfer' },
+  // Infrastructure
+  { label: 'BGP (179)', ports: [179], protocol: 'tcp', category: 'Infrastructure' },
+  { label: 'SNMP (161)', ports: [161], protocol: 'udp', category: 'Infrastructure' },
+  { label: 'SIP (5060, 5061)', ports: [5060, 5061], protocol: 'tcp', category: 'Infrastructure' },
+  { label: 'STUN/TURN (3478)', ports: [3478], protocol: 'udp', category: 'Infrastructure' },
+  { label: 'GRE Tunnel', ports: [], protocol: 'gre', category: 'Infrastructure' },
 ];
 
 export class ServicePicker extends Component {
