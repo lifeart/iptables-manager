@@ -558,17 +558,17 @@ pub async fn activity_fetch_hit_counters(
         })
 }
 
-/// One-shot conntrack data fetch: returns `{ current, max, percent }`.
+/// Fetch the full conntrack table as individual entries.
 #[tauri::command]
 pub async fn activity_fetch_conntrack_table(
     host_id: String,
     pool: State<'_, PoolState>,
-) -> Result<crate::activity::monitor::ConntrackUsage, IpcError> {
+) -> Result<Vec<crate::activity::monitor::ConntrackEntry>, IpcError> {
     let proxy = PoolProxyExecutor {
         pool: pool.inner().clone(),
         host_id: host_id.clone(),
     };
-    crate::activity::monitor::fetch_conntrack_usage(&proxy)
+    crate::activity::monitor::fetch_conntrack_table(&proxy)
         .await
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
@@ -1063,12 +1063,14 @@ pub async fn snapshot_create(
             stderr: e.to_string(),
             exit_code: 1,
         })?;
+    let rule_count = crate::snapshot::manager::count_rules(&data.iptables_save_v4)
+        + data.iptables_save_v6.as_deref().map_or(0, crate::snapshot::manager::count_rules);
     Ok(crate::snapshot::manager::SnapshotMeta {
         id: data.id,
         host_id: data.host_id,
         timestamp: data.timestamp,
         description: data.description,
-        remote_path_v4: data.remote_path_v4,
+        rule_count,
     })
 }
 
@@ -1118,13 +1120,8 @@ pub async fn snapshot_restore(
     })?;
 
     // Read the snapshot file from the remote host
-    let remote_path = meta.remote_path_v4.as_deref().ok_or_else(|| {
-        IpcError::CommandFailed {
-            stderr: "snapshot has no remote path".to_string(),
-            exit_code: 1,
-        }
-    })?;
-    let cat_cmd = build_command("sudo", &["cat", remote_path]);
+    let remote_path = format!("/var/lib/traffic-rules/snapshots/{}.v4", meta.id);
+    let cat_cmd = build_command("sudo", &["cat", &remote_path]);
     let cat_output = pool.execute(&host_id, &cat_cmd).await.map_err(|e| {
         IpcError::ConnectionFailed {
             host_id: host_id.clone(),
@@ -1145,7 +1142,7 @@ pub async fn snapshot_restore(
         iptables_save_v6: None,
         timestamp: meta.timestamp,
         description: meta.description.clone(),
-        remote_path_v4: meta.remote_path_v4.clone(),
+        remote_path_v4: Some(remote_path),
         remote_path_v6: None,
     };
 

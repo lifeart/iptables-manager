@@ -32,6 +32,7 @@ pub enum SnapshotError {
 
 /// Full snapshot data including iptables-save content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotData {
     pub id: String,
     pub host_id: String,
@@ -45,12 +46,13 @@ pub struct SnapshotData {
 
 /// Lightweight metadata for listing snapshots.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotMeta {
     pub id: String,
     pub host_id: String,
     pub timestamp: u64,
     pub description: Option<String>,
-    pub remote_path_v4: Option<String>,
+    pub rule_count: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +240,7 @@ pub async fn list_remote_snapshots(
             host_id,
             timestamp,
             description: None,
-            remote_path_v4: Some(format!("{}/{}.v4", SNAPSHOT_DIR, base)),
+            rule_count: 0,
         });
     }
 
@@ -251,6 +253,11 @@ pub async fn list_remote_snapshots(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Count `-A` rule lines in iptables-save content.
+pub fn count_rules(content: &str) -> usize {
+    content.lines().filter(|l| l.starts_with("-A ")).count()
+}
 
 /// Filter an `iptables-save` output to only include TR- chains.
 ///
