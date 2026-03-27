@@ -1,6 +1,6 @@
 {
   "name": "traffic-rules",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Desktop app for managing iptables on remote Linux servers via SSH",
   "scripts": {

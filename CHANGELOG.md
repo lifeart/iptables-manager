@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1] - 2026-03-27
+
+### Fixed
+- Replace all hardcoded colors with CSS design tokens across new feature UIs
+- Fix undefined CSS variables (`--color-window`, `--color-accent`, `--color-warning-bg`, `--radius-default`)
+- Add dark mode support to conflicts banner, import banner, preview modal, drift banner, saturation warning
+
 ## [1.0.0] - 2026-03-27
 
 ### Added
