@@ -710,4 +710,127 @@ COMMIT
             m2.similarity
         );
     }
+
+    #[test]
+    fn test_protocol_number_17_matches_udp() {
+        let ruleset = make_ruleset(SAMPLE_IPTABLES_SAVE);
+        // Protocol 17 = UDP; should match the DNS DROP rule (udp port 53)
+        let p = ProposedRule {
+            direction: Some("incoming".to_string()),
+            protocol: Some(ProposedProtocol::Number(17)),
+            ports: Some(ProposedPortSpec::Single { port: 53 }),
+            source: None,
+            destination: None,
+            action: Some("block".to_string()),
+            interface_in: None,
+            interface_out: None,
+        };
+        let result = check_duplicate(&p, &ruleset, 0.5);
+        assert!(result.is_some(), "protocol number 17 should match udp rule");
+        let m = result.unwrap();
+        assert!(
+            (m.similarity - 1.0).abs() < f64::EPSILON,
+            "exact match expected, got {}",
+            m.similarity
+        );
+    }
+
+    #[test]
+    fn test_interface_mismatch_reduces_similarity() {
+        let iface_iptables = "\
+*filter
+:INPUT ACCEPT [0:0]
+-A INPUT -i eth0 -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+";
+        let ruleset = make_ruleset(iface_iptables);
+
+        // Same interface (eth0) → full match
+        let mut p_same = proposed("incoming", "tcp", Some(22), None, "allow");
+        p_same.interface_in = Some("eth0".to_string());
+        let r_same = check_duplicate(&p_same, &ruleset, 0.0).unwrap();
+
+        // Different interface (eth1) → lower similarity
+        let mut p_diff = proposed("incoming", "tcp", Some(22), None, "allow");
+        p_diff.interface_in = Some("eth1".to_string());
+        let r_diff = check_duplicate(&p_diff, &ruleset, 0.0).unwrap();
+
+        assert!(
+            r_same.similarity > r_diff.similarity,
+            "same interface ({}) should have higher similarity than different interface ({})",
+            r_same.similarity,
+            r_diff.similarity
+        );
+    }
+
+    #[test]
+    fn test_both_interfaces_none_full_match() {
+        // Neither proposed nor existing specifies an interface — should match fully
+        let no_iface_iptables = "\
+*filter
+:INPUT ACCEPT [0:0]
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+";
+        let ruleset = make_ruleset(no_iface_iptables);
+        let p = proposed("incoming", "tcp", Some(22), None, "allow");
+        // No interface_in or interface_out set on proposed (defaults to None)
+        let result = check_duplicate(&p, &ruleset, 0.9);
+        assert!(result.is_some(), "should find a match when both interfaces are None");
+        let m = result.unwrap();
+        assert!(
+            (m.similarity - 1.0).abs() < f64::EPSILON,
+            "both-None interfaces should yield full match, got {}",
+            m.similarity
+        );
+    }
+
+    #[test]
+    fn test_empty_ruleset_returns_no_duplicate() {
+        let empty_iptables = "\
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+COMMIT
+";
+        let ruleset = make_ruleset(empty_iptables);
+        let p = proposed("incoming", "tcp", Some(22), None, "allow");
+        let result = check_duplicate(&p, &ruleset, 0.0);
+        assert!(
+            result.is_none(),
+            "empty ruleset should return no duplicate, got {:?}",
+            result.map(|m| m.rule_id)
+        );
+    }
+
+    #[test]
+    fn test_multiple_tables_all_checked() {
+        // Duplicate lives in the nat table — should still be found
+        let multi_table_iptables = "\
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p udp -m udp --dport 1234 -j DROP
+COMMIT
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+";
+        let ruleset = make_ruleset(multi_table_iptables);
+        let p = proposed("incoming", "tcp", Some(22), None, "allow");
+        let result = check_duplicate(&p, &ruleset, 0.5);
+        assert!(result.is_some(), "should find duplicate in nat table");
+        let m = result.unwrap();
+        assert!(
+            m.rule_id.contains("nat"),
+            "match should be in nat table, got rule_id: {}",
+            m.rule_id
+        );
+    }
 }

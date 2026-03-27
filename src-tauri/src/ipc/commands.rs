@@ -529,15 +529,14 @@ pub async fn rules_confirm(
 
 /// Subscribe to activity polling for a host (no-op; frontend polls via fetch_* calls).
 #[tauri::command]
-pub async fn activity_subscribe(host_id: String) -> Result<(), IpcError> {
-    let _ = host_id;
-    Ok(())
+pub async fn activity_subscribe(host_id: String) -> Result<String, IpcError> {
+    Ok(format!("stream-{}", host_id))
 }
 
 /// Unsubscribe from activity polling for a host (no-op; frontend stops calling fetch_*).
 #[tauri::command]
-pub async fn activity_unsubscribe(host_id: String) -> Result<(), IpcError> {
-    let _ = host_id;
+pub async fn activity_unsubscribe(stream_id: String) -> Result<(), IpcError> {
+    let _ = stream_id;
     Ok(())
 }
 
@@ -1449,5 +1448,282 @@ COMMIT
 
         let cancel_result = crate::safety::timer::cancel_revert(&executor, &job).await;
         assert!(cancel_result.is_ok(), "cancel should succeed");
+    }
+
+    // ── Safety timer flow tests ──────────────────────────────────────
+
+    /// Verify that when iptables-save succeeds and an HMAC secret is available
+    /// in the credential store, the HMAC file is written via tee.
+    #[tokio::test]
+    async fn test_backup_writes_hmac_when_secret_available() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+            ("ip6tables-save", 1, "", "not found"),
+            ("backup.v4.hmac", 0, "", ""),
+            ("backup.v4", 0, "", ""),
+        ]);
+
+        // Store a test HMAC secret so the credential store returns it
+        let cred_store = crate::ssh::credential::CredentialStore::new().unwrap();
+        let test_host = "test-hmac-host";
+        let test_secret = "abcdef0123456789abcdef0123456789";
+        // Store secret — if this fails (e.g. no keyring backend), skip the test
+        if cred_store
+            .store_hmac_secret(test_host, test_secret)
+            .is_err()
+        {
+            eprintln!("Skipping: no keyring backend available in test environment");
+            return;
+        }
+
+        let result = create_pre_apply_backup(&executor, test_host).await;
+        assert!(result.is_ok(), "backup should succeed: {:?}", result);
+
+        // Verify HMAC file was written via tee
+        let stdin_calls = executor.get_stdin_calls();
+        let hmac_write = stdin_calls
+            .iter()
+            .find(|(cmd, _)| cmd.contains("backup.v4.hmac"));
+        assert!(
+            hmac_write.is_some(),
+            "should write HMAC via tee when secret is available"
+        );
+
+        // Verify the written HMAC is valid hex (64 chars for SHA-256)
+        let hmac_content = String::from_utf8_lossy(&hmac_write.unwrap().1);
+        assert_eq!(hmac_content.len(), 64, "HMAC should be 64 hex chars");
+        assert!(
+            hmac_content.chars().all(|c| c.is_ascii_hexdigit()),
+            "HMAC should be hex-encoded"
+        );
+
+        // Verify the HMAC is actually correct
+        let filtered = crate::snapshot::manager::filter_tr_chains(iptables_output);
+        let expected_hmac =
+            crate::safety::hmac::compute_hmac(test_secret, filtered.as_bytes());
+        assert_eq!(
+            hmac_content, expected_hmac,
+            "written HMAC should match computed HMAC"
+        );
+
+        // Clean up the test secret from the keychain.
+        // CredentialStore does not expose delete_hmac_secret, so use keyring directly.
+        if let Ok(entry) = keyring::Entry::new("traffic-rules-hmac", test_host) {
+            let _ = entry.delete_credential();
+        }
+    }
+
+    /// Verify that backup still succeeds even when the credential store has
+    /// no HMAC secret for the host (HMAC step is skipped gracefully).
+    #[tokio::test]
+    async fn test_backup_skips_hmac_when_no_secret() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 80 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+            ("ip6tables-save", 1, "", "not found"),
+            ("backup.v4", 0, "", ""),
+        ]);
+
+        // Use a host ID that will never have a secret stored
+        let result =
+            create_pre_apply_backup(&executor, "nonexistent-host-no-hmac-secret").await;
+        assert!(
+            result.is_ok(),
+            "backup should succeed even without HMAC secret: {:?}",
+            result
+        );
+
+        // Verify no HMAC file was written
+        let stdin_calls = executor.get_stdin_calls();
+        let hmac_write = stdin_calls
+            .iter()
+            .find(|(cmd, _)| cmd.contains("hmac"));
+        assert!(
+            hmac_write.is_none(),
+            "should NOT write HMAC when no secret is available"
+        );
+    }
+
+    /// Verify that ip6tables-save is called and backup.v6 is written when
+    /// IPv6 rules are available.
+    #[tokio::test]
+    async fn test_backup_includes_v6_when_available() {
+        let v4_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let v6_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 443 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, v4_output, ""),
+            ("ip6tables-save", 0, v6_output, ""),
+            ("backup.v6", 0, "", ""),
+            ("backup.v4", 0, "", ""),
+        ]);
+
+        let result =
+            create_pre_apply_backup(&executor, "host-v6-test").await;
+        assert!(result.is_ok(), "backup should succeed: {:?}", result);
+
+        let calls = executor.get_calls();
+        // Should call ip6tables-save
+        assert!(
+            calls.iter().any(|c| c.contains("ip6tables-save")),
+            "should call ip6tables-save"
+        );
+        // Should write backup.v6
+        assert!(
+            calls.iter().any(|c| c.contains("backup.v6")),
+            "should write backup.v6 when v6 rules are available"
+        );
+
+        // Verify v6 content was written
+        let stdin_calls = executor.get_stdin_calls();
+        let v6_write = stdin_calls
+            .iter()
+            .find(|(cmd, _)| cmd.contains("backup.v6"));
+        assert!(v6_write.is_some(), "should write v6 backup data via stdin");
+    }
+
+    /// Verify that ip6tables-save failure does not fail the whole backup —
+    /// only v4 backup is required.
+    #[tokio::test]
+    async fn test_backup_skips_v6_when_unavailable() {
+        let v4_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, v4_output, ""),
+            ("ip6tables-save", 1, "", "ip6tables not found"),
+            ("backup.v4", 0, "", ""),
+        ]);
+
+        let result =
+            create_pre_apply_backup(&executor, "host-no-v6").await;
+        assert!(
+            result.is_ok(),
+            "backup should succeed even if ip6tables-save fails: {:?}",
+            result
+        );
+
+        // Verify backup.v6 was NOT written
+        let stdin_calls = executor.get_stdin_calls();
+        let v6_write = stdin_calls
+            .iter()
+            .find(|(cmd, _)| cmd.contains("backup.v6"));
+        assert!(
+            v6_write.is_none(),
+            "should NOT write backup.v6 when ip6tables-save fails"
+        );
+    }
+
+    /// Verify error propagation when iptables-save itself fails.
+    #[tokio::test]
+    async fn test_backup_fails_on_iptables_save_failure() {
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 1, "", "iptables: command not found"),
+        ]);
+
+        let result = create_pre_apply_backup(&executor, "host-broken").await;
+        assert!(
+            result.is_err(),
+            "backup should fail when iptables-save fails"
+        );
+
+        let err = result.unwrap_err();
+        match err {
+            IpcError::CommandFailed { stderr, exit_code } => {
+                assert!(
+                    stderr.contains("iptables-save"),
+                    "error should mention iptables-save, got: {}",
+                    stderr
+                );
+                assert_eq!(exit_code, 1);
+            }
+            other => panic!("expected CommandFailed, got {:?}", other),
+        }
+    }
+
+    /// Verify the `at` scheduler uses minutes (rounded up), not seconds.
+    /// POSIX `at` does not support seconds — only GNU `at` does.
+    #[tokio::test]
+    async fn test_at_schedule_uses_minutes() {
+        let executor = MockExecutor::new(vec![
+            ("at", 0, "", "job 99 at Thu Mar 22 10:05:00 2026\n"),
+        ]);
+
+        let _job = crate::safety::timer::schedule_revert(
+            &executor,
+            crate::safety::timer::SafetyMechanism::At,
+            "/var/lib/traffic-rules/backup.v4",
+            90, // 90 seconds should become 2 minutes (rounded up)
+        )
+        .await
+        .expect("schedule should succeed");
+
+        let calls = executor.get_calls();
+        // build_command("at", &["now + 2 minutes"]) produces: at 'now + 2 minutes'
+        let at_call = calls
+            .iter()
+            .find(|c| c.starts_with("at "))
+            .expect("should have called at");
+
+        // Should contain "minutes" not "seconds"
+        assert!(
+            at_call.contains("minutes"),
+            "at command should use minutes, got: {}",
+            at_call
+        );
+        assert!(
+            !at_call.contains("seconds"),
+            "at command should NOT use seconds, got: {}",
+            at_call
+        );
+
+        // 90 seconds rounds up to 2 minutes: (90 + 59) / 60 = 2
+        assert!(
+            at_call.contains("2 minutes"),
+            "90 seconds should round up to 2 minutes, got: {}",
+            at_call
+        );
+    }
+
+    /// Verify that after atrm, atq is called to verify the job was removed.
+    #[tokio::test]
+    async fn test_at_cancel_verifies_with_atq() {
+        // First schedule a job
+        let executor = MockExecutor::new(vec![
+            ("at", 0, "", "job 55 at Thu Mar 22 10:00:00 2026\n"),
+            ("atrm", 0, "", ""),
+            // atq returns empty (job 55 is gone)
+            ("atq", 0, "", ""),
+        ]);
+
+        let job = crate::safety::timer::schedule_revert(
+            &executor,
+            crate::safety::timer::SafetyMechanism::At,
+            "/var/lib/traffic-rules/backup.v4",
+            60,
+        )
+        .await
+        .expect("schedule should succeed");
+
+        assert_eq!(job.id, "55");
+
+        let cancel_result = crate::safety::timer::cancel_revert(&executor, &job).await;
+        assert!(cancel_result.is_ok(), "cancel should succeed");
+
+        let calls = executor.get_calls();
+
+        // atrm must be called before atq
+        let atrm_idx = calls
+            .iter()
+            .position(|c| c.contains("atrm"))
+            .expect("should call atrm");
+        let atq_idx = calls
+            .iter()
+            .position(|c| c.contains("atq"))
+            .expect("should call atq to verify cancellation");
+        assert!(
+            atrm_idx < atq_idx,
+            "atrm (idx {}) must come before atq verification (idx {})",
+            atrm_idx,
+            atq_idx
+        );
     }
 }

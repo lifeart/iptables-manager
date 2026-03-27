@@ -1199,4 +1199,283 @@ COMMIT
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
     }
+
+    #[test]
+    fn test_negated_protocol_vs_same_protocol_no_overlap() {
+        // Rule A: ACCEPT !tcp port 22
+        // Rule B: DROP tcp port 22
+        // !tcp vs tcp should not overlap => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: true,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for !tcp vs tcp, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_both_negated_same_address_overlaps() {
+        // Rule A: ACCEPT tcp from !10.0.0.0/8, port 22
+        // Rule B: DROP tcp from !10.0.0.0/8, port 22
+        // Both negated with same address => they match the same traffic => conflict (shadow).
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: true,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: true,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            !conflicts.is_empty(),
+            "Expected a conflict for both-negated same address, got none"
+        );
+    }
+
+    #[test]
+    fn test_different_out_interfaces_no_conflict() {
+        // Rule A: ACCEPT tcp port 80, out_interface=eth0
+        // Rule B: DROP tcp port 80, out_interface=eth1
+        // Different output interfaces => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(80)),
+                direction: RuleDirection::Forward,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: Some("eth0".to_string()),
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(80)),
+                direction: RuleDirection::Forward,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: Some("eth1".to_string()),
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for different out_interfaces, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_any_interface_overlaps_specific() {
+        // Rule A: ACCEPT tcp port 22, no interface (any)
+        // Rule B: DROP tcp port 22, in_interface=eth0
+        // "any" interface overlaps with specific => conflict (shadow).
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: Some("eth0".to_string()),
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            !conflicts.is_empty(),
+            "Expected a conflict when one rule has no interface (any) and the other has a specific interface"
+        );
+    }
+
+    #[test]
+    fn test_port_range_overlap_detected() {
+        // Rule A: ACCEPT tcp ports 80-100
+        // Rule B: DROP tcp ports 90-110
+        // Overlapping port ranges (90-100) with different actions => overlap conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Range(80, 100)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Range(90, 110)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            !conflicts.is_empty(),
+            "Expected a conflict for overlapping port ranges, got none"
+        );
+        let has_overlap = conflicts.iter().any(|c| c.conflict_type == ConflictType::Overlap);
+        assert!(
+            has_overlap,
+            "Expected Overlap conflict for partially overlapping port ranges, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_same_chain_different_protocols_no_conflict() {
+        // Rule A: ACCEPT tcp port 53
+        // Rule B: DROP udp port 53
+        // Same port but different protocols => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(53)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Udp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(53)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for tcp vs udp on same port, got: {:?}",
+            conflicts
+        );
+    }
 }
