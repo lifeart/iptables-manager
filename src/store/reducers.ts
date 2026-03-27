@@ -23,6 +23,7 @@ function ensureHostState(state: AppState, hostId: string): HostState {
     blockedLog: [],
     conntrackUsage: { current: 0, max: 0 },
     sshCommandLog: [],
+    ruleConflicts: [],
   };
 }
 
@@ -256,6 +257,13 @@ export function reducer(state: AppState, action: Action): AppState {
       const hostStates = cloneMap(state.hostStates);
       const hs = ensureHostState(state, action.hostId);
       hostStates.set(action.hostId, { ...hs, rules: action.rules });
+      return { ...state, hostStates };
+    }
+
+    case 'SET_RULE_CONFLICTS': {
+      const hostStates = cloneMap(state.hostStates);
+      const hs = ensureHostState(state, action.hostId);
+      hostStates.set(action.hostId, { ...hs, ruleConflicts: action.conflicts });
       return { ...state, hostStates };
     }
 

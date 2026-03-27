@@ -11,6 +11,7 @@ import type { Store } from '../../store/index';
 import type { Rule } from '../../store/types';
 import { h } from '../../utils/dom';
 import { RuleBuilder } from '../rule-builder/rule-builder';
+import { checkDuplicate } from '../../ipc/bridge';
 
 export class RuleEdit extends Component {
   private ruleId: string | null;
@@ -87,7 +88,7 @@ export class RuleEdit extends Component {
     }
   }
 
-  private onSave(): void {
+  private async onSave(): Promise<void> {
     if (!this.ruleBuilder) return;
 
     const formData = this.ruleBuilder.getFormData();
@@ -98,6 +99,33 @@ export class RuleEdit extends Component {
     let resolvedAction: Rule['action'] = formData.action;
     if ((formData.action === 'block' || formData.action === 'log-block') && formData.blockType === 'reject') {
       resolvedAction = 'block-reject';
+    }
+
+    // Check for duplicate rules before saving
+    try {
+      const ruleData: Partial<Rule> = {
+        action: resolvedAction,
+        protocol: formData.protocol,
+        ports: formData.ports,
+        source: formData.source,
+        interfaceIn: formData.interfaceIn,
+        comment: formData.comment,
+      };
+      const result = await checkDuplicate(activeHostId, ruleData);
+      if (result.isDuplicate && result.similarity >= 0.8) {
+        const pct = Math.round(result.similarity * 100);
+        const confirmed = window.confirm(
+          `This rule is very similar to an existing rule (${pct}% match). Add anyway?`,
+        );
+        if (!confirmed) return;
+      } else if (result.similarity >= 0.5) {
+        const pct = Math.round(result.similarity * 100);
+        console.warn(
+          `Duplicate check: rule has ${pct}% similarity to existing rule ${result.existingRuleId ?? '(unknown)'}`,
+        );
+      }
+    } catch {
+      // If duplicate check fails (e.g. host disconnected), proceed anyway
     }
 
     if (this.ruleId) {

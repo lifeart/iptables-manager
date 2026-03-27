@@ -12,6 +12,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Rule, AddressSpec, PortSpec, IpList } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
+import { explainRule } from '../../ipc/bridge';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ function formatOrigin(rule: Rule, groups: Map<string, import('../../store/types'
 export class RuleDetail extends Component {
   private ruleId: string;
   private containerEl: HTMLElement;
+  private explanationCache: string | null = null;
 
   constructor(container: HTMLElement, store: Store, ruleId: string) {
     super(container, store);
@@ -203,6 +205,50 @@ export class RuleDetail extends Component {
       disclosure.appendChild(codeBlock);
       this.containerEl.appendChild(disclosure);
     }
+
+    // Explain disclosure
+    const explainDisclosure = h('details', { className: 'rule-detail__disclosure' });
+    const explainSummary = h('summary', { className: 'rule-detail__disclosure-summary' },
+      'Explain this rule');
+    explainDisclosure.appendChild(explainSummary);
+
+    const explainContent = h('div', { className: 'rule-detail__explain' });
+    explainDisclosure.appendChild(explainContent);
+
+    this.listen(explainDisclosure, 'toggle', () => {
+      const details = explainDisclosure as HTMLDetailsElement;
+      if (!details.open) return;
+
+      if (this.explanationCache !== null) {
+        clearChildren(explainContent);
+        explainContent.appendChild(
+          h('p', { className: 'rule-detail__explain-text' }, this.explanationCache),
+        );
+        return;
+      }
+
+      clearChildren(explainContent);
+      explainContent.appendChild(
+        h('p', { className: 'rule-detail__explain-loading' }, 'Loading explanation\u2026'),
+      );
+
+      explainRule(JSON.stringify(rule))
+        .then((text) => {
+          this.explanationCache = text;
+          clearChildren(explainContent);
+          explainContent.appendChild(
+            h('p', { className: 'rule-detail__explain-text' }, text),
+          );
+        })
+        .catch(() => {
+          clearChildren(explainContent);
+          explainContent.appendChild(
+            h('p', { className: 'rule-detail__explain-error' }, 'Could not generate explanation.'),
+          );
+        });
+    });
+
+    this.containerEl.appendChild(explainDisclosure);
 
     // Action buttons
     const actions = h('div', { className: 'rule-detail__actions' });

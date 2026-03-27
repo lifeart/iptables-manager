@@ -1131,3 +1131,98 @@
   font-size: 11px;
   color: var(--color-text-tertiary);
 }
+
+/* ── Conflicts Banner ────────────────────────────────── */
+
+.rule-table__conflicts-banner {
+  margin: var(--space-default, 12px) var(--space-spacious, 24px) 0;
+  background: rgba(255, 149, 0, 0.08);
+  border: 1px solid rgba(255, 149, 0, 0.25);
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+}
+
+.rule-table__conflicts-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  width: 100%;
+  padding: var(--space-default, 12px) var(--space-spacious, 24px);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: var(--color-warning, #FF9500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rule-table__conflicts-summary:hover {
+  background: rgba(255, 149, 0, 0.05);
+}
+
+.rule-table__conflicts-chevron {
+  font-size: 10px;
+  transition: transform var(--transition-fast, 0.15s);
+  flex-shrink: 0;
+}
+
+.rule-table__conflicts-chevron--open {
+  transform: rotate(90deg);
+}
+
+.rule-table__conflicts-list {
+  padding: 0 var(--space-spacious, 24px) var(--space-default, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-compact, 8px);
+}
+
+.rule-table__conflicts-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  background: var(--color-elevated, #fff);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+  line-height: 1.4;
+  flex-wrap: wrap;
+}
+
+.rule-table__conflicts-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.rule-table__conflicts-badge--shadow {
+  background: rgba(255, 149, 0, 0.15);
+  color: var(--color-warning, #FF9500);
+}
+
+.rule-table__conflicts-badge--contradiction {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--color-block, #FF3B30);
+}
+
+.rule-table__conflicts-badge--redundant {
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--color-info, #007AFF);
+}
+
+.rule-table__conflicts-rules {
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.rule-table__conflicts-desc {
+  color: var(--color-text-primary);
+}

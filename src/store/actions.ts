@@ -15,6 +15,7 @@ import type {
   AppState,
   IpListEntry,
   DialogType,
+  RuleConflict,
 } from './types';
 
 // ─── Hydration ─────────────────────────────────────────────────
@@ -195,6 +196,12 @@ export interface ClearHostStateAction {
   hostId: string;
 }
 
+export interface SetRuleConflictsAction {
+  type: 'SET_RULE_CONFLICTS';
+  hostId: string;
+  conflicts: RuleConflict[];
+}
+
 // ─── Staged Changes ──────────────────────────────────────────
 
 export interface AddStagedChangeAction {
@@ -309,6 +316,7 @@ export type Action =
   | SetConntrackUsageAction
   | AddSshLogEntryAction
   | ClearHostStateAction
+  | SetRuleConflictsAction
   | AddStagedChangeAction
   | UndoStagedChangeAction
   | RedoStagedChangeAction

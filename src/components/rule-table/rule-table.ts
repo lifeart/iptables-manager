@@ -22,8 +22,8 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
-import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket, provisionHost } from '../../ipc/bridge';
-import type { TestPacket } from '../../ipc/bridge';
+import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket, provisionHost, detectConflicts } from '../../ipc/bridge';
+import type { TestPacket, RuleConflict } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import Sortable from 'sortablejs';
 
@@ -46,6 +46,8 @@ export class RuleTable extends Component {
   private currentHeaderHostId: string | null = null;
   private loadingOverlay: HTMLElement | null = null;
   private errorBanner: HTMLElement | null = null;
+  private conflictsBanner: HTMLElement | null = null;
+  private conflictsExpanded = false;
 
   // Tab content panels
   private activityPanel: HTMLElement | null = null;
@@ -265,6 +267,34 @@ export class RuleTable extends Component {
       () => this.renderRules(),
     );
 
+    // Rules changed — trigger conflict detection
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return null;
+        return s.hostStates.get(hostId)?.rules ?? null;
+      },
+      (rules) => {
+        const hostId = this.store.getState().activeHostId;
+        if (hostId && rules && rules.length > 1) {
+          this.runConflictDetection(hostId);
+        } else if (hostId) {
+          // Clear conflicts when there are 0-1 rules
+          this.store.dispatch({ type: 'SET_RULE_CONFLICTS', hostId, conflicts: [] });
+        }
+      },
+    );
+
+    // Rule conflicts changed — update the conflicts banner
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return null;
+        return s.hostStates.get(hostId)?.ruleConflicts ?? null;
+      },
+      (conflicts) => this.renderConflictsBanner(conflicts ?? []),
+    );
+
     // Operations — show loading/error states for fetchRules
     this.subscribe(
       (s: AppState) => s.operations,
@@ -334,6 +364,84 @@ export class RuleTable extends Component {
         this.errorBanner.remove();
         this.errorBanner = null;
       }
+    }
+  }
+
+  private runConflictDetection(hostId: string): void {
+    detectConflicts(hostId)
+      .then((conflicts) => {
+        // Only dispatch if still viewing the same host
+        if (this.store.getState().activeHostId === hostId) {
+          this.store.dispatch({ type: 'SET_RULE_CONFLICTS', hostId, conflicts });
+        }
+      })
+      .catch((err) => {
+        console.warn('Conflict detection failed:', err);
+      });
+  }
+
+  private renderConflictsBanner(conflicts: RuleConflict[]): void {
+    if (conflicts.length === 0) {
+      if (this.conflictsBanner) {
+        this.conflictsBanner.remove();
+        this.conflictsBanner = null;
+      }
+      return;
+    }
+
+    if (!this.conflictsBanner) {
+      this.conflictsBanner = h('div', { className: 'rule-table__conflicts-banner' });
+      this.sectionsContainer.insertBefore(this.conflictsBanner, this.sectionsContainer.firstChild);
+    }
+
+    const conflictTypeLabel = (type: RuleConflict['type']): string => {
+      switch (type) {
+        case 'shadow': return 'Shadow';
+        case 'contradiction': return 'Contradiction';
+        case 'redundant': return 'Redundancy';
+        default: return type;
+      }
+    };
+
+    this.conflictsBanner.innerHTML = '';
+
+    // Summary row (clickable to expand/collapse)
+    const summary = h('button', {
+      className: 'rule-table__conflicts-summary',
+      type: 'button',
+      'aria-expanded': String(this.conflictsExpanded),
+    });
+    const chevron = h('span', {
+      className: 'rule-table__conflicts-chevron' + (this.conflictsExpanded ? ' rule-table__conflicts-chevron--open' : ''),
+    }, '\u25B6');
+    summary.appendChild(chevron);
+    summary.appendChild(h('span', {}, `${conflicts.length} potential conflict${conflicts.length === 1 ? '' : 's'} detected`));
+
+    this.listen(summary, 'click', () => {
+      this.conflictsExpanded = !this.conflictsExpanded;
+      this.renderConflictsBanner(conflicts);
+    });
+
+    this.conflictsBanner.appendChild(summary);
+
+    // Expandable detail list
+    if (this.conflictsExpanded) {
+      const list = h('div', { className: 'rule-table__conflicts-list' });
+      for (const conflict of conflicts) {
+        const item = h('div', { className: 'rule-table__conflicts-item' });
+        const badge = h('span', {
+          className: `rule-table__conflicts-badge rule-table__conflicts-badge--${conflict.type}`,
+        }, conflictTypeLabel(conflict.type));
+        const rules = h('span', { className: 'rule-table__conflicts-rules' },
+          `Rules: ${conflict.ruleIdA.slice(0, 8)} \u2194 ${conflict.ruleIdB.slice(0, 8)}`);
+        const desc = h('span', { className: 'rule-table__conflicts-desc' }, conflict.description);
+
+        item.appendChild(badge);
+        item.appendChild(rules);
+        item.appendChild(desc);
+        list.appendChild(item);
+      }
+      this.conflictsBanner.appendChild(list);
     }
   }
 
@@ -1206,6 +1314,7 @@ export class RuleTable extends Component {
 
   private renderEmptyState(): void {
     this.sectionsContainer.innerHTML = '';
+    this.conflictsBanner = null;
 
     // Check if the active host is unreachable
     const activeHost = this.store.select(selectActiveHost);
@@ -1250,6 +1359,7 @@ export class RuleTable extends Component {
 
   private renderWelcomeScreen(): void {
     this.sectionsContainer.innerHTML = '';
+    this.conflictsBanner = null;
     this.filterBarContainer.style.display = 'none';
     this.addRuleBtnContainer.style.display = 'none';
     this.tabsEl.style.display = 'none';

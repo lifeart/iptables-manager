@@ -217,7 +217,20 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
     case 'rules:check-duplicate':
       return { isDuplicate: false, similarity: 0 } as T;
     case 'rules:detect-conflicts':
-      return [] as T;
+      return [
+        {
+          ruleIdA: 'demo-rule-web-http',
+          ruleIdB: 'demo-rule-web-block-all',
+          type: 'shadow',
+          description: 'The block-all rule shadows port 80/443 traffic that is already explicitly allowed by the HTTP rule.',
+        },
+        {
+          ruleIdA: 'demo-rule-web-ssh',
+          ruleIdB: 'demo-rule-web-monitoring',
+          type: 'redundant',
+          description: 'Both rules allow traffic from the same source network on overlapping port ranges.',
+        },
+      ] as T;
     case 'snapshot:create':
       return { id: crypto.randomUUID(), hostId: _args?.hostId ?? '', timestamp: Date.now(), ruleCount: 0 } as T;
     case 'snapshot:list':

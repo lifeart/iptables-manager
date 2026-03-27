@@ -2,6 +2,9 @@
 // Fields annotated @persisted are synced to IndexedDB.
 // Fields annotated @ephemeral are in-memory only.
 
+import type { RuleConflict } from '../ipc/bridge';
+export type { RuleConflict };
+
 // ─── Domain Types ───────────────────────────────────────────────
 
 export type HostStatus =
@@ -276,6 +279,7 @@ export interface HostState {
   blockedLog: BlockedEntry[];
   conntrackUsage: { current: number; max: number };
   sshCommandLog: SshLogEntry[];
+  ruleConflicts: RuleConflict[];
 }
 
 // ─── Effective Rule (computed, never stored) ───────────────────
