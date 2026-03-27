@@ -22,7 +22,7 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
-import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket } from '../../ipc/bridge';
+import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket, provisionHost } from '../../ipc/bridge';
 import type { TestPacket } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import Sortable from 'sortablejs';
@@ -835,6 +835,24 @@ export class RuleTable extends Component {
           operationType: 'fetchRules',
           hostId: host.id,
         });
+
+        // Provision if not already provisioned (non-blocking)
+        if (!host.provisioned) {
+          provisionHost(host.id)
+            .then((result) => {
+              if (result.success) {
+                this.store.dispatch({
+                  type: 'UPDATE_HOST',
+                  hostId: host.id,
+                  changes: { provisioned: true },
+                });
+              }
+            })
+            .catch((err) => {
+              console.warn(`Host provisioning failed for ${host.id}:`, err);
+            });
+        }
+
         return fetchRules(host.id);
       })
       .then((ruleData) => {

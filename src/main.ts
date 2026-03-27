@@ -97,7 +97,7 @@ async function autoReconnect(): Promise<void> {
   if (!host) return;
 
   try {
-    const { connectHost } = await import('./ipc/bridge');
+    const { connectHost, provisionHost } = await import('./ipc/bridge');
     await connectHost(
       lastHostId,
       host.connection.hostname,
@@ -111,6 +111,23 @@ async function autoReconnect(): Promise<void> {
       hostId: lastHostId,
       changes: { status: 'connected' as const, lastConnected: Date.now() },
     });
+
+    // Provision if not already provisioned (non-blocking)
+    if (!host.provisioned) {
+      provisionHost(lastHostId)
+        .then((result) => {
+          if (result.success) {
+            store.dispatch({
+              type: 'UPDATE_HOST',
+              hostId: lastHostId,
+              changes: { provisioned: true },
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn(`Host provisioning failed for ${lastHostId}:`, err);
+        });
+    }
   } catch {
     // Auto-reconnect failure is non-fatal — silently update status
     store.dispatch({

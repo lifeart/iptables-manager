@@ -6,7 +6,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { testConnection, connectHost, detectHost, fetchRules } from '../../ipc/bridge';
+import { testConnection, connectHost, detectHost, fetchRules, provisionHost } from '../../ipc/bridge';
 import type { TestResult } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import { h, trapFocus } from '../../utils/dom';
@@ -529,6 +529,23 @@ export class AddHostDialog extends Component {
         })
         .catch(() => {
           // Detection failure is non-fatal; host works without capabilities
+        });
+
+      // Provision host in the background (non-blocking)
+      // Sets up directories, revert script, and HMAC secret on the remote host
+      provisionHost(host.id)
+        .then((result) => {
+          if (result.success) {
+            this.store.dispatch({
+              type: 'UPDATE_HOST',
+              hostId: host.id,
+              changes: { provisioned: true },
+            });
+          }
+        })
+        .catch((err) => {
+          // Provisioning failure is non-fatal; connection still works without safety timer
+          console.warn(`Host provisioning failed for ${host.id}:`, err);
         });
 
       this.close();
