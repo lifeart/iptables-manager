@@ -154,7 +154,7 @@ pub struct InterfaceSpec {
 // PortSpec
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortSpec {
     /// A single port, e.g. `80`.
     Single(u16),

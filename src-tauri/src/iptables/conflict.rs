@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 
-use super::types::{PortSpec, Protocol};
+use super::types::{MatchSpec, ParsedRuleset, PortSpec, Protocol, Target};
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -272,6 +272,119 @@ fn criteria_overlap(a: &EffectiveRule, b: &EffectiveRule) -> bool {
 /// Check if two rules have the same criteria (mutual subset).
 fn same_criteria(a: &EffectiveRule, b: &EffectiveRule) -> bool {
     is_subset(a, b) && is_subset(b, a)
+}
+
+// ---------------------------------------------------------------------------
+// Conversion: ParsedRuleset -> Vec<EffectiveRule>
+// ---------------------------------------------------------------------------
+
+fn target_to_action(target: &Target) -> Option<RuleAction> {
+    match target {
+        Target::Accept => Some(RuleAction::Accept),
+        Target::Drop => Some(RuleAction::Drop),
+        Target::Reject => Some(RuleAction::Reject),
+        Target::Log => Some(RuleAction::Log),
+        _ => None, // Skip NAT, MARK, jumps, etc. — not relevant for conflict detection
+    }
+}
+
+fn chain_to_direction(chain: &str) -> Option<RuleDirection> {
+    match chain {
+        "INPUT" => Some(RuleDirection::Input),
+        "OUTPUT" => Some(RuleDirection::Output),
+        "FORWARD" => Some(RuleDirection::Forward),
+        _ => None, // Skip user-defined chains and NAT chains
+    }
+}
+
+/// Scan match module args for port specifications.
+/// When `dest` is true, looks for --dport/--dports; otherwise --sport/--sports.
+fn extract_port_from_matches(matches: &[MatchSpec], dest: bool) -> Option<PortSpec> {
+    let flags: &[&str] = if dest {
+        &["--dport", "--dports", "--destination-ports"]
+    } else {
+        &["--sport", "--sports", "--source-ports"]
+    };
+    for m in matches {
+        for (j, arg) in m.args.iter().enumerate() {
+            if flags.contains(&arg.as_str()) {
+                if let Some(val) = m.args.get(j + 1) {
+                    return PortSpec::parse(val);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Convert a `ParsedRuleset` into a flat list of `EffectiveRule`s suitable
+/// for conflict detection.  Only rules in the `filter` table and built-in
+/// chains (INPUT / OUTPUT / FORWARD) with terminal actions (ACCEPT / DROP /
+/// REJECT / LOG) are included.
+pub fn ruleset_to_effective_rules(ruleset: &ParsedRuleset) -> Vec<EffectiveRule> {
+    let mut result = Vec::new();
+
+    let filter = match ruleset.tables.get("filter") {
+        Some(t) => t,
+        None => return result,
+    };
+
+    for (chain_name, chain) in &filter.chains {
+        let direction = match chain_to_direction(chain_name) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        for (pos, parsed_rule) in chain.rules.iter().enumerate() {
+            let spec = match &parsed_rule.parsed {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let action = match &spec.target {
+                Some(t) => match target_to_action(t) {
+                    Some(a) => a,
+                    None => continue,
+                },
+                None => continue,
+            };
+
+            // Use dest_port as the primary port (most common in firewall rules).
+            // Fall back to source_port if dest_port is absent.
+            // Also check match module args, since implicit protocol modules
+            // (e.g. `-p tcp --dport 22` without explicit `-m tcp`) may not
+            // populate spec.dest_port / spec.source_port.
+            let ports = spec
+                .dest_port
+                .clone()
+                .or_else(|| spec.source_port.clone())
+                .or_else(|| extract_port_from_matches(&spec.matches, true))
+                .or_else(|| extract_port_from_matches(&spec.matches, false));
+
+            let source = spec.source.as_ref().map(|a| a.addr.clone());
+            let destination = spec.destination.as_ref().map(|a| a.addr.clone());
+
+            let id = format!(
+                "{}:{}:{}",
+                chain_name,
+                pos + 1,
+                parsed_rule.raw.chars().take(60).collect::<String>()
+            );
+
+            result.push(EffectiveRule {
+                id,
+                action,
+                protocol: spec.protocol.clone(),
+                source,
+                destination,
+                ports,
+                direction: direction.clone(),
+                position: pos + 1,
+            });
+        }
+    }
+
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -573,5 +686,152 @@ mod tests {
 
         let conflicts = detect_conflicts(&rules);
         assert!(conflicts.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Integration tests: ParsedRuleset -> EffectiveRule -> detect_conflicts
+    // -----------------------------------------------------------------------
+
+    use crate::iptables::parser::parse_iptables_save;
+
+    #[test]
+    fn test_ruleset_conversion_basic() {
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 80 -j DROP
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        assert_eq!(effective.len(), 2);
+        assert_eq!(effective[0].action, RuleAction::Accept);
+        assert_eq!(effective[0].protocol, Some(Protocol::Tcp));
+        assert_eq!(effective[0].ports, Some(PortSpec::Single(22)));
+        assert_eq!(effective[0].direction, RuleDirection::Input);
+        assert_eq!(effective[1].action, RuleAction::Drop);
+        assert_eq!(effective[1].ports, Some(PortSpec::Single(80)));
+    }
+
+    #[test]
+    fn test_ruleset_skips_nat_and_jumps() {
+        let input = r#"*nat
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A POSTROUTING -o eth0 -j MASQUERADE
+COMMIT
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -j some-user-chain
+-A INPUT -p tcp --dport 22 -j ACCEPT
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        // Only the ACCEPT rule on port 22 should be included;
+        // MASQUERADE (nat table) and jump to user-chain are skipped.
+        assert_eq!(effective.len(), 1);
+        assert_eq!(effective[0].action, RuleAction::Accept);
+    }
+
+    #[test]
+    fn test_end_to_end_shadow_detection() {
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp -s 10.0.0.0/8 --dport 22 -j DROP
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        let conflicts = detect_conflicts(&effective);
+
+        assert_eq!(conflicts.len(), 1, "expected 1 shadow conflict, got {:?}", conflicts);
+        assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
+    }
+
+    #[test]
+    fn test_end_to_end_redundancy_detection() {
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp --dport 443 -j ACCEPT
+-A INPUT -p tcp -s 192.168.1.0/24 --dport 443 -j ACCEPT
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        let conflicts = detect_conflicts(&effective);
+
+        assert_eq!(conflicts.len(), 1, "expected 1 redundancy, got {:?}", conflicts);
+        assert_eq!(conflicts[0].conflict_type, ConflictType::Redundancy);
+    }
+
+    #[test]
+    fn test_end_to_end_overlap_detection() {
+        // Rule 1: ACCEPT tcp from 10.0.0.0/8 port 80
+        // Rule 2: DROP tcp from 10.0.0.0/16 ports 80-90
+        // Partial overlap (port 80 from 10.0.0.0/16) but B has extra ports.
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp -s 10.0.0.0/8 --dport 80 -j ACCEPT
+-A INPUT -p tcp -s 10.0.0.0/16 -m multiport --dports 80:90 -j DROP
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        let conflicts = detect_conflicts(&effective);
+
+        assert!(!conflicts.is_empty(), "expected at least one conflict, got none");
+        // Should be an overlap (not a pure shadow, since B has broader ports).
+        let has_overlap = conflicts.iter().any(|c| c.conflict_type == ConflictType::Overlap);
+        assert!(has_overlap, "expected Overlap conflict, got {:?}", conflicts);
+    }
+
+    #[test]
+    fn test_end_to_end_no_conflicts() {
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp -s 192.168.1.0/24 --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 80 -j ACCEPT
+-A INPUT -p udp --dport 53 -j DROP
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        let conflicts = detect_conflicts(&effective);
+
+        assert!(conflicts.is_empty(), "expected no conflicts, got {:?}", conflicts);
+    }
+
+    #[test]
+    fn test_end_to_end_contradiction_same_criteria() {
+        // Exact same criteria but ACCEPT vs DROP — shadow (B is subset of A).
+        let input = r#"*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 22 -j DROP
+COMMIT
+"#;
+        let ruleset = parse_iptables_save(input).unwrap();
+        let effective = ruleset_to_effective_rules(&ruleset);
+        let conflicts = detect_conflicts(&effective);
+
+        assert_eq!(conflicts.len(), 1, "expected 1 conflict, got {:?}", conflicts);
+        assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
     }
 }

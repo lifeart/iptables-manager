@@ -440,15 +440,40 @@ fn parse_rule_spec(tokens: &[String], counters: Option<(u64, u64)>) -> (RuleSpec
                     if value_flags.contains(&flag.as_ref()) {
                         // This flag belongs to this module; find or create the
                         // MatchSpec for it.
+                        let has_value = !is_bool_flag(module, flag) && i + 1 < tokens.len();
+                        let value = if has_value {
+                            Some(tokens[i + 1].clone())
+                        } else {
+                            None
+                        };
+
+                        // Populate structured port fields for port-related flags
+                        if let Some(ref val) = value {
+                            match flag {
+                                "--sport" | "--sports" | "--source-ports" => {
+                                    if spec.source_port.is_none() {
+                                        spec.source_port = PortSpec::parse(val);
+                                    }
+                                }
+                                "--dport" | "--dports" | "--destination-ports" => {
+                                    if spec.dest_port.is_none() {
+                                        spec.dest_port = PortSpec::parse(val);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+
                         if let Some(ms) = spec.matches.iter_mut().rev()
                             .find(|m| m.module == *module)
                         {
                             ms.args.push(flag.to_string());
-                            if !is_bool_flag(module, flag) && i + 1 < tokens.len() {
-                                // Consume the value
-                                i += 1;
-                                ms.args.push(tokens[i].clone());
+                            if let Some(val) = value {
+                                ms.args.push(val);
                             }
+                        }
+                        if has_value {
+                            i += 1; // skip the consumed value token
                         }
                         matched = true;
                         break;
