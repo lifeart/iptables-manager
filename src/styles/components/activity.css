@@ -234,7 +234,7 @@
   gap: var(--space-default, 12px);
   padding: var(--space-default, 12px) var(--space-comfortable, 16px);
   margin-bottom: var(--space-default, 12px);
-  background: var(--color-warning-bg, rgba(255, 149, 0, 0.08));
+  background: rgba(255, 149, 0, 0.08);
   border: 1px solid var(--color-warning, #FF9500);
   border-radius: var(--radius-md, 6px);
 }
@@ -324,7 +324,7 @@
   gap: var(--space-compact, 8px);
   padding: var(--space-default, 12px) var(--space-comfortable, 16px);
   margin-bottom: var(--space-default, 12px);
-  background: var(--color-warning-bg, rgba(255, 149, 0, 0.08));
+  background: rgba(255, 149, 0, 0.08);
   border: 1px solid var(--color-warning, #FF9500);
   border-radius: var(--radius-md, 6px);
   color: var(--color-text-primary, #1D1D1F);
@@ -488,5 +488,19 @@
 
   .audit-log__row:hover {
     background: var(--color-hover, #2C2C2E);
+  }
+
+  .activity-view__saturation-banner {
+    background: rgba(255, 159, 10, 0.12);
+    border-color: var(--color-warning);
+  }
+
+  .blocked-log__offender-alert {
+    background: rgba(255, 159, 10, 0.12);
+    border-color: var(--color-warning);
+  }
+
+  .activity-view__error {
+    background: rgba(255, 69, 58, 0.12);
   }
 }

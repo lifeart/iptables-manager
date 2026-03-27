@@ -7,7 +7,7 @@
   transform: translateX(-50%) translateY(-120%);
   width: 480px;
   max-width: calc(100vw - 40px);
-  background: #7A3D00;
+  background: color-mix(in srgb, var(--color-warning) 75%, #000);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-banner);
   z-index: 1100;
@@ -53,7 +53,7 @@
   font-weight: 500;
   cursor: pointer;
   padding: var(--space-tight) var(--space-comfortable);
-  border-radius: var(--radius-default);
+  border-radius: var(--radius-md);
   font-family: var(--font-family);
   transition: background var(--transition-fast), border-color var(--transition-fast);
   white-space: nowrap;
@@ -86,7 +86,7 @@
 
 @media (prefers-color-scheme: dark) {
   .drift-banner {
-    background: #6B3500;
+    background: color-mix(in srgb, var(--color-warning) 65%, #000);
     box-shadow: var(--shadow-banner);
   }
 }
