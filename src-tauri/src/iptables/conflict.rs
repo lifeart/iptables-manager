@@ -33,6 +33,11 @@ pub struct EffectiveRule {
     pub ports: Option<PortSpec>,
     pub direction: RuleDirection,
     pub position: usize,
+    pub source_negated: bool,
+    pub destination_negated: bool,
+    pub protocol_negated: bool,
+    pub in_interface: Option<String>,
+    pub out_interface: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,10 +216,30 @@ fn addr_is_subset(inner: &Option<String>, outer: &Option<String>) -> bool {
     }
 }
 
-fn addr_overlaps(a: &Option<String>, b: &Option<String>) -> bool {
+fn addr_overlaps(a: &Option<String>, a_negated: bool, b: &Option<String>, b_negated: bool) -> bool {
     match (a, b) {
-        (None, _) | (_, None) => true, // "any" overlaps with everything
-        (Some(x), Some(y)) => cidrs_overlap(x, y),
+        (None, None) => true,
+        (None, Some(_)) => {
+            // a is "any"; if b is negated, b matches everything except that addr,
+            // so there is still partial overlap with "any".
+            true
+        }
+        (Some(_), None) => {
+            // symmetric case
+            true
+        }
+        (Some(x), Some(y)) => {
+            if a_negated != b_negated && cidrs_overlap(x, y) {
+                // One is negated and the other is not, and they refer to
+                // overlapping address ranges: they match opposite traffic.
+                // e.g. !10.0.0.0/8 vs 10.0.0.0/8 => no overlap.
+                // But if the CIDRs don't overlap at all, both could still
+                // match the same traffic.
+                false
+            } else {
+                cidrs_overlap(x, y)
+            }
+        }
     }
 }
 
@@ -233,11 +258,23 @@ fn ports_overlap_opt(a: &Option<PortSpec>, b: &Option<PortSpec>) -> bool {
     }
 }
 
-fn protocol_matches(a: &Option<Protocol>, b: &Option<Protocol>) -> bool {
+fn protocol_matches(
+    a: &Option<Protocol>,
+    a_negated: bool,
+    b: &Option<Protocol>,
+    b_negated: bool,
+) -> bool {
     match (a, b) {
         (None, _) | (_, None) => true,
         (Some(Protocol::All), _) | (_, Some(Protocol::All)) => true,
-        (Some(x), Some(y)) => x == y,
+        (Some(x), Some(y)) => {
+            if x == y && a_negated != b_negated {
+                // Same protocol but one is negated: !tcp vs tcp => no overlap
+                false
+            } else {
+                x == y
+            }
+        }
     }
 }
 
@@ -253,20 +290,40 @@ fn protocol_is_subset(inner: &Option<Protocol>, outer: &Option<Protocol>) -> boo
 
 /// Check if rule B's criteria are a subset of rule A's criteria.
 fn is_subset(b: &EffectiveRule, a: &EffectiveRule) -> bool {
+    // If negation flags differ for any field, the subset relationship
+    // doesn't hold in the simple sense. Use criteria_overlap as a
+    // conservative gate: if they don't even overlap, certainly not a subset.
+    if !criteria_overlap(b, a) {
+        return false;
+    }
     b.direction == a.direction
+        && b.source_negated == a.source_negated
+        && b.destination_negated == a.destination_negated
+        && b.protocol_negated == a.protocol_negated
         && protocol_is_subset(&b.protocol, &a.protocol)
         && addr_is_subset(&b.source, &a.source)
         && addr_is_subset(&b.destination, &a.destination)
         && ports_is_subset_opt(&b.ports, &a.ports)
+        && interfaces_overlap(&b.in_interface, &a.in_interface)
+        && interfaces_overlap(&b.out_interface, &a.out_interface)
+}
+
+fn interfaces_overlap(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (None, _) | (_, None) => true, // "any" interface overlaps with everything
+        (Some(a), Some(b)) => a == b,
+    }
 }
 
 /// Check if two rules have overlapping criteria.
 fn criteria_overlap(a: &EffectiveRule, b: &EffectiveRule) -> bool {
     a.direction == b.direction
-        && protocol_matches(&a.protocol, &b.protocol)
-        && addr_overlaps(&a.source, &b.source)
-        && addr_overlaps(&a.destination, &b.destination)
+        && protocol_matches(&a.protocol, a.protocol_negated, &b.protocol, b.protocol_negated)
+        && addr_overlaps(&a.source, a.source_negated, &b.source, b.source_negated)
+        && addr_overlaps(&a.destination, a.destination_negated, &b.destination, b.destination_negated)
         && ports_overlap_opt(&a.ports, &b.ports)
+        && interfaces_overlap(&a.in_interface, &b.in_interface)
+        && interfaces_overlap(&a.out_interface, &b.out_interface)
 }
 
 /// Check if two rules have the same criteria (mutual subset).
@@ -362,7 +419,12 @@ pub fn ruleset_to_effective_rules(ruleset: &ParsedRuleset) -> Vec<EffectiveRule>
                 .or_else(|| extract_port_from_matches(&spec.matches, false));
 
             let source = spec.source.as_ref().map(|a| a.addr.clone());
+            let source_negated = spec.source.as_ref().map_or(false, |a| a.negated);
             let destination = spec.destination.as_ref().map(|a| a.addr.clone());
+            let destination_negated = spec.destination.as_ref().map_or(false, |a| a.negated);
+            let protocol_negated = spec.protocol_negated;
+            let in_interface = spec.in_iface.as_ref().map(|i| i.name.clone());
+            let out_interface = spec.out_iface.as_ref().map(|i| i.name.clone());
 
             let id = format!(
                 "{}:{}:{}",
@@ -380,6 +442,11 @@ pub fn ruleset_to_effective_rules(ruleset: &ParsedRuleset) -> Vec<EffectiveRule>
                 ports,
                 direction: direction.clone(),
                 position: pos + 1,
+                source_negated,
+                destination_negated,
+                protocol_negated,
+                in_interface,
+                out_interface,
             });
         }
     }
@@ -464,6 +531,11 @@ mod tests {
             ports: Some(PortSpec::Single(22)),
             direction: RuleDirection::Input,
             position: pos,
+            source_negated: false,
+            destination_negated: false,
+            protocol_negated: false,
+            in_interface: None,
+            out_interface: None,
         }
     }
 
@@ -482,6 +554,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "B".to_string(),
@@ -492,6 +569,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
         ];
 
@@ -514,6 +596,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "B".to_string(),
@@ -524,6 +611,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
         ];
 
@@ -552,6 +644,11 @@ mod tests {
                 ports: Some(PortSpec::Single(80)),
                 direction: RuleDirection::Input,
                 position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "B".to_string(),
@@ -562,6 +659,11 @@ mod tests {
                 ports: Some(PortSpec::Range(80, 90)),
                 direction: RuleDirection::Input,
                 position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
         ];
 
@@ -587,6 +689,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "B".to_string(),
@@ -597,6 +704,11 @@ mod tests {
                 ports: Some(PortSpec::Single(80)),
                 direction: RuleDirection::Input,
                 position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "C".to_string(),
@@ -607,6 +719,11 @@ mod tests {
                 ports: Some(PortSpec::Single(53)),
                 direction: RuleDirection::Input,
                 position: 3,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
         ];
 
@@ -671,6 +788,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Input,
                 position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
             EffectiveRule {
                 id: "B".to_string(),
@@ -681,6 +803,11 @@ mod tests {
                 ports: Some(PortSpec::Single(22)),
                 direction: RuleDirection::Output,
                 position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
             },
         ];
 
@@ -832,6 +959,244 @@ COMMIT
         let conflicts = detect_conflicts(&effective);
 
         assert_eq!(conflicts.len(), 1, "expected 1 conflict, got {:?}", conflicts);
+        assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
+    }
+
+    // -----------------------------------------------------------------------
+    // Negation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_opposite_source_negation_no_conflict() {
+        // Rule A: ACCEPT tcp from 10.0.0.0/8, port 22
+        // Rule B: DROP tcp from !10.0.0.0/8, port 22
+        // They match opposite traffic => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: true,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for opposite negation, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_opposite_protocol_negation_no_conflict() {
+        // Rule A: ACCEPT tcp port 22
+        // Rule B: DROP !tcp port 22
+        // They match opposite protocols => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: true,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for opposite protocol negation, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_negated_source_vs_any_partial_overlap() {
+        // Rule A: ACCEPT tcp from any, port 22
+        // Rule B: DROP tcp from !10.0.0.0/8, port 22
+        // B matches everything except 10.0.0.0/8, A matches everything.
+        // They partially overlap (on all traffic except 10.0.0.0/8 they
+        // both match). This should be detected as a shadow (B subset of A).
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None, // any
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: true,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        // A is "any" which is broader; B with !10.0.0.0/8 is a subset of "any".
+        // criteria_overlap returns true (None vs Some with negated => true).
+        assert!(
+            !conflicts.is_empty(),
+            "Expected a conflict for negated source vs any, got none"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Interface tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_different_interfaces_no_conflict() {
+        // Rule A: ACCEPT tcp port 22 on eth0
+        // Rule B: DROP tcp port 22 on eth1
+        // Different in_interface => no conflict.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: Some("eth0".to_string()),
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: Some("eth1".to_string()),
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert!(
+            conflicts.is_empty(),
+            "Expected no conflicts for different interfaces, got: {:?}",
+            conflicts
+        );
+    }
+
+    #[test]
+    fn test_same_interface_conflict_detected() {
+        // Rule A: ACCEPT tcp port 22 on eth0
+        // Rule B: DROP tcp port 22 on eth0
+        // Same interface, same criteria, different action => shadow.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: Some("eth0".to_string()),
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Drop,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: Some("eth0".to_string()),
+                out_interface: None,
+            },
+        ];
+
+        let conflicts = detect_conflicts(&rules);
+        assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
     }
 }

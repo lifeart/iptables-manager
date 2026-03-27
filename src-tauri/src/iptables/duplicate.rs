@@ -11,14 +11,22 @@ use super::types::{ParsedRule, ParsedRuleset, PortSpec, Protocol, Target};
 // Proposed rule — minimal struct deserialized from the frontend JSON
 // ---------------------------------------------------------------------------
 
+/// Protocol value from the frontend — can be a name ("tcp") or IANA number (6).
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ProposedProtocol {
+    Named(String),
+    Number(u16),
+}
+
 /// Minimal fields extracted from the frontend `Rule` type for comparison.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProposedRule {
     /// "incoming" | "outgoing" | "forwarded"
     pub direction: Option<String>,
-    /// "tcp" | "udp" | "icmp" | ...
-    pub protocol: Option<String>,
+    /// "tcp" | "udp" | "icmp" | ... | 6 | 17 | ...
+    pub protocol: Option<ProposedProtocol>,
     /// Port specification
     pub ports: Option<ProposedPortSpec>,
     /// Source address
@@ -27,6 +35,10 @@ pub struct ProposedRule {
     pub destination: Option<ProposedAddress>,
     /// "allow" | "block" | "block-reject" | "log" | ...
     pub action: Option<String>,
+    /// Inbound interface name
+    pub interface_in: Option<String>,
+    /// Outbound interface name
+    pub interface_out: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,8 +97,11 @@ fn action_to_target(action: &str) -> Option<Target> {
     }
 }
 
-fn proposed_protocol(p: &str) -> Protocol {
-    Protocol::from_str_loose(p)
+fn proposed_protocol(p: &ProposedProtocol) -> Protocol {
+    match p {
+        ProposedProtocol::Named(s) => Protocol::from_str_loose(s),
+        ProposedProtocol::Number(n) => Protocol::from_str_loose(&n.to_string()),
+    }
 }
 
 fn proposed_port_to_spec(p: &ProposedPortSpec) -> PortSpec {
@@ -194,12 +209,20 @@ fn compute_similarity(proposed: &ProposedRule, existing: &ParsedRule) -> f64 {
         total -= 1;
     }
 
-    // 2. Protocol
+    // 2. Protocol (negation-aware: proposed rules are never negated)
     total += 1;
     let proto_match = match (&proposed.protocol, &spec.protocol) {
-        (Some(pp), Some(ep)) => proposed_protocol(pp) == *ep,
+        (Some(pp), Some(ep)) => {
+            let names_match = proposed_protocol(pp) == *ep;
+            // If the existing rule negates the protocol, same name means NO match
+            if spec.protocol_negated {
+                !names_match
+            } else {
+                names_match
+            }
+        }
         (None, None) => true,
-        (None, Some(Protocol::All)) => true,
+        (None, Some(Protocol::All)) => !spec.protocol_negated,
         _ => false,
     };
     if proto_match {
@@ -217,8 +240,9 @@ fn compute_similarity(proposed: &ProposedRule, existing: &ParsedRule) -> f64 {
         matched += 1;
     }
 
-    // 4. Source address
+    // 4. Source address (negation-aware: proposed rules are never negated)
     total += 1;
+    let src_negated = spec.source.as_ref().map_or(false, |a| a.negated);
     let proposed_src = proposed.source.as_ref().and_then(proposed_addr_string);
     let existing_src = spec.source.as_ref().map(|a| a.addr.clone());
     let norm_proposed_src = proposed_src.as_ref().map(|s| normalize_addr(s));
@@ -226,7 +250,16 @@ fn compute_similarity(proposed: &ProposedRule, existing: &ParsedRule) -> f64 {
     // Treat empty normalized strings as None (= any)
     let eff_proposed_src = norm_proposed_src.filter(|s| !s.is_empty());
     let eff_existing_src = norm_existing_src.filter(|s| !s.is_empty());
-    if addrs_equal(&eff_proposed_src, &eff_existing_src) {
+    let src_match = if src_negated && addrs_equal(&eff_proposed_src, &eff_existing_src) {
+        // Existing rule negates this source — same address means opposite semantics
+        false
+    } else if src_negated {
+        // Different addresses with negation — could overlap, treat as no match
+        false
+    } else {
+        addrs_equal(&eff_proposed_src, &eff_existing_src)
+    };
+    if src_match {
         matched += 1;
     }
 
@@ -247,15 +280,43 @@ fn compute_similarity(proposed: &ProposedRule, existing: &ParsedRule) -> f64 {
         matched += 1;
     }
 
-    // 6. Destination address (bonus — weighted the same)
+    // 6. Destination address (negation-aware)
     total += 1;
+    let dst_negated = spec.destination.as_ref().map_or(false, |a| a.negated);
     let proposed_dst = proposed.destination.as_ref().and_then(proposed_addr_string);
     let existing_dst = spec.destination.as_ref().map(|a| a.addr.clone());
     let norm_proposed_dst = proposed_dst.as_ref().map(|s| normalize_addr(s));
     let norm_existing_dst = existing_dst.as_ref().map(|s| normalize_addr(s));
     let eff_proposed_dst = norm_proposed_dst.filter(|s| !s.is_empty());
     let eff_existing_dst = norm_existing_dst.filter(|s| !s.is_empty());
-    if addrs_equal(&eff_proposed_dst, &eff_existing_dst) {
+    let dst_match = if dst_negated && addrs_equal(&eff_proposed_dst, &eff_existing_dst) {
+        false
+    } else if dst_negated {
+        false
+    } else {
+        addrs_equal(&eff_proposed_dst, &eff_existing_dst)
+    };
+    if dst_match {
+        matched += 1;
+    }
+
+    // 7. Inbound interface
+    total += 1;
+    let iface_in_match = match (&proposed.interface_in, &spec.in_iface) {
+        (Some(pi), Some(ei)) => pi.eq_ignore_ascii_case(&ei.name),
+        (None, _) | (_, None) => true, // one side is "any" → match
+    };
+    if iface_in_match {
+        matched += 1;
+    }
+
+    // 8. Outbound interface
+    total += 1;
+    let iface_out_match = match (&proposed.interface_out, &spec.out_iface) {
+        (Some(po), Some(eo)) => po.eq_ignore_ascii_case(&eo.name),
+        (None, _) | (_, None) => true, // one side is "any" → match
+    };
+    if iface_out_match {
         matched += 1;
     }
 
@@ -328,7 +389,7 @@ mod tests {
             protocol: if protocol.is_empty() {
                 None
             } else {
-                Some(protocol.to_string())
+                Some(ProposedProtocol::Named(protocol.to_string()))
             },
             ports: port.map(|p| ProposedPortSpec::Single { port: p }),
             source: source.map(|s| {
@@ -342,6 +403,8 @@ mod tests {
             }),
             destination: None,
             action: Some(action.to_string()),
+            interface_in: None,
+            interface_out: None,
         }
     }
 
@@ -454,6 +517,8 @@ COMMIT
             source: None,
             destination: None,
             action: Some("block".to_string()),
+            interface_in: None,
+            interface_out: None,
         };
         let result = check_duplicate(&p, &ruleset, 0.8);
         assert!(result.is_some(), "should match the catch-all DROP rule");
@@ -490,7 +555,7 @@ COMMIT
             "action": "allow"
         });
         let p: ProposedRule = serde_json::from_value(json).expect("should deserialize");
-        assert_eq!(p.protocol.as_deref(), Some("tcp"));
+        assert!(matches!(&p.protocol, Some(ProposedProtocol::Named(s)) if s == "tcp"));
     }
 
     #[test]
@@ -518,5 +583,131 @@ COMMIT
         });
         let p: ProposedRule = serde_json::from_value(json).expect("should deserialize");
         assert!(matches!(p.ports, Some(ProposedPortSpec::Multi { .. })));
+    }
+
+    #[test]
+    fn protocol_as_number_matches_tcp() {
+        let ruleset = make_ruleset(SAMPLE_IPTABLES_SAVE);
+        // Protocol 6 = TCP; should match the SSH rule (tcp port 22)
+        let p = ProposedRule {
+            direction: Some("incoming".to_string()),
+            protocol: Some(ProposedProtocol::Number(6)),
+            ports: Some(ProposedPortSpec::Single { port: 22 }),
+            source: None,
+            destination: None,
+            action: Some("allow".to_string()),
+            interface_in: None,
+            interface_out: None,
+        };
+        let result = check_duplicate(&p, &ruleset, 0.5);
+        assert!(result.is_some(), "protocol number 6 should match tcp rule");
+        let m = result.unwrap();
+        assert!(
+            (m.similarity - 1.0).abs() < f64::EPSILON,
+            "exact match expected, got {}",
+            m.similarity
+        );
+    }
+
+    #[test]
+    fn deserialization_protocol_number() {
+        let json = serde_json::json!({
+            "direction": "incoming",
+            "protocol": 6,
+            "ports": { "type": "single", "port": 80 },
+            "action": "allow"
+        });
+        let p: ProposedRule = serde_json::from_value(json).expect("should deserialize");
+        assert!(matches!(&p.protocol, Some(ProposedProtocol::Number(6))));
+    }
+
+    // Helper to build a ruleset with a negated source rule
+    static NEGATED_SOURCE_IPTABLES: &str = "\
+*filter
+:INPUT ACCEPT [0:0]
+-A INPUT ! -s 10.0.0.0/8 -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+";
+
+    #[test]
+    fn negated_source_does_not_match_non_negated() {
+        let ruleset = make_ruleset(NEGATED_SOURCE_IPTABLES);
+        // Proposed: allow tcp 22 from 10.0.0.0/8 (non-negated)
+        // Existing: allow tcp 22 from ! 10.0.0.0/8 (negated)
+        // Source should NOT match because of negation
+        let p = proposed("incoming", "tcp", Some(22), Some("10.0.0.0/8"), "allow");
+        let result = check_duplicate(&p, &ruleset, 0.0);
+        assert!(result.is_some());
+        let m = result.unwrap();
+        // Source field should not match due to negation, so similarity < 1.0
+        assert!(
+            m.similarity < 1.0,
+            "negated source should reduce similarity, got {}",
+            m.similarity
+        );
+    }
+
+    // Helper for negated protocol
+    static NEGATED_PROTOCOL_IPTABLES: &str = "\
+*filter
+:INPUT ACCEPT [0:0]
+-A INPUT ! -p tcp -m tcp --dport 80 -j DROP
+COMMIT
+";
+
+    #[test]
+    fn negated_protocol_does_not_match() {
+        let ruleset = make_ruleset(NEGATED_PROTOCOL_IPTABLES);
+        // Proposed: block tcp 80 (non-negated tcp)
+        // Existing: block ! tcp 80 (negated tcp — means everything except tcp)
+        let p = proposed("incoming", "tcp", Some(80), None, "block");
+        let result = check_duplicate(&p, &ruleset, 0.0);
+        assert!(result.is_some());
+        let m = result.unwrap();
+        // Protocol field should not match because existing negates tcp
+        assert!(
+            m.similarity < 1.0,
+            "negated protocol should reduce similarity, got {}",
+            m.similarity
+        );
+    }
+
+    #[test]
+    fn different_interfaces_reduce_similarity() {
+        let ruleset = make_ruleset(SAMPLE_IPTABLES_SAVE);
+        // Existing rules have no interface specified.
+        // When proposed specifies an interface and existing doesn't → match (any).
+        // But let's test with a rule that has an interface.
+        let iface_iptables = "\
+*filter
+:INPUT ACCEPT [0:0]
+-A INPUT -i eth0 -p tcp -m tcp --dport 22 -j ACCEPT
+COMMIT
+";
+        let ruleset2 = make_ruleset(iface_iptables);
+
+        // Same interface → should match
+        let mut p = proposed("incoming", "tcp", Some(22), None, "allow");
+        p.interface_in = Some("eth0".to_string());
+        let result = check_duplicate(&p, &ruleset2, 0.0);
+        assert!(result.is_some());
+        let m = result.unwrap();
+        assert!(
+            (m.similarity - 1.0).abs() < f64::EPSILON,
+            "same interface should be exact match, got {}",
+            m.similarity
+        );
+
+        // Different interface → similarity should drop
+        let mut p2 = proposed("incoming", "tcp", Some(22), None, "allow");
+        p2.interface_in = Some("eth1".to_string());
+        let result2 = check_duplicate(&p2, &ruleset2, 0.0);
+        assert!(result2.is_some());
+        let m2 = result2.unwrap();
+        assert!(
+            m2.similarity < 1.0,
+            "different interface should reduce similarity, got {}",
+            m2.similarity
+        );
     }
 }
