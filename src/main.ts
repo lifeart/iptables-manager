@@ -6,7 +6,8 @@
  * 3. Load persisted state and hydrate store
  * 4. Initialize theme
  * 5. Hide loading screen, mount app
- * 6. Auto-reconnect to last active host
+ * 6. Wire DB sync for persistence
+ * 7. Auto-reconnect to last active host (background)
  */
 
 import { store } from './store/index';
@@ -138,7 +139,12 @@ async function autoReconnect(): Promise<void> {
   }
 }
 
+let bootstrapped = false;
+
 async function bootstrap(): Promise<void> {
+  if (bootstrapped) return;
+  bootstrapped = true;
+
   showLoadingScreen();
 
   try {
@@ -149,28 +155,41 @@ async function bootstrap(): Promise<void> {
       // IndexedDB may fail in some environments — continue without persistence
     }
 
-    // 2. Initialize theme
+    // 2. Load persisted state and hydrate store (best effort)
+    try {
+      const persisted = await loadPersistedState();
+      store.dispatch({ type: 'HYDRATE', payload: persisted });
+    } catch {
+      // Hydration may fail if DB init failed — continue with default state
+    }
+
+    // 3. Initialize theme (after hydration so persisted theme is available)
     themeManager.init(store.getState().settings.theme);
 
-    // 3. Mount app
+    // 4. Hide loading screen, mount app
     hideLoadingScreen();
     const appContainer = document.getElementById('app');
     if (appContainer) {
       mountApp(appContainer);
     }
 
-    // 4. Load demo data ONLY in browser mode (not inside Tauri)
+    // 5. Load demo data ONLY in browser mode (not inside Tauri)
     const IS_TAURI = '__TAURI_INTERNALS__' in window;
     if (!IS_TAURI) {
       loadDemoData(store);
     }
 
-    // 5. Wire dbSync to store for persistence (best effort)
+    // 6. Wire dbSync to store for persistence (best effort)
     try {
       wireDbSync();
     } catch {
       // Persistence may fail — app still works with in-memory state
     }
+
+    // 7. Auto-reconnect to last active host (fire-and-forget)
+    autoReconnect().catch((err) => {
+      console.warn('Auto-reconnect failed:', err);
+    });
   } catch (e) {
     // Bootstrap failure is shown in the UI error screen below
     hideLoadingScreen();

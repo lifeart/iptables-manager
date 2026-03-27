@@ -55,8 +55,13 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     // ─── Navigation ──────────────────────────────────────
-    case 'SET_ACTIVE_HOST':
-      return { ...state, activeHostId: action.hostId };
+    case 'SET_ACTIVE_HOST': {
+      const newState = { ...state, activeHostId: action.hostId };
+      if (action.hostId) {
+        newState.settings = { ...state.settings, lastActiveHostId: action.hostId };
+      }
+      return newState;
+    }
 
     case 'SET_ACTIVE_TAB':
       return { ...state, activeTab: action.tab };
