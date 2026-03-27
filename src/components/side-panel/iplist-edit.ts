@@ -6,6 +6,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { AppState, IpListEntry } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
+import { syncIpList, deleteIpList } from '../../ipc/bridge';
 
 export class IpListEdit extends Component {
   private ipListId: string;
@@ -84,13 +85,34 @@ export class IpListEdit extends Component {
     this.el.appendChild(this.entriesListEl);
     this.renderEntries();
 
+    // Button row
+    const btnRow = h('div', { className: 'side-panel__btn-row' });
+
     // Save button
     this.saveBtn = document.createElement('button');
     this.saveBtn.className = 'dialog-btn dialog-btn--primary';
     this.saveBtn.type = 'button';
     this.saveBtn.textContent = 'Save';
     this.listen(this.saveBtn, 'click', () => this.save());
-    this.el.appendChild(this.saveBtn);
+    btnRow.appendChild(this.saveBtn);
+
+    // Sync to Remote button
+    const syncBtn = document.createElement('button');
+    syncBtn.className = 'dialog-btn dialog-btn--secondary';
+    syncBtn.type = 'button';
+    syncBtn.textContent = 'Sync to Remote';
+    this.listen(syncBtn, 'click', () => this.syncToRemote());
+    btnRow.appendChild(syncBtn);
+
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'dialog-btn dialog-btn--secondary side-panel__btn--danger';
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Delete';
+    this.listen(deleteBtn, 'click', () => this.confirmDelete());
+    btnRow.appendChild(deleteBtn);
+
+    this.el.appendChild(btnRow);
   }
 
   private renderEntries(): void {
@@ -156,5 +178,62 @@ export class IpListEdit extends Component {
 
     // Close the panel
     this.store.dispatch({ type: 'SET_SIDE_PANEL_CONTENT', content: null });
+  }
+
+  private async syncToRemote(): Promise<void> {
+    const hostId = this.store.getState().activeHostId;
+    if (!hostId) {
+      this.showFeedback('No host selected.', true);
+      return;
+    }
+
+    try {
+      await syncIpList(hostId, this.ipListId);
+      this.showFeedback('Synced to remote successfully.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.showFeedback(`Sync failed: ${msg}`, true);
+    }
+  }
+
+  private confirmDelete(): void {
+    if (!confirm('Are you sure you want to delete this IP list? This cannot be undone.')) {
+      return;
+    }
+    this.deleteIpListAction();
+  }
+
+  private async deleteIpListAction(): Promise<void> {
+    const hostId = this.store.getState().activeHostId;
+
+    // Delete from remote if a host is connected
+    if (hostId) {
+      try {
+        await deleteIpList(hostId, this.ipListId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.showFeedback(`Remote delete failed: ${msg}`, true);
+        return;
+      }
+    }
+
+    // Remove from local state
+    this.store.dispatch({ type: 'REMOVE_IP_LIST', ipListId: this.ipListId });
+
+    // Close the editor panel
+    this.store.dispatch({ type: 'SET_SIDE_PANEL_CONTENT', content: null });
+  }
+
+  private showFeedback(message: string, isError = false): void {
+    // Remove any existing feedback
+    const existing = this.el.querySelector('.side-panel__feedback');
+    if (existing) existing.remove();
+
+    const feedback = h('div', {
+      className: `side-panel__feedback${isError ? ' side-panel__feedback--error' : ''}`,
+    }, message);
+    this.el.appendChild(feedback);
+
+    setTimeout(() => feedback.remove(), 4000);
   }
 }

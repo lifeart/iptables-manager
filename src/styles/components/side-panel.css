@@ -589,3 +589,29 @@
     background: var(--color-surface);
   }
 }
+
+/* ─── IP List Edit Buttons ───────────────────────────────────── */
+
+.side-panel__btn--danger {
+  color: var(--color-block, #FF3B30);
+  border-color: var(--color-block, #FF3B30);
+}
+
+.side-panel__btn--danger:hover {
+  background: var(--color-block, #FF3B30);
+  color: #fff;
+}
+
+.side-panel__feedback {
+  margin-top: var(--space-compact, 8px);
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  border-radius: var(--radius-default, 8px);
+  font-size: var(--font-size-rule-protocol, 12px);
+  background: var(--color-allow-bg, rgba(52, 199, 89, 0.12));
+  color: var(--color-allow, #34C759);
+}
+
+.side-panel__feedback--error {
+  background: var(--color-block-bg, rgba(255, 59, 48, 0.12));
+  color: var(--color-block, #FF3B30);
+}
