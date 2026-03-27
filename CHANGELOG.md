@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.1] - 2026-03-27
+
+### Fixed
+- Conflict detection now accounts for negated addresses/protocols (prevents false negatives)
+- Conflict detection now checks interface fields (prevents false positives on different interfaces)
+- Duplicate detection handles protocol as number (e.g., 6 → tcp)
+- Duplicate detection respects negation flags on addresses and protocols
+- Duplicate detection compares interface fields (8-field comparison, up from 6)
+- Credential store frontend schema matches Rust `Credential` enum (discriminated union)
+- `cred_delete` is now idempotent (ignores not-found errors)
+- Safety timer revert failure distinguished from success in error messages
+- Force-apply warns instead of auto-reverting on timer scheduling failure
+- `at` job cancellation verified via `atq` after `atrm`
+
 ## [0.3.0] - 2026-03-27
 
 ### Added
