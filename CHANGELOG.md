@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0] - 2026-03-27
+
+### Fixed
+- Safety timer now fully wired end-to-end (was previously UI-only countdown with no server-side rollback)
+- `rules_apply` creates HMAC-signed backup of current rules before applying changes
+- `rules_confirm` cancels scheduled revert job and cleans up backup files (was a no-op stub)
+- Frontend calls `set_safety_timer` IPC to schedule actual remote revert via at/systemd-run/nohup
+- Revert button cancels scheduled job before reverting rules
+
+### Changed
+- `SafetyTimerState` now includes `mechanism` field for proper job cancellation
+- `confirmChanges` IPC accepts optional `jobId` and `mechanism` parameters
+- `filter_tr_chains` made public for reuse across modules
+
 ## [0.1.0] - 2026-03-26
 
 ### Added
