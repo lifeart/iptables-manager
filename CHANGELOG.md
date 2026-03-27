@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.1] - 2026-03-27
+
+### Fixed
+- TraceResult/TestPacket: serde camelCase, optional defaults, field names aligned with frontend
+- SnapshotMeta: serde camelCase, replaced remote_path_v4 with ruleCount
+- HitCounter: added ruleId + timestamp fields, serde camelCase
+- Fail2banBan: restructured to per-IP entries with bannedAt/expiresAt timestamps
+- ConntrackEntry: new struct for individual conntrack connections
+- ConntrackUsage: serde camelCase
+- activity_fetch_conntrack_table now returns ConntrackEntry[] (was ConntrackUsage)
+
+### Added
+- 20 serialization contract integration tests covering all IPC structs
+  (prevents future FE/BE mismatches from going undetected)
+
 ## [0.5.0] - 2026-03-27
 
 ### Added
