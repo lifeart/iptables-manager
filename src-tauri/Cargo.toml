@@ -1,6 +1,6 @@
 [package]
 name = "traffic-rules"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "Desktop iptables manager built with Tauri"
 

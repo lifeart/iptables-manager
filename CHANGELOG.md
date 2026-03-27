@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0] - 2026-03-27
+
+### Added
+- Duplicate detection warning when adding rules (blocks at 80%+ similarity, warns at 50-80%)
+- Automatic conflict detection after rules load with collapsible warning banner
+- "Explain this rule" disclosure panel in rule detail with lazy loading and caching
+- Credential lifecycle: store to OS keychain on connect, delete on host removal
+- IP list editor: "Sync to Remote" and "Delete" buttons with feedback toasts
+
+### Fixed
+- RuleConflict serialization aligned with frontend (ruleIdA/ruleIdB, type, description)
+- ConflictType enum serialized as lowercase to match frontend expectations
+- Removed unused BUILTIN_CHAINS constant (zero Rust warnings)
+
 ## [0.4.0] - 2026-03-27
 
 ### Added
