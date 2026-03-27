@@ -89,7 +89,11 @@ pub struct ApplyLockGuard {
 // ---------------------------------------------------------------------------
 
 struct ManagedSession {
+    /// Retained for diagnostics and future reconnection logic.
+    #[allow(dead_code)]
     host_id: String,
+    /// Retained for future reconnection logic.
+    #[allow(dead_code)]
     config: ConnectionConfig,
     executor: Box<dyn CommandExecutor>,
     concurrency: Arc<Semaphore>,

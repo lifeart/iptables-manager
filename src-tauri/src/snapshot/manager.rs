@@ -264,9 +264,6 @@ pub fn filter_tr_chains(input: &str) -> String {
     let mut table_header = String::new();
     let mut table_lines: Vec<String> = Vec::new();
 
-    /// Built-in chains whose jump-to-TR rules should be preserved.
-    const BUILTIN_CHAINS: &[&str] = &["INPUT", "OUTPUT", "FORWARD"];
-
     /// Flush accumulated table content into the output buffer.
     fn flush_table(
         out: &mut String,

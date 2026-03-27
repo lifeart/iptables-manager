@@ -41,17 +41,23 @@ pub struct EffectiveRule {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ConflictType {
     Shadow,
+    #[serde(rename = "redundant")]
     Redundancy,
+    #[serde(rename = "contradiction")]
     Overlap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuleConflict {
+    #[serde(rename = "type")]
     pub conflict_type: ConflictType,
-    pub rule_ids: Vec<String>,
-    pub explanation: String,
+    pub rule_id_a: String,
+    pub rule_id_b: String,
+    pub description: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -472,8 +478,9 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
                 if is_subset(b, a) || is_subset(a, b) {
                     conflicts.push(RuleConflict {
                         conflict_type: ConflictType::Redundancy,
-                        rule_ids: vec![a.id.clone(), b.id.clone()],
-                        explanation: format!(
+                        rule_id_a: a.id.clone(),
+                        rule_id_b: b.id.clone(),
+                        description: format!(
                             "Rules '{}' (pos {}) and '{}' (pos {}) have the same action and overlapping criteria; one is redundant",
                             a.id, a.position, b.id, b.position
                         ),
@@ -487,8 +494,9 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
             if is_subset(b, a) && a.position < b.position {
                 conflicts.push(RuleConflict {
                     conflict_type: ConflictType::Shadow,
-                    rule_ids: vec![a.id.clone(), b.id.clone()],
-                    explanation: format!(
+                    rule_id_a: a.id.clone(),
+                    rule_id_b: b.id.clone(),
+                    description: format!(
                         "Rule '{}' (pos {}) shadows rule '{}' (pos {}): all traffic matching '{}' already matches '{}'",
                         a.id, a.position, b.id, b.position, b.id, a.id
                     ),
@@ -500,8 +508,9 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
             if criteria_overlap(a, b) && !same_criteria(a, b) {
                 conflicts.push(RuleConflict {
                     conflict_type: ConflictType::Overlap,
-                    rule_ids: vec![a.id.clone(), b.id.clone()],
-                    explanation: format!(
+                    rule_id_a: a.id.clone(),
+                    rule_id_b: b.id.clone(),
+                    description: format!(
                         "Rules '{}' (pos {}) and '{}' (pos {}) have partially overlapping criteria but different actions ({:?} vs {:?})",
                         a.id, a.position, b.id, b.position, a.action, b.action
                     ),
@@ -580,7 +589,8 @@ mod tests {
         let conflicts = detect_conflicts(&rules);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
-        assert_eq!(conflicts[0].rule_ids, vec!["A", "B"]);
+        assert_eq!(conflicts[0].rule_id_a, "A");
+        assert_eq!(conflicts[0].rule_id_b, "B");
     }
 
     #[test]
