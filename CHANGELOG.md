@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.0] - 2026-03-27
+
+### Added
+- **Dry-run preview**: Preview exact iptables commands before applying
+- **Bulk apply to host groups**: Canary, rolling, and parallel strategies with per-host progress
+- **Drift detection**: Periodic polling detects rules changed outside the tool, amber warning banner
+- **Audit log**: Persistent change history (IndexedDB, 500-entry cap) in Activity view
+- **Cross-host rule comparison**: Side-by-side diff between any two connected hosts
+- **Import existing rules**: One-click import of non-TR iptables rules as managed baseline
+- **Port saturation warning**: Alert when conntrack usage exceeds 80%
+- **SSH rate limiting**: 10 commands/second per host prevents overwhelming remote servers
+- **Advanced search filters**: Filter rules by protocol, port number, source/destination address
+- 8 new serialization contract tests (27 total), 1 rate limiter unit test (357 total)
+
+### Fixed
+- Parallel group-apply task failures now correctly report the failing host ID
+- Import rules failure now shows error to user instead of silent swallow
+
 ## [0.5.1] - 2026-03-27
 
 ### Fixed
