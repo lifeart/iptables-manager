@@ -199,6 +199,7 @@ export interface SafetyTimerState {
   hostId: string;
   expiresAt: number;
   remoteJobId: string;
+  mechanism: string;
   startedAt: number;
 }
 

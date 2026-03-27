@@ -181,14 +181,25 @@ export class SafetyBanner extends Component {
 
   private async confirmChanges(hostId: string): Promise<void> {
     try {
+      const timer = this.currentTimers.get(hostId);
       const { confirmChanges: confirmIpc } = await import('../../ipc/bridge');
-      await confirmIpc(hostId);
+      await confirmIpc(hostId, timer?.remoteJobId, timer?.mechanism);
     } catch {
       // Confirm failure is non-critical
     }
   }
 
   private async revertChanges(hostId: string): Promise<void> {
+    const timer = this.currentTimers.get(hostId);
+    try {
+      // Cancel the scheduled safety revert job first
+      if (timer?.remoteJobId) {
+        const { clearSafetyTimer } = await import('../../ipc/bridge');
+        await clearSafetyTimer(hostId, timer.remoteJobId, timer.mechanism);
+      }
+    } catch {
+      // Cancel failure is non-critical
+    }
     try {
       const { revertChanges: revertIpc } = await import('../../ipc/bridge');
       await revertIpc(hostId);

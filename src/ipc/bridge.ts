@@ -198,6 +198,10 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return undefined as T;
     case 'rules:confirm':
       return undefined as T;
+    case 'safety:set-timer':
+      return { jobId: 'mock-job-1', mechanism: 'At' } as T;
+    case 'safety:clear-timer':
+      return undefined as T;
     case 'rules:trace':
       return { matched: false, chain: [], verdict: 'DROP', explanation: 'No matching rule (mock)' } as T;
     case 'rules:explain':
@@ -271,6 +275,8 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'activity:fetch-bans': 'activity_fetch_bans',
   'activity:fetch-hit-counters': 'activity_fetch_hit_counters',
   'activity:fetch-conntrack': 'activity_fetch_conntrack',
+  'safety:set-timer': 'set_safety_timer',
+  'safety:clear-timer': 'clear_safety_timer',
 };
 
 function mapCommandName(cmd: string): string {
@@ -354,8 +360,19 @@ export const applyChanges = (hostId: string, changes: StagedChange[]) =>
 export const revertChanges = (hostId: string) =>
   ipcCall<void>('rules:revert', { hostId });
 
-export const confirmChanges = (hostId: string) =>
-  ipcCall<void>('rules:confirm', { hostId });
+export interface SafetyTimerResult {
+  jobId: string;
+  mechanism: string;
+}
+
+export const setSafetyTimer = (hostId: string, timeoutSecs: number) =>
+  ipcCall<SafetyTimerResult>('safety:set-timer', { hostId, timeoutSecs });
+
+export const clearSafetyTimer = (hostId: string, jobId: string, mechanism?: string) =>
+  ipcCall<void>('safety:clear-timer', { hostId, jobId, mechanism: mechanism ?? null });
+
+export const confirmChanges = (hostId: string, jobId?: string, mechanism?: string) =>
+  ipcCall<void>('rules:confirm', { hostId, jobId: jobId ?? null, mechanism: mechanism ?? null });
 
 export const tracePacket = (hostId: string, packet: TestPacket) =>
   ipcCall<TraceResult>('rules:trace', { hostId, packet });

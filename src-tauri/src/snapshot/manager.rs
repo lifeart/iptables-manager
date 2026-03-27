@@ -257,7 +257,7 @@ pub async fn list_remote_snapshots(
 /// Preserves the table structure (*table / COMMIT) but only includes
 /// `:TR-*` chain declarations, `-A TR-*` rules, and rules in built-in
 /// chains (INPUT/OUTPUT/FORWARD) that jump to a TR- chain.
-fn filter_tr_chains(input: &str) -> String {
+pub fn filter_tr_chains(input: &str) -> String {
     let mut out = String::new();
     let mut in_table = false;
     let mut has_tr_content = false;

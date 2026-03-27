@@ -322,6 +322,11 @@ pub async fn fetch_rules(
 }
 
 /// Apply rule changes via iptables-restore.
+///
+/// Before applying, saves a backup of the current rules to
+/// `/var/lib/traffic-rules/backup.v4` (and `.v6`), computes an HMAC
+/// of the backup, and writes it alongside as `.hmac`. This ensures
+/// the safety-timer revert script can verify backup integrity.
 #[tauri::command]
 pub async fn rules_apply(
     host_id: String,
@@ -330,7 +335,15 @@ pub async fn rules_apply(
 ) -> Result<ApplyResult, IpcError> {
     let _lock = pool.acquire_apply_lock(&host_id).await;
 
-    // Write the changes via iptables-restore --noflush
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    // ── Step 1: Save backup of current rules ────────────────────
+    create_pre_apply_backup(&proxy, &host_id).await?;
+
+    // ── Step 2: Apply the new rules ─────────────────────────────
     let restore_cmd = build_command(
         "sudo",
         &["iptables-restore", "-w", "5", "--noflush", "--counters"],
@@ -358,6 +371,82 @@ pub async fn rules_apply(
     })
 }
 
+/// Create a backup of the current iptables rules before applying changes.
+///
+/// Saves filtered rules to `/var/lib/traffic-rules/backup.v4` (and `.v6`),
+/// then computes HMAC and writes it to `.hmac` files.
+async fn create_pre_apply_backup(
+    executor: &dyn CommandExecutor,
+    host_id: &str,
+) -> Result<(), IpcError> {
+    // Fetch current IPv4 rules
+    let save_cmd = build_command("sudo", &["iptables-save", "-w", "5"]);
+    let save_output = executor.exec(&save_cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.to_string(),
+            reason: format!("failed to run iptables-save for backup: {}", e),
+        }
+    })?;
+    if save_output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: format!("iptables-save for backup failed: {}", save_output.stderr),
+            exit_code: save_output.exit_code,
+        });
+    }
+
+    let filtered_v4 = crate::snapshot::manager::filter_tr_chains(&save_output.stdout);
+
+    // Write backup v4
+    let write_cmd = build_command("sudo", &["tee", "/var/lib/traffic-rules/backup.v4"]);
+    let write_output = executor
+        .exec_with_stdin(&write_cmd, filtered_v4.as_bytes())
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: format!("failed to write backup.v4: {}", e),
+            exit_code: 1,
+        })?;
+    if write_output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: format!("failed to write backup.v4: {}", write_output.stderr),
+            exit_code: write_output.exit_code,
+        });
+    }
+
+    // Fetch current IPv6 rules (optional — may not be available)
+    let save_v6_cmd = build_command("sudo", &["ip6tables-save", "-w", "5"]);
+    if let Ok(v6_output) = executor.exec(&save_v6_cmd).await {
+        if v6_output.exit_code == 0 {
+            let filtered_v6 = crate::snapshot::manager::filter_tr_chains(&v6_output.stdout);
+            if !filtered_v6.is_empty() {
+                let write_v6_cmd =
+                    build_command("sudo", &["tee", "/var/lib/traffic-rules/backup.v6"]);
+                let _ = executor
+                    .exec_with_stdin(&write_v6_cmd, filtered_v6.as_bytes())
+                    .await;
+            }
+        }
+    }
+
+    // Compute and write HMAC for the v4 backup
+    let cred_store = crate::ssh::credential::CredentialStore::new().map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("credential store error: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    if let Ok(secret) = cred_store.retrieve_hmac_secret(host_id) {
+        let hmac_hex = crate::safety::hmac::compute_hmac(&secret, filtered_v4.as_bytes());
+        let hmac_cmd =
+            build_command("sudo", &["tee", "/var/lib/traffic-rules/backup.v4.hmac"]);
+        let _ = executor
+            .exec_with_stdin(&hmac_cmd, hmac_hex.as_bytes())
+            .await;
+    }
+
+    Ok(())
+}
+
 /// Revert rule changes on a host.
 #[tauri::command]
 pub async fn rules_revert(
@@ -380,12 +469,57 @@ pub async fn rules_revert(
     Ok(())
 }
 
-/// Confirm applied changes (cancel safety timer).
+/// Confirm applied changes (cancel safety timer and clean up backup files).
 #[tauri::command]
 pub async fn rules_confirm(
     host_id: String,
+    job_id: Option<String>,
+    mechanism: Option<String>,
+    pool: State<'_, PoolState>,
 ) -> Result<(), IpcError> {
-    let _ = host_id;
+    let proxy = PoolProxyExecutor {
+        pool: pool.inner().clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Cancel the scheduled revert job if we have job info
+    if let Some(ref jid) = job_id {
+        if !jid.is_empty() {
+            let mech = match mechanism.as_deref() {
+                Some("At") => crate::safety::timer::SafetyMechanism::At,
+                Some("SystemdRun") => crate::safety::timer::SafetyMechanism::SystemdRun,
+                Some("Nohup") => crate::safety::timer::SafetyMechanism::Nohup,
+                Some("IptablesApply") => crate::safety::timer::SafetyMechanism::IptablesApply,
+                _ => crate::safety::timer::SafetyMechanism::At,
+            };
+
+            let revert_job = crate::safety::timer::RevertJobId {
+                mechanism: mech,
+                id: jid.clone(),
+            };
+
+            crate::safety::timer::cancel_revert(&proxy, &revert_job)
+                .await
+                .map_err(|e| IpcError::CommandFailed {
+                    stderr: format!("cancel safety timer: {}", e),
+                    exit_code: 1,
+                })?;
+        }
+    }
+
+    // Clean up backup files on the remote host
+    let cleanup_cmd = build_command(
+        "sudo",
+        &[
+            "rm", "-f",
+            "/var/lib/traffic-rules/backup.v4",
+            "/var/lib/traffic-rules/backup.v4.hmac",
+            "/var/lib/traffic-rules/backup.v6",
+        ],
+    );
+    // Best-effort cleanup — don't fail if files don't exist
+    let _ = proxy.exec(&cleanup_cmd).await;
+
     Ok(())
 }
 
@@ -974,4 +1108,243 @@ fn uuid_v4() -> String {
         (u16::from_be_bytes([bytes[8], bytes[9]]) & 0x3FFF) | 0x8000,
         u64::from_be_bytes([0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]])
     )
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ssh::executor::{CommandOutput, ExecError};
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    /// Mock executor that records commands and returns configurable responses.
+    struct MockExecutor {
+        responses: Vec<(String, CommandOutput)>,
+        calls: Arc<Mutex<Vec<String>>>,
+        stdin_calls: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
+    }
+
+    impl MockExecutor {
+        fn new(responses: Vec<(&str, i32, &str, &str)>) -> Self {
+            Self {
+                responses: responses
+                    .into_iter()
+                    .map(|(pattern, exit_code, stdout, stderr)| {
+                        (
+                            pattern.to_string(),
+                            CommandOutput {
+                                stdout: stdout.to_string(),
+                                stderr: stderr.to_string(),
+                                exit_code,
+                            },
+                        )
+                    })
+                    .collect(),
+                calls: Arc::new(Mutex::new(Vec::new())),
+                stdin_calls: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn find_response(&self, command: &str) -> CommandOutput {
+            for (pattern, output) in &self.responses {
+                if command.contains(pattern) {
+                    return output.clone();
+                }
+            }
+            CommandOutput {
+                stdout: String::new(),
+                stderr: format!("{}: not found", command),
+                exit_code: 1,
+            }
+        }
+
+        fn get_calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+
+        fn get_stdin_calls(&self) -> Vec<(String, Vec<u8>)> {
+            self.stdin_calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl CommandExecutor for MockExecutor {
+        async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
+            self.calls.lock().unwrap().push(command.to_string());
+            Ok(self.find_response(command))
+        }
+
+        async fn exec_with_stdin(
+            &self,
+            command: &str,
+            stdin: &[u8],
+        ) -> Result<CommandOutput, ExecError> {
+            self.calls.lock().unwrap().push(command.to_string());
+            self.stdin_calls
+                .lock()
+                .unwrap()
+                .push((command.to_string(), stdin.to_vec()));
+            Ok(self.find_response(command))
+        }
+    }
+
+    // ── Test: create_pre_apply_backup creates backup before apply ──
+
+    #[tokio::test]
+    async fn test_create_pre_apply_backup_saves_v4_rules() {
+        let iptables_output = r#"*filter
+:INPUT ACCEPT [0:0]
+:TR-INPUT - [0:0]
+-A TR-INPUT -p tcp --dport 22 -j ACCEPT
+COMMIT
+"#;
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+            ("tee /var/lib/traffic-rules/backup.v4", 0, "", ""),
+            ("ip6tables-save", 1, "", "not found"),
+        ]);
+
+        let result = create_pre_apply_backup(&executor, "test-host").await;
+        assert!(result.is_ok(), "backup should succeed");
+
+        let calls = executor.get_calls();
+        // Should call iptables-save first
+        assert!(
+            calls.iter().any(|c| c.contains("iptables-save")),
+            "should call iptables-save"
+        );
+        // Should write backup.v4
+        assert!(
+            calls.iter().any(|c| c.contains("backup.v4")),
+            "should write backup.v4"
+        );
+
+        // Verify the written content is filtered (only TR- chains)
+        let stdin_calls = executor.get_stdin_calls();
+        let backup_write = stdin_calls
+            .iter()
+            .find(|(cmd, _)| cmd.contains("backup.v4") && !cmd.contains("hmac"));
+        assert!(backup_write.is_some(), "should write backup data via stdin");
+        let backup_content = String::from_utf8_lossy(&backup_write.unwrap().1);
+        assert!(
+            backup_content.contains("TR-INPUT"),
+            "backup should contain TR- chains"
+        );
+        assert!(
+            !backup_content.contains(":INPUT ACCEPT"),
+            "backup should not contain built-in chain declarations"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_pre_apply_backup_command_order() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+            ("tee", 0, "", ""),
+            ("ip6tables-save", 1, "", ""),
+        ]);
+
+        let _ = create_pre_apply_backup(&executor, "host1").await;
+
+        let calls = executor.get_calls();
+        // iptables-save must come before tee (backup write)
+        let save_idx = calls.iter().position(|c| c.contains("iptables-save")).unwrap();
+        let tee_idx = calls.iter().position(|c| c.contains("tee")).unwrap();
+        assert!(
+            save_idx < tee_idx,
+            "iptables-save (idx {}) must come before tee write (idx {})",
+            save_idx,
+            tee_idx
+        );
+    }
+
+    // ── Test: schedule_revert + cancel_revert roundtrip ──
+
+    #[tokio::test]
+    async fn test_schedule_and_cancel_at_roundtrip() {
+        let executor = MockExecutor::new(vec![
+            ("at", 0, "", "job 42 at Thu Mar 22 10:00:00 2026\n"),
+            ("atrm", 0, "", ""),
+        ]);
+
+        let job = crate::safety::timer::schedule_revert(
+            &executor,
+            crate::safety::timer::SafetyMechanism::At,
+            "/var/lib/traffic-rules/backup.v4",
+            60,
+        )
+        .await
+        .expect("schedule should succeed");
+
+        assert_eq!(job.id, "42");
+        assert_eq!(job.mechanism, crate::safety::timer::SafetyMechanism::At);
+
+        let cancel_result = crate::safety::timer::cancel_revert(&executor, &job).await;
+        assert!(cancel_result.is_ok(), "cancel should succeed");
+
+        let calls = executor.get_calls();
+        assert!(
+            calls.iter().any(|c| c.contains("atrm")),
+            "should call atrm to cancel"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_schedule_and_cancel_systemd_run_roundtrip() {
+        let executor = MockExecutor::new(vec![
+            ("systemd-run", 0, "", ""),
+            ("systemctl", 0, "", ""),
+        ]);
+
+        let job = crate::safety::timer::schedule_revert(
+            &executor,
+            crate::safety::timer::SafetyMechanism::SystemdRun,
+            "/var/lib/traffic-rules/backup.v4",
+            120,
+        )
+        .await
+        .expect("schedule should succeed");
+
+        assert_eq!(
+            job.mechanism,
+            crate::safety::timer::SafetyMechanism::SystemdRun
+        );
+        assert!(
+            job.id.starts_with("traffic-rules-revert-"),
+            "systemd unit name should have expected prefix"
+        );
+
+        let cancel_result = crate::safety::timer::cancel_revert(&executor, &job).await;
+        assert!(cancel_result.is_ok(), "cancel should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_schedule_and_cancel_nohup_roundtrip() {
+        let executor = MockExecutor::new(vec![
+            ("tee", 0, "", ""),
+            ("chmod", 0, "", ""),
+            ("nohup", 0, "12345\n", ""),
+            ("kill", 0, "", ""),
+        ]);
+
+        let job = crate::safety::timer::schedule_revert(
+            &executor,
+            crate::safety::timer::SafetyMechanism::Nohup,
+            "/var/lib/traffic-rules/backup.v4",
+            30,
+        )
+        .await
+        .expect("schedule should succeed");
+
+        assert_eq!(job.mechanism, crate::safety::timer::SafetyMechanism::Nohup);
+        assert_eq!(job.id, "12345");
+
+        let cancel_result = crate::safety::timer::cancel_revert(&executor, &job).await;
+        assert!(cancel_result.is_ok(), "cancel should succeed");
+    }
 }

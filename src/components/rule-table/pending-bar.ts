@@ -235,12 +235,25 @@ export class PendingBar extends Component {
       if (isRealHost) {
         const timeoutSec = state.settings.defaultSafetyTimeout || 60;
         const now = Date.now();
+
+        // Schedule the safety revert on the remote host
+        let remoteJobId = result.remoteJobId ?? '';
+        let mechanism = '';
+        try {
+          const timerResult = await ipc.setSafetyTimer(hostId, timeoutSec);
+          remoteJobId = timerResult.jobId;
+          mechanism = timerResult.mechanism;
+        } catch {
+          // Safety timer scheduling failure is non-fatal — the apply succeeded
+        }
+
         this.store.dispatch({
           type: 'SET_SAFETY_TIMER',
           timer: {
             hostId,
             expiresAt: now + timeoutSec * 1000,
-            remoteJobId: result.remoteJobId ?? '',
+            remoteJobId,
+            mechanism,
             startedAt: now,
           },
         });
