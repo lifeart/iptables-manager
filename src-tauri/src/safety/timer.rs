@@ -163,18 +163,30 @@ pub async fn cancel_revert(
         }
         SafetyMechanism::SystemdRun => {
             let cmd = build_command("sudo", &["systemctl", "stop", &job_id.id]);
-            executor
+            let output = executor
                 .exec(&cmd)
                 .await
                 .map_err(|e| SafetyError::CancelFailed(e.to_string()))?;
+            if output.exit_code != 0 {
+                return Err(SafetyError::CancelFailed(format!(
+                    "systemctl stop failed (exit {}): {}",
+                    output.exit_code, output.stderr
+                )));
+            }
             Ok(())
         }
         SafetyMechanism::Nohup => {
             let cmd = build_command("kill", &[&job_id.id]);
-            executor
+            let output = executor
                 .exec(&cmd)
                 .await
                 .map_err(|e| SafetyError::CancelFailed(e.to_string()))?;
+            if output.exit_code != 0 {
+                return Err(SafetyError::CancelFailed(format!(
+                    "kill failed (exit {}): {}",
+                    output.exit_code, output.stderr
+                )));
+            }
             Ok(())
         }
     }
@@ -216,7 +228,10 @@ async fn schedule_at(
     let revert_cmd = format!(
         "/var/lib/traffic-rules/revert.sh < /dev/null",
     );
-    let at_time = format!("now + {} seconds", timeout_secs);
+    // Use minutes (rounded up) instead of seconds for POSIX portability.
+    // "seconds" is a GNU extension that fails silently on non-GNU `at`.
+    let minutes = (timeout_secs + 59) / 60;
+    let at_time = format!("now + {} minutes", minutes);
     let at_cmd = build_command("at", &[&at_time]);
 
     let output = executor
@@ -225,7 +240,9 @@ async fn schedule_at(
         .map_err(|e| SafetyError::ScheduleFailed(e.to_string()))?;
 
     // `at` prints the job number on stderr like "job 42 at ..."
-    let job_id = parse_at_job_id(&output.stderr).unwrap_or_else(|| "unknown".to_string());
+    let job_id = parse_at_job_id(&output.stderr).ok_or_else(|| {
+        SafetyError::ScheduleFailed("could not parse at job ID from stderr".to_string())
+    })?;
 
     let _ = backup_path; // backup_path is used by revert.sh internally
 

@@ -213,6 +213,45 @@ export class PendingBar extends Component {
     }
   }
 
+  /**
+   * Schedule a safety timer after a successful apply.
+   * If the timer fails, revert the just-applied changes and show an error.
+   */
+  private async scheduleSafetyTimer(hostId: string, timeoutSec: number): Promise<void> {
+    const now = Date.now();
+    try {
+      const timerResult = await ipc.setSafetyTimer(hostId, timeoutSec);
+      this.store.dispatch({
+        type: 'SET_SAFETY_TIMER',
+        timer: {
+          hostId,
+          expiresAt: now + timeoutSec * 1000,
+          remoteJobId: timerResult.jobId,
+          mechanism: timerResult.mechanism,
+          startedAt: now,
+        },
+      });
+    } catch {
+      // Safety timer failed — revert the just-applied rules so the server
+      // is not left in a state with no automatic rollback protection.
+      try {
+        await ipc.revertChanges(hostId);
+      } catch {
+        // Revert also failed — show both issues
+      }
+      this.showError('Safety timer failed \u2014 changes reverted for your protection.');
+      throw new Error('Safety timer scheduling failed');
+    }
+  }
+
+  private showError(message: string): void {
+    const errorEl = document.createElement('span');
+    errorEl.className = 'rule-table__pending-bar-error';
+    errorEl.textContent = message;
+    this.el.appendChild(errorEl);
+    setTimeout(() => errorEl.remove(), 5000);
+  }
+
   private async applyChanges(): Promise<void> {
     const state = this.store.getState();
     const hostId = state.activeHostId;
@@ -228,35 +267,13 @@ export class PendingBar extends Component {
       this.applyBtn.disabled = true;
       this.applyBtn.textContent = 'Applying...';
 
-      const result = await ipc.applyChanges(hostId, changeset.changes);
+      await ipc.applyChanges(hostId, changeset.changes);
       this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
 
       // Set safety timer for real connected hosts
       if (isRealHost) {
         const timeoutSec = state.settings.defaultSafetyTimeout || 60;
-        const now = Date.now();
-
-        // Schedule the safety revert on the remote host
-        let remoteJobId = result.remoteJobId ?? '';
-        let mechanism = '';
-        try {
-          const timerResult = await ipc.setSafetyTimer(hostId, timeoutSec);
-          remoteJobId = timerResult.jobId;
-          mechanism = timerResult.mechanism;
-        } catch {
-          // Safety timer scheduling failure is non-fatal — the apply succeeded
-        }
-
-        this.store.dispatch({
-          type: 'SET_SAFETY_TIMER',
-          timer: {
-            hostId,
-            expiresAt: now + timeoutSec * 1000,
-            remoteJobId,
-            mechanism,
-            startedAt: now,
-          },
-        });
+        await this.scheduleSafetyTimer(hostId, timeoutSec);
       }
     } catch (err) {
       if (err instanceof IpcError && err.kind === 'LockoutDetected') {
@@ -270,23 +287,22 @@ export class PendingBar extends Component {
           try {
             await ipc.applyChanges(hostId, changeset.changes);
             this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
+
+            // Schedule safety timer for force-applied changes too
+            if (isRealHost) {
+              const timeoutSec = state.settings.defaultSafetyTimeout || 60;
+              await this.scheduleSafetyTimer(hostId, timeoutSec);
+            }
           } catch (forceErr) {
             const forceMsg = forceErr instanceof Error ? forceErr.message : 'Apply failed';
-            const forceEl = document.createElement('span');
-            forceEl.className = 'rule-table__pending-bar-error';
-            forceEl.textContent = forceMsg;
-            this.el.appendChild(forceEl);
-            setTimeout(() => forceEl.remove(), 5000);
+            this.showError(forceMsg);
           }
         }
-      } else {
-        // Show error feedback inline
+      } else if (!(err instanceof Error && err.message === 'Safety timer scheduling failed')) {
+        // Show error feedback inline (but not for safety timer failures,
+        // which are already reported by scheduleSafetyTimer)
         const errorMsg = err instanceof Error ? err.message : 'Apply failed';
-        const errorEl = document.createElement('span');
-        errorEl.className = 'rule-table__pending-bar-error';
-        errorEl.textContent = errorMsg;
-        this.el.appendChild(errorEl);
-        setTimeout(() => errorEl.remove(), 5000);
+        this.showError(errorMsg);
       }
     } finally {
       this.applyBtn.disabled = false;
