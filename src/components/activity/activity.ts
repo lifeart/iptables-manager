@@ -7,7 +7,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { AppState } from '../../store/types';
 import { selectActiveHost } from '../../store/selectors';
-import { onHitCounters, onBlockedEntry, onConntrack, subscribeActivity, unsubscribeActivity, fetchBans, fetchHitCounters, fetchConntrack } from '../../ipc/bridge';
+import { onHitCounters, onBlockedEntry, onConntrack, subscribeActivity, unsubscribeActivity, fetchBans, fetchActivity } from '../../ipc/bridge';
 import type { Fail2banBan } from '../../ipc/bridge';
 import { h } from '../../utils/dom';
 import { formatTimeAgo } from '../../utils/format';
@@ -187,20 +187,17 @@ export class Activity extends Component {
 
   private async fetchActivityData(hostId: string): Promise<void> {
     try {
-      const [counters, conntrack] = await Promise.all([
-        fetchHitCounters(hostId),
-        fetchConntrack(hostId),
-      ]);
+      const data = await fetchActivity(hostId);
       this.store.dispatch({
         type: 'UPDATE_HIT_COUNTERS',
         hostId,
-        counters,
+        counters: data.hitCounters,
       });
       this.store.dispatch({
         type: 'SET_CONNTRACK_USAGE',
         hostId,
-        current: conntrack.current,
-        max: conntrack.max,
+        current: data.conntrackCurrent,
+        max: data.conntrackMax,
       });
     } catch {
       // Polling failure is non-critical — next poll will retry

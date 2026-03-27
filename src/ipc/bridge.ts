@@ -132,6 +132,12 @@ export interface Fail2banBan {
   expiresAt: number | null;
 }
 
+export interface ActivityData {
+  hitCounters: HitCounter[];
+  conntrackCurrent: number;
+  conntrackMax: number;
+}
+
 export interface ConnectionStatusEvent {
   hostId: string;
   status: HostStatus;
@@ -238,6 +244,8 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return [] as T;
     case 'activity:fetch-conntrack':
       return { current: 0, max: 0 } as T;
+    case 'activity:fetch':
+      return { hitCounters: [], conntrackCurrent: 0, conntrackMax: 0 } as T;
     default:
       return undefined as T;
   }
@@ -275,6 +283,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'activity:fetch-bans': 'activity_fetch_bans',
   'activity:fetch-hit-counters': 'activity_fetch_hit_counters',
   'activity:fetch-conntrack': 'activity_fetch_conntrack',
+  'activity:fetch': 'fetch_activity',
   'safety:set-timer': 'set_safety_timer',
   'safety:clear-timer': 'clear_safety_timer',
 };
@@ -437,6 +446,9 @@ export const fetchHitCounters = (hostId: string) =>
 export const fetchConntrack = (hostId: string) =>
   ipcCall<{ current: number; max: number }>('activity:fetch-conntrack', { hostId });
 
+export const fetchActivity = (hostId: string) =>
+  ipcCall<ActivityData>('activity:fetch', { hostId });
+
 // ─── Event Listeners ─────────────────────────────────────────
 
 type UnlistenFn = () => void;
@@ -469,9 +481,6 @@ async function listenEvent<T>(
   return unlisten;
 }
 
-export const onConnectionStatus = (handler: (payload: ConnectionStatusEvent) => void, signal?: AbortSignal) =>
-  listenEvent<ConnectionStatusEvent>('connection:status', handler, signal);
-
 export const onHitCounters = (handler: (payload: { hostId: string; counters: HitCounter[] }) => void, signal?: AbortSignal) =>
   listenEvent<{ hostId: string; counters: HitCounter[] }>('activity:hit-counters', handler, signal);
 
@@ -481,11 +490,3 @@ export const onBlockedEntry = (handler: (payload: { hostId: string; entry: Block
 export const onConntrack = (handler: (payload: ConntrackEvent) => void, signal?: AbortSignal) =>
   listenEvent<ConntrackEvent>('activity:conntrack', handler, signal);
 
-export const onSafetyTick = (handler: (payload: SafetyTickEvent) => void, signal?: AbortSignal) =>
-  listenEvent<SafetyTickEvent>('safety:tick', handler, signal);
-
-export const onDrift = (handler: (payload: DriftEvent) => void, signal?: AbortSignal) =>
-  listenEvent<DriftEvent>('host:drift', handler, signal);
-
-export const onDetectProgress = (handler: (payload: DetectionProgress) => void, signal?: AbortSignal) =>
-  listenEvent<DetectionProgress>('host:detect-progress', handler, signal);
