@@ -22,11 +22,15 @@ pub enum MonitorError {
 
 /// Per-rule packet/byte hit counters from `iptables -L -v -n -x`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HitCounter {
-    pub chain: String,
-    pub rule_num: usize,
+    pub rule_id: String,
     pub packets: u64,
     pub bytes: u64,
+    pub timestamp: u64,
+    // Raw fields kept for detailed display
+    pub chain: String,
+    pub rule_num: usize,
     pub target: String,
     pub protocol: String,
     pub source: String,
@@ -58,18 +62,34 @@ pub enum LogMethod {
 
 /// Connection tracking table usage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConntrackUsage {
     pub current: u64,
     pub max: u64,
     pub percent: f64,
 }
 
-/// A fail2ban ban entry.
+/// A fail2ban ban entry (one entry per banned IP).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Fail2banBan {
     pub jail: String,
-    pub banned_ips: Vec<String>,
-    pub total_banned: usize,
+    pub ip: String,
+    pub banned_at: u64,
+    pub expires_at: Option<u64>,
+}
+
+/// A single connection tracking table entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConntrackEntry {
+    pub protocol: String,
+    pub source_ip: String,
+    pub dest_ip: String,
+    pub source_port: u16,
+    pub dest_port: u16,
+    pub state: String,
+    pub ttl: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +223,21 @@ pub async fn fetch_conntrack_usage(
     })
 }
 
+/// Fetch connection tracking table entries.
+///
+/// Parses output from `conntrack -L` into individual `ConntrackEntry` structs.
+/// Returns an empty Vec if conntrack is not available.
+pub async fn fetch_conntrack_table(
+    executor: &dyn CommandExecutor,
+) -> Result<Vec<ConntrackEntry>, MonitorError> {
+    let cmd = build_command("sudo", &["conntrack", "-L", "-o", "extended"]);
+    let output = match executor.exec(&cmd).await {
+        Ok(o) if o.exit_code == 0 => o,
+        _ => return Ok(Vec::new()), // conntrack tool may not be installed
+    };
+    Ok(parse_conntrack_entries(&output.stdout))
+}
+
 /// Fetch fail2ban ban information from `fail2ban-client status`.
 pub async fn fetch_fail2ban_bans(
     executor: &dyn CommandExecutor,
@@ -227,9 +262,7 @@ pub async fn fetch_fail2ban_bans(
         let cmd = build_command("sudo", &["fail2ban-client", "status", jail]);
         if let Ok(output) = executor.exec(&cmd).await {
             if output.exit_code == 0 {
-                if let Some(ban) = parse_jail_status(jail, &output.stdout) {
-                    bans.push(ban);
-                }
+                bans.extend(parse_jail_status(jail, &output.stdout));
             }
         }
     }
@@ -286,11 +319,17 @@ fn parse_hit_counters(output: &str) -> Vec<HitCounter> {
 
         rule_num += 1;
 
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         counters.push(HitCounter {
-            chain: current_chain.clone(),
-            rule_num,
+            rule_id: format!("{}/{}", current_chain, rule_num),
             packets,
             bytes,
+            timestamp: now,
+            chain: current_chain.clone(),
+            rule_num,
             target: fields[2].to_string(),
             protocol: fields[3].to_string(),
             source: fields.get(7).unwrap_or(&"0.0.0.0/0").to_string(),
@@ -324,6 +363,92 @@ fn extract_field(line: &str, prefix: &str) -> Option<String> {
     }
 }
 
+fn parse_conntrack_entries(output: &str) -> Vec<ConntrackEntry> {
+    // conntrack -L -o extended output looks like:
+    // ipv4     2 tcp      6 431999 ESTABLISHED src=10.0.0.1 dst=10.0.0.2 sport=54321 dport=443 ...
+    let mut entries = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let fields: Vec<&str> = trimmed.split_whitespace().collect();
+        if fields.len() < 5 {
+            continue;
+        }
+
+        // Protocol is typically the 3rd field (e.g., "tcp", "udp")
+        let protocol = fields.get(2).unwrap_or(&"").to_string();
+        if protocol.is_empty() {
+            continue;
+        }
+
+        // TTL is typically the 5th field
+        let ttl = fields
+            .get(4)
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        // State (e.g., ESTABLISHED, TIME_WAIT) is typically the 6th field if present
+        let mut state = String::new();
+        let mut source_ip = String::new();
+        let mut dest_ip = String::new();
+        let mut source_port: u16 = 0;
+        let mut dest_port: u16 = 0;
+        let mut found_reply = false;
+
+        for field in &fields[5..] {
+            // Stop parsing at the [UNREPLIED] / [ASSURED] / reply direction markers
+            if *field == "[UNREPLIED]" || *field == "[ASSURED]" {
+                continue;
+            }
+            // The second set of src/dst after "src=..." appears for the reply direction;
+            // we only want the original direction (first occurrence).
+            if field.starts_with("src=") {
+                if source_ip.is_empty() {
+                    source_ip = field.strip_prefix("src=").unwrap_or("").to_string();
+                } else {
+                    found_reply = true;
+                }
+            } else if field.starts_with("dst=") && !found_reply {
+                dest_ip = field.strip_prefix("dst=").unwrap_or("").to_string();
+            } else if field.starts_with("sport=") && !found_reply {
+                source_port = field
+                    .strip_prefix("sport=")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+            } else if field.starts_with("dport=") && !found_reply {
+                dest_port = field
+                    .strip_prefix("dport=")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+            } else if state.is_empty()
+                && !field.contains('=')
+                && field.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+                && !field.is_empty()
+            {
+                state = field.to_string();
+            }
+        }
+
+        if source_ip.is_empty() && dest_ip.is_empty() {
+            continue;
+        }
+
+        entries.push(ConntrackEntry {
+            protocol,
+            source_ip,
+            dest_ip,
+            source_port,
+            dest_port,
+            state,
+            ttl,
+        });
+    }
+    entries
+}
+
 fn parse_jail_list(output: &str) -> Vec<String> {
     // Output format:
     // Status
@@ -342,17 +467,11 @@ fn parse_jail_list(output: &str) -> Vec<String> {
     Vec::new()
 }
 
-fn parse_jail_status(jail: &str, output: &str) -> Option<Fail2banBan> {
+fn parse_jail_status(jail: &str, output: &str) -> Vec<Fail2banBan> {
     let mut banned_ips = Vec::new();
-    let mut total_banned: usize = 0;
 
     for line in output.lines() {
         let trimmed = line.trim();
-
-        // "|- Currently banned: 3"
-        if let Some(rest) = trimmed.strip_prefix("|- Currently banned:") {
-            total_banned = rest.trim().parse().unwrap_or(0);
-        }
 
         // "`- Banned IP list:    1.2.3.4 5.6.7.8"
         if let Some(rest) = trimmed.strip_prefix("`- Banned IP list:") {
@@ -363,11 +482,22 @@ fn parse_jail_status(jail: &str, output: &str) -> Option<Fail2banBan> {
         }
     }
 
-    Some(Fail2banBan {
-        jail: jail.to_string(),
-        banned_ips,
-        total_banned,
-    })
+    // We don't have per-IP timestamps from fail2ban-client status,
+    // so we use the current time as banned_at.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    banned_ips
+        .into_iter()
+        .map(|ip| Fail2banBan {
+            jail: jail.to_string(),
+            ip,
+            banned_at: now,
+            expires_at: None, // fail2ban-client status doesn't expose per-IP expiry
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -498,12 +628,14 @@ Chain TR-INPUT (1 references)
    |- Total banned:     42
    `- Banned IP list:   1.2.3.4 5.6.7.8 9.10.11.12
 "#;
-        let ban = parse_jail_status("sshd", output).unwrap();
-        assert_eq!(ban.jail, "sshd");
-        assert_eq!(ban.total_banned, 3);
-        assert_eq!(ban.banned_ips.len(), 3);
-        assert!(ban.banned_ips.contains(&"1.2.3.4".to_string()));
-        assert!(ban.banned_ips.contains(&"9.10.11.12".to_string()));
+        let bans = parse_jail_status("sshd", output);
+        assert_eq!(bans.len(), 3);
+        assert_eq!(bans[0].jail, "sshd");
+        assert_eq!(bans[0].ip, "1.2.3.4");
+        assert!(bans[0].banned_at > 0);
+        assert!(bans[0].expires_at.is_none());
+        assert_eq!(bans[1].ip, "5.6.7.8");
+        assert_eq!(bans[2].ip, "9.10.11.12");
     }
 
     #[test]
@@ -517,8 +649,30 @@ Chain TR-INPUT (1 references)
    |- Total banned:     0
    `- Banned IP list:
 "#;
-        let ban = parse_jail_status("sshd", output).unwrap();
-        assert_eq!(ban.total_banned, 0);
-        assert!(ban.banned_ips.is_empty());
+        let bans = parse_jail_status("sshd", output);
+        assert_eq!(bans.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_conntrack_entries() {
+        let output = r#"ipv4     2 tcp      6 431999 ESTABLISHED src=10.0.0.1 dst=10.0.0.2 sport=54321 dport=443 src=10.0.0.2 dst=10.0.0.1 sport=443 dport=54321 [ASSURED] mark=0 use=1
+ipv4     2 udp      17 29 src=192.168.1.1 dst=8.8.8.8 sport=12345 dport=53 src=8.8.8.8 dst=192.168.1.1 sport=53 dport=12345 mark=0 use=1
+"#;
+        let entries = parse_conntrack_entries(output);
+        assert_eq!(entries.len(), 2);
+
+        assert_eq!(entries[0].protocol, "tcp");
+        assert_eq!(entries[0].source_ip, "10.0.0.1");
+        assert_eq!(entries[0].dest_ip, "10.0.0.2");
+        assert_eq!(entries[0].source_port, 54321);
+        assert_eq!(entries[0].dest_port, 443);
+        assert_eq!(entries[0].state, "ESTABLISHED");
+        assert_eq!(entries[0].ttl, 431999);
+
+        assert_eq!(entries[1].protocol, "udp");
+        assert_eq!(entries[1].source_ip, "192.168.1.1");
+        assert_eq!(entries[1].dest_ip, "8.8.8.8");
+        assert_eq!(entries[1].source_port, 12345);
+        assert_eq!(entries[1].dest_port, 53);
     }
 }

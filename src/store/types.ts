@@ -211,6 +211,12 @@ export interface HitCounter {
   packets: number;
   bytes: number;
   timestamp: number;
+  chain: string;
+  ruleNum: number;
+  target: string;
+  protocol: string;
+  source: string;
+  destination: string;
 }
 
 export interface BlockedEntry {

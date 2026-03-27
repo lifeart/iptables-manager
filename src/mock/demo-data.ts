@@ -291,10 +291,10 @@ const db01Rules: Rule[] = [
 // ─── Hit Counters for web-01 ────────────────────────────────
 
 const web01HitCounters: HitCounter[] = [
-  { ruleId: RULE_WEB_HTTP, packets: 1247, bytes: 892_400, timestamp: ts(1) },
-  { ruleId: RULE_WEB_SSH, packets: 3, bytes: 1_200, timestamp: ts(30) },
-  { ruleId: RULE_WEB_MON, packets: 89, bytes: 12_460, timestamp: ts(2) },
-  { ruleId: RULE_WEB_BLOCK, packets: 412, bytes: 24_720, timestamp: ts(1) },
+  { ruleId: RULE_WEB_HTTP, packets: 1247, bytes: 892_400, timestamp: ts(1), chain: 'TR-INPUT', ruleNum: 1, target: 'ACCEPT', protocol: 'tcp', source: '0.0.0.0/0', destination: '0.0.0.0/0' },
+  { ruleId: RULE_WEB_SSH, packets: 3, bytes: 1_200, timestamp: ts(30), chain: 'TR-INPUT', ruleNum: 2, target: 'ACCEPT', protocol: 'tcp', source: '0.0.0.0/0', destination: '0.0.0.0/0' },
+  { ruleId: RULE_WEB_MON, packets: 89, bytes: 12_460, timestamp: ts(2), chain: 'TR-INPUT', ruleNum: 3, target: 'ACCEPT', protocol: 'tcp', source: '10.0.0.0/8', destination: '0.0.0.0/0' },
+  { ruleId: RULE_WEB_BLOCK, packets: 412, bytes: 24_720, timestamp: ts(1), chain: 'TR-INPUT', ruleNum: 4, target: 'DROP', protocol: 'all', source: '0.0.0.0/0', destination: '0.0.0.0/0' },
 ];
 
 // ─── Blocked Log for web-01 ─────────────────────────────────
