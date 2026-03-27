@@ -1,15 +1,19 @@
 # Traffic Rules
 
-A desktop app for managing iptables on remote Linux servers via SSH.
+A desktop GUI for managing iptables firewall rules on remote Linux servers via SSH.
 
-Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend).
+Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on macOS and Linux.
+
+**[Live Demo](https://lifeart.github.io/iptables-manager/)** (runs in browser, no install needed)
 
 ## What it does
 
-- Connect to Linux servers via SSH
-- View, create, edit, delete firewall rules through a GUI
-- Apply changes with a 60-second safety timer (auto-reverts if connection lost)
-- Monitor traffic: hit counters, blocked log, connection tracking
+- Connect to Linux servers via SSH (password or key auth)
+- View, create, edit, delete, and reorder firewall rules through a visual GUI
+- Apply changes with a 60-second safety timer (auto-reverts if connection drops)
+- Monitor traffic: real-time hit counters, blocked traffic log, connection tracking
+- 16 built-in templates (web server, Kubernetes, VPN, database, monitoring, CI/CD, load balancer)
+- 68 service presets with 110+ well-known port mappings
 - Export rules as shell script, Ansible playbook, or iptables-save format
 - Manage multiple hosts with groups and shared rules
 
@@ -168,7 +172,7 @@ Every rule change includes a 60-second safety window. If the SSH connection drop
 Sentence-style rule creation: pick action (Allow/Block/Log), service (SSH, Web, PostgreSQL, WireGuard...), source (Anyone, IP list, specific IP), and the rule is created. Progressive disclosure reveals advanced options (rate limiting, custom conditions, block type).
 
 ### Templates
-11 built-in templates: Web Server, Database, Mail, Bastion, Docker Host, NAT Gateway, VPN (WireGuard/OpenVPN), IPSec, Lockdown, Minimal. Each creates a complete working ruleset.
+16 built-in templates: Web Server, Database, Mail, Bastion, Docker Host, NAT Gateway, VPN (WireGuard/OpenVPN), IPSec, Kubernetes Node, Monitoring Stack, Load Balancer, CI/CD Server, Message Broker, Lockdown, Minimal. Each creates a complete working ruleset.
 
 ### Export
 Export rules as:
@@ -190,13 +194,6 @@ Test how a packet would be processed: enter source IP, destination, port, protoc
 | Persistence | IndexedDB (browser) | — |
 | Credentials | OS keychain via `keyring` crate | — |
 | Drag & drop | SortableJS | — |
-
-## Live demo
-
-Try the app in your browser (no install required):
-**[https://lifeart.github.io/iptables-manager/](https://lifeart.github.io/iptables-manager/)**
-
-The demo runs with mock data — 3 sample hosts, firewall rules, hit counters, and snapshots.
 
 ## Releasing
 
