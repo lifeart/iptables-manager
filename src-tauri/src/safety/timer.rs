@@ -159,6 +159,22 @@ pub async fn cancel_revert(
                     output.exit_code, output.stderr
                 )));
             }
+            // Verify the job is actually gone by checking atq
+            let verify_cmd = build_command("atq", &[]);
+            let verify_output = executor
+                .exec(&verify_cmd)
+                .await
+                .map_err(|e| SafetyError::CancelFailed(e.to_string()))?;
+            // Each atq line starts with the job ID followed by a tab or spaces
+            for line in verify_output.stdout.lines() {
+                let first_token = line.split_whitespace().next().unwrap_or("");
+                if first_token == job_id.id {
+                    return Err(SafetyError::CancelFailed(format!(
+                        "atrm appeared to succeed but job {} still present in atq",
+                        job_id.id
+                    )));
+                }
+            }
             Ok(())
         }
         SafetyMechanism::SystemdRun => {

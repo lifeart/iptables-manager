@@ -407,7 +407,12 @@ export const deleteIpList = (hostId: string, ipListId: string) =>
   ipcCall<void>('iplist:delete', { hostId, ipListId });
 
 // Credentials
-export const storeCredential = (hostId: string, credential: { type: string; value: string }) =>
+export type CredentialPayload =
+  | { type: 'Password'; username: string; password: string }
+  | { type: 'KeyFile'; username: string; key_path: string; passphrase?: string | null }
+  | { type: 'Agent'; username: string };
+
+export const storeCredential = (hostId: string, credential: CredentialPayload) =>
   ipcCall<void>('cred:store', { hostId, credential });
 
 export const deleteCredential = (hostId: string) =>

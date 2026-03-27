@@ -236,10 +236,15 @@ export class PendingBar extends Component {
       // is not left in a state with no automatic rollback protection.
       try {
         await ipc.revertChanges(hostId);
-      } catch {
-        // Revert also failed — show both issues
+        this.showError('Safety timer failed \u2014 changes reverted for your protection.');
+      } catch (revertErr) {
+        // Revert also failed — this is critical
+        const revertDetail = revertErr instanceof Error ? revertErr.message : String(revertErr);
+        this.showError(
+          'CRITICAL: Safety timer AND revert both failed. Rules applied with NO rollback protection. Verify server access immediately.'
+        );
+        console.error('Revert failed after safety timer failure:', revertDetail);
       }
-      this.showError('Safety timer failed \u2014 changes reverted for your protection.');
       throw new Error('Safety timer scheduling failed');
     }
   }
@@ -291,7 +296,14 @@ export class PendingBar extends Component {
             // Schedule safety timer for force-applied changes too
             if (isRealHost) {
               const timeoutSec = state.settings.defaultSafetyTimeout || 60;
-              await this.scheduleSafetyTimer(hostId, timeoutSec);
+              try {
+                await this.scheduleSafetyTimer(hostId, timeoutSec);
+              } catch {
+                // User force-applied — don't auto-revert, just warn
+                this.showError(
+                  'Safety timer could not be scheduled. Your rules are applied but have NO automatic rollback protection.'
+                );
+              }
             }
           } catch (forceErr) {
             const forceMsg = forceErr instanceof Error ? forceErr.message : 'Apply failed';

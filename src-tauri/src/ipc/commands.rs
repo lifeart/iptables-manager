@@ -846,12 +846,14 @@ pub async fn cred_delete(
         }
     })?;
 
-    store.delete(&host_id).map_err(|e| IpcError::CommandFailed {
-        stderr: format!("failed to delete credential: {}", e),
-        exit_code: 1,
-    })?;
-
-    Ok(())
+    match store.delete(&host_id) {
+        Ok(()) => Ok(()),
+        Err(crate::ssh::credential::CredentialError::NotFound(_)) => Ok(()),
+        Err(e) => Err(IpcError::CommandFailed {
+            stderr: format!("failed to delete credential: {}", e),
+            exit_code: 1,
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
