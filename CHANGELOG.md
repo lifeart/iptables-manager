@@ -1,18 +1,28 @@
 # Changelog
 
-## [0.2.0] - 2026-03-27
+## [0.3.0] - 2026-03-27
+
+### Added
+- Rule duplicate detection with 6-field similarity scoring (chain, protocol, port, source, dest, action)
+- Rule conflict detection: shadow, redundant, and contradictory rule analysis
+- Auto-provision hosts on first connect (deploys revert scripts, HMAC secret)
+- Credential store commands (`cred_store`, `cred_delete`) wired to OS keychain
 
 ### Fixed
 - Safety timer now fully wired end-to-end (was previously UI-only countdown with no server-side rollback)
-- `rules_apply` creates HMAC-signed backup of current rules before applying changes
-- `rules_confirm` cancels scheduled revert job and cleans up backup files (was a no-op stub)
-- Frontend calls `set_safety_timer` IPC to schedule actual remote revert via at/systemd-run/nohup
-- Revert button cancels scheduled job before reverting rules
+- Safety timer auto-reverts rules if scheduling fails (no more unprotected fake countdown)
+- Force-apply path now schedules safety timer (was missing revert protection entirely)
+- `at` time format uses POSIX-portable minutes instead of GNU-only seconds
+- Unparseable `at` job ID returns error instead of silent "unknown" success
+- `revert.sh` refuses to restore if HMAC file missing on provisioned hosts
+- `systemd-run` and `nohup` cancel now check exit codes
+- Parser fix: implicit `--dport`/`--sport` flags no longer silently dropped
 
 ### Changed
-- `SafetyTimerState` now includes `mechanism` field for proper job cancellation
+- `SafetyTimerState` includes `mechanism` field for proper job cancellation
 - `confirmChanges` IPC accepts optional `jobId` and `mechanism` parameters
 - `filter_tr_chains` made public for reuse across modules
+- `PortSpec` now derives `PartialEq`/`Eq` for comparison support
 
 ## [0.1.0] - 2026-03-26
 
