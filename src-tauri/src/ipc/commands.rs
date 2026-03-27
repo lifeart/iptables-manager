@@ -804,23 +804,53 @@ pub async fn activity_fetch_conntrack(
 }
 
 // ---------------------------------------------------------------------------
-// Credential stub commands
+// Credential commands
 // ---------------------------------------------------------------------------
 
-/// Store a credential (stub — actual credential storage is handled client-side via OS keychain).
+/// Store a credential in the OS keychain for the given host.
 #[tauri::command]
 pub async fn cred_store(
-    _host_id: String,
-    _credential: serde_json::Value,
+    host_id: String,
+    credential: serde_json::Value,
 ) -> Result<(), IpcError> {
+    let store = crate::ssh::credential::CredentialStore::new().map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("credential store error: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    let cred: crate::ssh::credential::Credential =
+        serde_json::from_value(credential).map_err(|e| IpcError::CommandFailed {
+            stderr: format!("invalid credential payload: {}", e),
+            exit_code: 1,
+        })?;
+
+    store.store(&host_id, &cred).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to store credential: {}", e),
+        exit_code: 1,
+    })?;
+
     Ok(())
 }
 
-/// Delete a credential (stub — actual credential storage is handled client-side via OS keychain).
+/// Delete a credential from the OS keychain for the given host.
 #[tauri::command]
 pub async fn cred_delete(
-    _host_id: String,
+    host_id: String,
 ) -> Result<(), IpcError> {
+    let store = crate::ssh::credential::CredentialStore::new().map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("credential store error: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    store.delete(&host_id).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to delete credential: {}", e),
+        exit_code: 1,
+    })?;
+
     Ok(())
 }
 
@@ -886,28 +916,99 @@ pub struct DuplicateCheckResult {
     pub similarity: f64,
 }
 
-/// Check if a rule is a duplicate of an existing rule (stub).
+/// Check if a proposed rule duplicates an existing rule on the remote host.
+///
+/// Fetches the current ruleset via `iptables-save`, parses it, and compares
+/// each existing rule against the proposed one.  Returns the best match with
+/// a similarity score (0.0–1.0).  A rule is considered a duplicate when
+/// similarity >= 0.8.
 #[tauri::command]
 pub async fn rules_check_duplicate(
-    _host_id: String,
-    _rule: serde_json::Value,
+    host_id: String,
+    rule: serde_json::Value,
+    pool: State<'_, PoolState>,
 ) -> Result<DuplicateCheckResult, IpcError> {
-    Ok(DuplicateCheckResult {
-        is_duplicate: false,
-        existing_rule_id: None,
-        similarity: 0.0,
-    })
+    use crate::iptables::duplicate::{check_duplicate, ProposedRule};
+
+    // Parse the proposed rule from the frontend JSON.
+    let proposed: ProposedRule = serde_json::from_value(rule).map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("invalid rule JSON: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    // Fetch the current ruleset from the remote host.
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let ruleset = parse_iptables_save(&output.stdout).map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("failed to parse iptables-save output: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    // Run the duplicate check (threshold 0.5 to catch near-duplicates).
+    const SIMILARITY_THRESHOLD: f64 = 0.5;
+    const DUPLICATE_THRESHOLD: f64 = 0.8;
+
+    match check_duplicate(&proposed, &ruleset, SIMILARITY_THRESHOLD) {
+        Some(m) => Ok(DuplicateCheckResult {
+            is_duplicate: m.similarity >= DUPLICATE_THRESHOLD,
+            existing_rule_id: Some(m.rule_id),
+            similarity: m.similarity,
+        }),
+        None => Ok(DuplicateCheckResult {
+            is_duplicate: false,
+            existing_rule_id: None,
+            similarity: 0.0,
+        }),
+    }
 }
 
 /// Detect conflicts among the current rules on a host.
 ///
-/// Returns an empty list for now; a full implementation requires converting
-/// ParsedRuleset into EffectiveRule[], which is planned for a future iteration.
+/// Fetches the live iptables ruleset, converts filter-table rules into
+/// `EffectiveRule`s, and runs shadow / redundancy / overlap detection.
 #[tauri::command]
 pub async fn rules_detect_conflicts(
-    _host_id: String,
+    host_id: String,
+    pool: State<'_, PoolState>,
 ) -> Result<Vec<crate::iptables::conflict::RuleConflict>, IpcError> {
-    Ok(Vec::new())
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let ruleset = parse_iptables_save(&output.stdout).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to parse iptables-save output: {}", e),
+        exit_code: 1,
+    })?;
+
+    let effective = crate::iptables::conflict::ruleset_to_effective_rules(&ruleset);
+    Ok(crate::iptables::conflict::detect_conflicts(&effective))
 }
 
 /// Trace a test packet through the current iptables ruleset.
