@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0] - 2026-03-27
+
+### Added
+- State hydration from IndexedDB on app startup (hosts, groups, settings persist across reloads)
+- Auto-reconnect to last active host on app launch
+- `fetchActivity` single-call activity polling (replaces two separate SSH round-trips)
+- 18 new QA tests for safety timer, duplicate detection, and conflict detection (328 total)
+
+### Fixed
+- `lastActiveHostId` now persisted in settings on host selection
+- `activity_subscribe` returns stream ID (was void, caused runtime mismatch)
+- `activity_unsubscribe` accepts correct parameter name
+- Bootstrap guard prevents double-hydration on page reload
+
+### Removed
+- Unused event listener exports (`onConnectionStatus`, `onSafetyTick`, `onDrift`, `onDetectProgress`)
+- `tracer_test.rs` stub (tracer has internal unit tests)
+
 ## [0.3.1] - 2026-03-27
 
 ### Fixed
