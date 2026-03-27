@@ -1131,8 +1131,9 @@ export class RuleTable extends Component {
         resultArea.appendChild(h('div', { className: 'terminal__tracer-verdict' },
           `Verdict: ${result.verdict}`));
         if (result.chain.length > 0) {
+          const chainPath = result.chain.map(t => `${t.table}/${t.chain}`).join(' -> ');
           resultArea.appendChild(h('div', { className: 'terminal__tracer-chain' },
-            `Chain path: ${result.chain.join(' -> ')}`));
+            `Chain path: ${chainPath}`));
         }
         resultArea.appendChild(h('div', { className: 'terminal__tracer-explanation' },
           result.explanation));

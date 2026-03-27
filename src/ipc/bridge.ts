@@ -78,12 +78,20 @@ export interface ApplyResult {
   remoteJobId?: string;
 }
 
+export interface ChainTraversal {
+  table: string;
+  chain: string;
+  rulesEvaluated: number;
+  matchedRuleIndex?: number;
+}
+
 export interface TraceResult {
   matched: boolean;
   matchedRuleId?: string;
-  chain: string[];
+  chain: ChainTraversal[];
   verdict: string;
   explanation: string;
+  nearMisses: string[];
 }
 
 export interface TestPacket {

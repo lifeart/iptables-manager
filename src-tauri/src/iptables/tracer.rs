@@ -38,14 +38,26 @@ impl ConntrackState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestPacket {
     pub source_ip: IpAddr,
     pub dest_ip: IpAddr,
     pub protocol: Protocol,
     pub dest_port: Option<u16>,
+    #[serde(default)]
     pub interface_in: String,
+    #[serde(default = "default_direction")]
     pub direction: Direction,
+    #[serde(default = "default_conntrack_state")]
     pub conntrack_state: ConntrackState,
+}
+
+fn default_direction() -> Direction {
+    Direction::Incoming
+}
+
+fn default_conntrack_state() -> ConntrackState {
+    ConntrackState::New
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +69,7 @@ pub enum Verdict {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainTraversal {
     pub table: String,
     pub chain: String,
@@ -65,10 +78,17 @@ pub struct ChainTraversal {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TraceResult {
+    /// Whether a specific rule matched (vs falling through to policy/default).
+    pub matched: bool,
+    /// The raw text of the matching rule, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_rule_id: Option<String>,
+    /// Chain traversal path (serializes as "chain").
+    #[serde(rename = "chain")]
     pub path: Vec<ChainTraversal>,
     pub verdict: Verdict,
-    pub matching_rule: Option<String>,
     pub explanation: String,
     pub near_misses: Vec<String>,
 }
@@ -554,18 +574,20 @@ pub fn trace_packet(ruleset: &ParsedRuleset, packet: &TestPacket) -> TraceResult
                     chain,
                 );
                 return TraceResult {
+                    matched: true,
+                    matched_rule_id: Some(matching_rule),
                     path,
                     verdict,
-                    matching_rule: Some(matching_rule),
                     explanation,
                     near_misses,
                 };
             }
             ChainResult::Unsimulatable(msg) => {
                 return TraceResult {
+                    matched: false,
+                    matched_rule_id: None,
                     path,
                     verdict: Verdict::Unsimulatable,
-                    matching_rule: None,
                     explanation: msg,
                     near_misses,
                 };
@@ -578,9 +600,10 @@ pub fn trace_packet(ruleset: &ParsedRuleset, packet: &TestPacket) -> TraceResult
 
     // If we exhausted all chains without a terminal verdict, default ACCEPT.
     TraceResult {
+        matched: false,
+        matched_rule_id: None,
         path,
         verdict: Verdict::Accept,
-        matching_rule: None,
         explanation: "Packet traversed all chains without being dropped".to_string(),
         near_misses,
     }
@@ -683,9 +706,9 @@ mod tests {
 
         let result = trace_packet(&ruleset, &ssh_packet());
         assert_eq!(result.verdict, Verdict::Accept);
-        assert!(result.matching_rule.is_some());
+        assert!(result.matched_rule_id.is_some());
         assert!(result
-            .matching_rule
+            .matched_rule_id
             .unwrap()
             .contains("-A INPUT -p tcp --dport 22 -j ACCEPT"));
     }
@@ -717,8 +740,8 @@ mod tests {
 
         let result = trace_packet(&ruleset, &ssh_packet());
         assert_eq!(result.verdict, Verdict::Drop);
-        assert!(result.matching_rule.is_some());
-        assert!(result.matching_rule.unwrap().contains("Default policy DROP"));
+        assert!(result.matched_rule_id.is_some());
+        assert!(result.matched_rule_id.unwrap().contains("Default policy DROP"));
     }
 
     #[test]
