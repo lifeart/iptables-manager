@@ -6,8 +6,8 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { testConnection, connectHost, detectHost, fetchRules, provisionHost } from '../../ipc/bridge';
-import type { TestResult } from '../../ipc/bridge';
+import { testConnection, connectHost, detectHost, fetchRules, provisionHost, storeCredential } from '../../ipc/bridge';
+import type { TestResult, CredentialPayload } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import { h, trapFocus } from '../../utils/dom';
 import { isValidIPv4, isValidIPv6, isValidPort } from '../../utils/ip-validate';
@@ -499,6 +499,14 @@ export class AddHostDialog extends Component {
         type: 'UPDATE_HOST',
         hostId: host.id,
         changes: { status: 'connected' as const, lastConnected: Date.now() },
+      });
+
+      // Store credential (fire-and-forget)
+      const credential: CredentialPayload = params.authMethod === 'key'
+        ? { type: 'KeyFile', username: params.username, key_path: params.keyPath ?? '~/.ssh/id_rsa', passphrase: null }
+        : { type: 'Password', username: params.username, password: '' };
+      storeCredential(host.id, credential).catch((err) => {
+        console.warn(`Failed to store credential for ${host.id}:`, err);
       });
 
       // Fetch rules from the connected host

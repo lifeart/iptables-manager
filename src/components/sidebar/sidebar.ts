@@ -14,7 +14,7 @@ import { reconcileList } from '../reconciler';
 import { createHostRow, updateHostRow } from './host-row';
 import { createGroupRow, updateGroupRow } from './group-row';
 import { h } from '../../utils/dom';
-import { fetchRules, deleteHost } from '../../ipc/bridge';
+import { fetchRules, deleteHost, deleteCredential } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 
 type ScaleMode = 'all' | 'medium' | 'large';
@@ -647,6 +647,10 @@ export class Sidebar extends Component {
     // Also notify the backend
     deleteHost(hostId, false).catch(() => {
       // Backend delete failure is non-critical; host is already removed from local state
+    });
+    // Remove stored credential (fire-and-forget)
+    deleteCredential(hostId).catch((err) => {
+      console.warn(`Failed to delete credential for ${hostId}:`, err);
     });
   }
 
