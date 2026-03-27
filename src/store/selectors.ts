@@ -168,6 +168,37 @@ export const selectFilteredRules = createSelector(
       });
     }
 
+    // Filter by protocol
+    if (filter.protocol) {
+      filtered = filtered.filter(r => r.protocol === filter.protocol);
+    }
+
+    // Filter by port number
+    if (filter.port) {
+      const portNum = parseInt(filter.port, 10);
+      if (!isNaN(portNum)) {
+        filtered = filtered.filter(r => {
+          if (!r.ports) return false;
+          if (r.ports.type === 'single') return r.ports.port === portNum;
+          if (r.ports.type === 'range') return portNum >= r.ports.from && portNum <= r.ports.to;
+          if (r.ports.type === 'multi') return r.ports.ports.includes(portNum);
+          return false;
+        });
+      }
+    }
+
+    // Filter by source/destination IP address
+    if (filter.address) {
+      const addrLower = filter.address.toLowerCase();
+      filtered = filtered.filter(r => {
+        if (r.source.type === 'cidr' && r.source.value.toLowerCase().includes(addrLower)) return true;
+        if (r.destination.type === 'cidr' && r.destination.value.toLowerCase().includes(addrLower)) return true;
+        if (r.source.type === 'iplist' && r.source.ipListId.toLowerCase().includes(addrLower)) return true;
+        if (r.destination.type === 'iplist' && r.destination.ipListId.toLowerCase().includes(addrLower)) return true;
+        return false;
+      });
+    }
+
     return filtered;
   },
 );

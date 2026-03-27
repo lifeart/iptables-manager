@@ -11,11 +11,22 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on mac
 - Connect to Linux servers via SSH (password or key auth)
 - View, create, edit, delete, and reorder firewall rules through a visual GUI
 - Apply changes with a 60-second safety timer (auto-reverts if connection drops)
+- Dry-run preview — see exact iptables commands before applying
+- Drift detection — alerts when rules change outside the tool
+- Audit log — persistent history of all rule changes
 - Monitor traffic: real-time hit counters, blocked traffic log, connection tracking
+- Port saturation warnings (conntrack capacity alerts)
 - 16 built-in templates (web server, Kubernetes, VPN, database, monitoring, CI/CD, load balancer)
 - 68 service presets with 110+ well-known port mappings
 - Export rules as shell script, Ansible playbook, or iptables-save format
 - Manage multiple hosts with groups and shared rules
+- Bulk apply to host groups with canary, rolling, or parallel strategies
+- Cross-host rule comparison (side-by-side diff)
+- Import existing server rules as managed baseline
+- Duplicate and conflict detection — shadow, redundant, and contradictory rule warnings
+- Human-readable rule explanation in rule detail panel
+- Advanced search filters (protocol, port, address)
+- HMAC-signed backups for tamper detection
 
 ## Screenshot
 
@@ -96,15 +107,15 @@ Produces `.msi` in `src-tauri/target/release/bundle/msi/`.
 │   ├── src/
 │   │   ├── iptables/       # Parser, generator, diff, tracer, conflict detection
 │   │   ├── ssh/            # Connection pool, command builder, credentials
-│   │   ├── safety/         # Timer, lockout detection, HMAC
-│   │   ├── host/           # Detection, persistence
-│   │   ├── activity/       # Hit counters, blocked log, conntrack
+│   │   ├── safety/         # Timer, lockout detection, HMAC, drift detection
+│   │   ├── host/           # Detection, persistence, auto-provision
+│   │   ├── activity/       # Hit counters, blocked log, conntrack, audit log
 │   │   ├── ipset/          # Atomic swap manager
 │   │   ├── snapshot/       # Create, restore, list
 │   │   ├── export/         # Shell, Ansible, iptables-save
 │   │   └── ipc/            # Tauri command handlers
 │   ├── scripts/            # revert.sh, expire-rule.sh
-│   └── tests/              # 268 tests with fixtures
+│   └── tests/              # 349 tests with fixtures
 │
 ├── docs/
 │   ├── ux/                 # 12 UX spec files
@@ -125,7 +136,7 @@ cd src-tauri
 cargo test
 ```
 
-268 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats.
+349 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log.
 
 ### TypeScript type checking
 
@@ -165,8 +176,17 @@ Requirements on the remote server:
 
 ## Key features
 
-### Safety timer
-Every rule change includes a 60-second safety window. If the SSH connection drops after applying rules, they automatically revert. You can't lock yourself out.
+### Safety timer (dead man's switch)
+Every rule change includes a 60-second safety window. If the SSH connection drops after applying rules, they automatically revert via `at`/`systemd-run`/`nohup` — you can't lock yourself out. First-connect auto-provision deploys revert scripts and HMAC verification to the remote host.
+
+### Dry-run preview
+See the exact iptables commands that will run before applying any changes. Review the full diff of what will be added, removed, or modified.
+
+### Drift detection
+The app monitors for rule changes made outside the tool and alerts you when the live ruleset no longer matches the managed state.
+
+### Audit log
+Persistent history of all rule changes across sessions — who changed what, when, and why. Useful for compliance and troubleshooting.
 
 ### Rule builder
 Sentence-style rule creation: pick action (Allow/Block/Log), service (SSH, Web, PostgreSQL, WireGuard...), source (Anyone, IP list, specific IP), and the rule is created. Progressive disclosure reveals advanced options (rate limiting, custom conditions, block type).
@@ -180,8 +200,20 @@ Export rules as:
 - **Ansible playbook** — ready for automation
 - **iptables-save** — raw format for `iptables-restore`
 
+### Multi-host management
+Bulk apply rules to host groups with canary, rolling, or parallel deployment strategies. Compare rules across hosts with side-by-side diff. Import existing server rules as a managed baseline on first connect.
+
+### Rule analysis
+Duplicate detection with similarity scoring catches near-duplicates when adding or editing rules. Conflict detection identifies shadow, redundant, and contradictory rules and shows a warning banner. Each rule includes a human-readable explanation in its detail panel.
+
+### Monitoring
+Real-time hit counters with sparklines, blocked traffic log, and connection tracking. Port saturation warnings alert when conntrack capacity is nearing limits. SSH rate limiting (10 cmd/s per host) prevents overloading remote servers. Advanced search filters let you narrow rules by protocol, port, or address.
+
 ### Packet tracer
 Test how a packet would be processed: enter source IP, destination, port, protocol — see which rule matches and why.
+
+### Data integrity
+HMAC-signed backups detect tampering. 20+ serialization contract tests prevent frontend/backend data mismatches. Credentials are stored on connect and deleted on host removal.
 
 ## Tech stack
 

@@ -14,6 +14,7 @@ import { formatTimeAgo } from '../../utils/format';
 import { HitCounters } from './hit-counters';
 import { BlockedLog } from './blocked-log';
 import { ConntrackBar } from './conntrack';
+import { AuditLog } from './audit-log';
 
 export class Activity extends Component {
   private hitCountersEl!: HTMLElement;
@@ -22,10 +23,12 @@ export class Activity extends Component {
   private conntrackEl!: HTMLElement;
   private pauseBtn!: HTMLButtonElement;
   private refreshBtn!: HTMLButtonElement;
+  private saturationBanner: HTMLElement | null = null;
 
   private hitCounters: HitCounters | null = null;
   private blockedLog: BlockedLog | null = null;
   private conntrackBar: ConntrackBar | null = null;
+  private auditLogComponent: AuditLog | null = null;
 
   private paused = false;
   private streamId: string | null = null;
@@ -88,6 +91,14 @@ export class Activity extends Component {
 
     this.conntrackBar = new ConntrackBar(this.conntrackEl, this.store);
     this.addChild(this.conntrackBar);
+
+    // Audit Log section
+    this.el.appendChild(h('h2', { className: 'activity-view__section-title' }, 'Change Log'));
+    const auditLogEl = h('div', { className: 'activity-view__audit-log' });
+    this.el.appendChild(auditLogEl);
+
+    this.auditLogComponent = new AuditLog(auditLogEl, this.store);
+    this.addChild(this.auditLogComponent);
   }
 
   private bindSubscriptions(): void {
@@ -104,6 +115,16 @@ export class Activity extends Component {
         this.bansSection.style.display = hasFail2ban ? '' : 'none';
         if (hasFail2ban) this.loadBans();
       },
+    );
+
+    // Port saturation warning when conntrack > 80%
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return null;
+        return s.hostStates.get(hostId)?.conntrackUsage ?? null;
+      },
+      (usage) => this.updateSaturationBanner(usage),
     );
 
     // Re-subscribe on host change
@@ -252,6 +273,39 @@ export class Activity extends Component {
     }
 
     this.bansSection.appendChild(list);
+  }
+
+  private updateSaturationBanner(usage: { current: number; max: number } | null): void {
+    if (!usage || usage.max === 0) {
+      this.removeSaturationBanner();
+      return;
+    }
+
+    const ratio = usage.current / usage.max;
+    if (ratio > 0.8) {
+      const percent = Math.round(ratio * 100);
+      if (!this.saturationBanner) {
+        this.saturationBanner = h('div', { className: 'activity-view__saturation-banner' });
+        // Insert at the top of the view, after the controls
+        const controls = this.el.querySelector('.activity-view__controls');
+        if (controls && controls.nextSibling) {
+          this.el.insertBefore(this.saturationBanner, controls.nextSibling);
+        } else {
+          this.el.prepend(this.saturationBanner);
+        }
+      }
+      this.saturationBanner.textContent =
+        `Connection tracking at ${percent}% capacity (${usage.current.toLocaleString()}/${usage.max.toLocaleString()})`;
+    } else {
+      this.removeSaturationBanner();
+    }
+  }
+
+  private removeSaturationBanner(): void {
+    if (this.saturationBanner) {
+      this.saturationBanner.remove();
+      this.saturationBanner = null;
+    }
   }
 
   private showActivityError(message: string): void {

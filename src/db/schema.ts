@@ -15,7 +15,7 @@
  */
 
 export const DB_NAME = 'traffic-rules';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORE_NAMES = {
   HOSTS: 'hosts',
@@ -26,6 +26,7 @@ export const STORE_NAMES = {
   SETTINGS: 'settings',
   SSH_LOG: 'sshLog',
   SAFETY_TIMERS: 'safetyTimers',
+  AUDIT_LOG: 'auditLog',
 } as const;
 
 export type StoreName = typeof STORE_NAMES[keyof typeof STORE_NAMES];
@@ -63,5 +64,17 @@ export const migrations: Record<number, (db: IDBDatabase) => void> = {
     sshLog.createIndex('timestamp', 'timestamp');
 
     db.createObjectStore(STORE_NAMES.SAFETY_TIMERS, { keyPath: 'hostId' });
+
+    const auditLog = db.createObjectStore(STORE_NAMES.AUDIT_LOG, { keyPath: 'id' });
+    auditLog.createIndex('timestamp', 'timestamp');
+    auditLog.createIndex('hostId', 'hostId');
+  },
+  2: (db) => {
+    // Migration for existing databases: add auditLog store
+    if (!db.objectStoreNames.contains(STORE_NAMES.AUDIT_LOG)) {
+      const auditLog = db.createObjectStore(STORE_NAMES.AUDIT_LOG, { keyPath: 'id' });
+      auditLog.createIndex('timestamp', 'timestamp');
+      auditLog.createIndex('hostId', 'hostId');
+    }
   },
 };

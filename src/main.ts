@@ -20,6 +20,7 @@ import { Sidebar } from './components/sidebar/sidebar';
 import { RuleTable } from './components/rule-table/rule-table';
 import { SidePanel } from './components/side-panel/side-panel';
 import { SafetyBanner } from './components/safety-banner/safety-banner';
+import { DriftBanner } from './components/drift-banner/drift-banner';
 import { CommandPalette } from './components/command-palette/command-palette';
 import { DialogManager } from './components/dialogs/dialog-manager';
 import { ShortcutService } from './services/shortcut';
@@ -64,6 +65,10 @@ function mountApp(container: HTMLElement): void {
   const bannerEl = h('div', { id: 'safety-banner' });
   container.appendChild(bannerEl);
 
+  // Drift detection banner (top-level, renders when drift detected)
+  const driftBannerEl = h('div', { id: 'drift-banner' });
+  container.appendChild(driftBannerEl);
+
   // Command palette (top-level overlay)
   const paletteEl = h('div', { id: 'command-palette' });
   container.appendChild(paletteEl);
@@ -81,6 +86,7 @@ function mountApp(container: HTMLElement): void {
   new RuleTable(mainEl, store);
   new SidePanel(sidePanelEl, store);
   new SafetyBanner(bannerEl, store);
+  new DriftBanner(driftBannerEl, store);
   new CommandPalette(paletteEl, store);
   new DialogManager(dialogEl, store);
 
@@ -269,6 +275,29 @@ function wireDbSync(): void {
       for (const [key, value] of Object.entries(newSettings)) {
         if ((oldSettings as unknown as Record<string, unknown>)[key] !== value) {
           dbSync.writeSetting(key, value);
+        }
+      }
+    },
+  );
+
+  // Audit log writes (batched, append-only with cap enforcement)
+  store.subscribeSelector(
+    (s) => s.auditLog,
+    (newLog, oldLog) => {
+      if (newLog === oldLog) return;
+      // Find new entries (prepended at the front)
+      const oldIds = new Set(oldLog.map(e => e.id));
+      for (const entry of newLog) {
+        if (!oldIds.has(entry.id)) {
+          dbSync.write(STORE_NAMES.AUDIT_LOG, entry);
+        }
+      }
+      // If we hit the cap, trim old entries from DB
+      if (newLog.length < oldLog.length) {
+        for (const entry of oldLog) {
+          if (!newLog.some(e => e.id === entry.id)) {
+            dbSync.deleteRecord(STORE_NAMES.AUDIT_LOG, entry.id);
+          }
         }
       }
     },

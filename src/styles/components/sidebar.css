@@ -434,6 +434,50 @@
   transform: scale(0.97);
 }
 
+/* ── Bottom Actions Row ──────────────────────────────── */
+
+.sidebar__bottom-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 var(--space-default);
+  margin-bottom: var(--space-compact);
+}
+
+.sidebar__bottom-actions .sidebar__add-btn {
+  flex: 1;
+  margin: 0;
+}
+
+.sidebar__compare-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.sidebar__compare-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.sidebar__compare-btn:active {
+  transform: scale(0.97);
+}
+
+.sidebar--collapsed .sidebar__bottom-actions {
+  display: none;
+}
+
 /* ── Resize Handle (visual) ──────────────────────────── */
 
 .sidebar::after {

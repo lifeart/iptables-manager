@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tokio::sync::Mutex;
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::explain::explain_rule;
@@ -17,6 +19,9 @@ use crate::ssh::command::build_command;
 // ---------------------------------------------------------------------------
 
 pub type PoolState = Arc<ConnectionPool>;
+
+/// Managed state holding the last-known rule hash per host for drift detection.
+pub type DriftState = Arc<Mutex<HashMap<String, String>>>;
 
 // ---------------------------------------------------------------------------
 // Serializable response types
@@ -89,6 +94,39 @@ pub struct ActivityData {
 pub struct SafetyTimerResult {
     pub job_id: String,
     pub mechanism: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewResult {
+    pub restore_content: String,
+    pub restore_command: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareHostsResult {
+    pub only_in_a: Vec<String>,
+    pub only_in_b: Vec<String>,
+    pub different: Vec<String>,
+    pub identical: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportExistingRulesResult {
+    pub rules: serde_json::Value,
+    pub raw_iptables_save: String,
+    pub non_tr_rule_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriftCheckResult {
+    pub drifted: bool,
+    pub added_rules: usize,
+    pub removed_rules: usize,
+    pub modified_rules: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,6 +406,195 @@ pub async fn rules_apply(
         safety_timer_active: false,
         safety_timer_expiry: None,
         remote_job_id: None,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Group Apply types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostApplyResult {
+    pub host_id: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupApplyResult {
+    pub results: Vec<HostApplyResult>,
+    pub strategy: String,
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+}
+
+/// Apply rule changes to a group of hosts using a deployment strategy.
+///
+/// Supports canary, rolling, and parallel strategies via multi_apply::create_apply_plan.
+/// For canary, stops on first failure. For rolling, applies one-by-one (also stops on failure).
+/// For parallel, applies to all hosts concurrently.
+#[tauri::command]
+pub async fn rules_apply_group(
+    host_ids: Vec<String>,
+    changes_json: String,
+    strategy: String,
+    pool: State<'_, PoolState>,
+) -> Result<GroupApplyResult, IpcError> {
+    use crate::iptables::multi_apply::{create_apply_plan, ApplyStrategy};
+
+    let strat = match strategy.as_str() {
+        "canary" => ApplyStrategy::Canary,
+        "rolling" => ApplyStrategy::Rolling,
+        "parallel" => ApplyStrategy::Parallel,
+        _ => ApplyStrategy::Rolling,
+    };
+
+    let pool_arc = pool.inner().clone();
+    let plan = create_apply_plan(strat, host_ids.clone());
+    let mut all_results: Vec<HostApplyResult> = Vec::new();
+
+    for step in &plan.steps {
+        if step.max_concurrency > 1 && step.host_ids.len() > 1 {
+            // Parallel execution within this step using tokio JoinSet
+            let mut handles = Vec::new();
+            for hid in &step.host_ids {
+                let pool_clone = pool_arc.clone();
+                let hid_clone = hid.clone();
+                let hid_for_err = hid.clone();
+                let changes = changes_json.clone();
+                let handle = tokio::spawn(async move {
+                    apply_to_single_host(&pool_clone, &hid_clone, &changes).await
+                });
+                handles.push((hid_for_err, handle));
+            }
+            for (hid, handle) in handles {
+                match handle.await {
+                    Ok(host_result) => all_results.push(host_result),
+                    Err(e) => all_results.push(HostApplyResult {
+                        host_id: hid,
+                        success: false,
+                        error: Some(format!("task join error: {}", e)),
+                    }),
+                }
+            }
+        } else {
+            // Sequential execution
+            for hid in &step.host_ids {
+                let result = apply_to_single_host(&pool_arc, hid, &changes_json).await;
+                let failed = !result.success;
+                all_results.push(result);
+
+                // For canary/rolling, stop on first failure
+                if failed && (step.is_canary || plan.strategy == ApplyStrategy::Rolling) {
+                    let succeeded = all_results.iter().filter(|r| r.success).count();
+                    let total = host_ids.len();
+                    return Ok(GroupApplyResult {
+                        results: all_results,
+                        strategy: strategy.clone(),
+                        total,
+                        succeeded,
+                        failed: total - succeeded,
+                    });
+                }
+            }
+        }
+
+        // For canary strategy, check canary step result before proceeding
+        if step.is_canary {
+            let canary_failed = all_results.iter().any(|r| !r.success);
+            if canary_failed {
+                let succeeded = all_results.iter().filter(|r| r.success).count();
+                let total = host_ids.len();
+                return Ok(GroupApplyResult {
+                    results: all_results,
+                    strategy: strategy.clone(),
+                    total,
+                    succeeded,
+                    failed: total - succeeded,
+                });
+            }
+        }
+    }
+
+    let succeeded = all_results.iter().filter(|r| r.success).count();
+    let total = host_ids.len();
+    Ok(GroupApplyResult {
+        results: all_results,
+        strategy,
+        total,
+        succeeded,
+        failed: total - succeeded,
+    })
+}
+
+/// Apply changes to a single host, returning a HostApplyResult.
+async fn apply_to_single_host(
+    pool: &Arc<ConnectionPool>,
+    host_id: &str,
+    changes_json: &str,
+) -> HostApplyResult {
+    let _lock = pool.acquire_apply_lock(host_id).await;
+
+    let proxy = PoolProxyExecutor {
+        pool: pool.clone(),
+        host_id: host_id.to_string(),
+    };
+
+    // Create backup
+    if let Err(e) = create_pre_apply_backup(&proxy, host_id).await {
+        return HostApplyResult {
+            host_id: host_id.to_string(),
+            success: false,
+            error: Some(format!("backup failed: {}", e)),
+        };
+    }
+
+    // Apply
+    let restore_cmd = build_command(
+        "sudo",
+        &["iptables-restore", "-w", "5", "--noflush", "--counters"],
+    );
+    match pool
+        .execute_with_stdin(host_id, &restore_cmd, changes_json.as_bytes())
+        .await
+    {
+        Ok(output) if output.exit_code == 0 => HostApplyResult {
+            host_id: host_id.to_string(),
+            success: true,
+            error: None,
+        },
+        Ok(output) => HostApplyResult {
+            host_id: host_id.to_string(),
+            success: false,
+            error: Some(format!("exit {}: {}", output.exit_code, output.stderr)),
+        },
+        Err(e) => HostApplyResult {
+            host_id: host_id.to_string(),
+            success: false,
+            error: Some(e.to_string()),
+        },
+    }
+}
+
+/// Preview rule changes without applying them.
+///
+/// Returns the iptables-restore content that would be piped to
+/// `iptables-restore` and the exact command line that would be used.
+#[tauri::command]
+pub async fn rules_preview(
+    _host_id: String,
+    changes_json: String,
+) -> Result<PreviewResult, IpcError> {
+    let restore_command = "sudo iptables-restore -w 5 --noflush --counters".to_string();
+
+    // The changes_json IS the iptables-restore content that gets piped to stdin.
+    // Return it as-is so the user can inspect what would be applied.
+    Ok(PreviewResult {
+        restore_content: changes_json,
+        restore_command,
     })
 }
 
@@ -1043,6 +1270,167 @@ pub async fn rules_trace(
 }
 
 // ---------------------------------------------------------------------------
+// Cross-host comparison
+// ---------------------------------------------------------------------------
+
+/// Compare iptables rules between two connected hosts.
+#[tauri::command]
+pub async fn compare_hosts(
+    host_id_a: String,
+    host_id_b: String,
+    pool: State<'_, PoolState>,
+) -> Result<CompareHostsResult, IpcError> {
+    let cmd = build_command("sudo", &["iptables-save"]);
+
+    let output_a = pool.execute(&host_id_a, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id_a.clone(),
+            reason: format!("failed to run iptables-save on host A: {}", e),
+        }
+    })?;
+    if output_a.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: format!("host A: {}", output_a.stderr),
+            exit_code: output_a.exit_code,
+        });
+    }
+
+    let output_b = pool.execute(&host_id_b, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id_b.clone(),
+            reason: format!("failed to run iptables-save on host B: {}", e),
+        }
+    })?;
+    if output_b.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: format!("host B: {}", output_b.stderr),
+            exit_code: output_b.exit_code,
+        });
+    }
+
+    let rules_a = extract_rule_lines(&output_a.stdout);
+    let rules_b = extract_rule_lines(&output_b.stdout);
+
+    let set_a: std::collections::HashSet<&str> = rules_a.iter().map(|s| s.as_str()).collect();
+    let set_b: std::collections::HashSet<&str> = rules_b.iter().map(|s| s.as_str()).collect();
+
+    let only_in_a: Vec<String> = rules_a.iter().filter(|r| !set_b.contains(r.as_str())).cloned().collect();
+    let only_in_b: Vec<String> = rules_b.iter().filter(|r| !set_a.contains(r.as_str())).cloned().collect();
+    let identical = set_a.intersection(&set_b).count();
+    let different = find_chain_diffs(&output_a.stdout, &output_b.stdout);
+
+    Ok(CompareHostsResult { only_in_a, only_in_b, different, identical })
+}
+
+fn extract_rule_lines(raw: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current_table = String::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('*') {
+            current_table = trimmed[1..].to_string();
+        } else if trimmed.starts_with("-A ") {
+            result.push(format!("[{}] {}", current_table, trimmed));
+        }
+    }
+    result
+}
+
+fn find_chain_diffs(raw_a: &str, raw_b: &str) -> Vec<String> {
+    use std::collections::HashMap;
+
+    fn group_by_chain(raw: &str) -> HashMap<String, Vec<String>> {
+        let mut result: HashMap<String, Vec<String>> = HashMap::new();
+        let mut current_table = String::new();
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('*') {
+                current_table = trimmed[1..].to_string();
+            } else if trimmed.starts_with("-A ") {
+                let rest = &trimmed[3..];
+                if let Some(space_idx) = rest.find(' ') {
+                    let chain = &rest[..space_idx];
+                    let spec = &rest[space_idx + 1..];
+                    let key = format!("{}:{}", current_table, chain);
+                    result.entry(key).or_default().push(spec.to_string());
+                }
+            }
+        }
+        result
+    }
+
+    let chains_a = group_by_chain(raw_a);
+    let chains_b = group_by_chain(raw_b);
+    let mut diffs = Vec::new();
+
+    for (chain_key, specs_a) in &chains_a {
+        if let Some(specs_b) = chains_b.get(chain_key) {
+            let max_len = std::cmp::max(specs_a.len(), specs_b.len());
+            for i in 0..max_len {
+                match (specs_a.get(i), specs_b.get(i)) {
+                    (Some(a), Some(b)) if a != b => {
+                        diffs.push(format!("{} #{}: A has '{}', B has '{}'", chain_key, i + 1, a, b));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    diffs
+}
+
+// ---------------------------------------------------------------------------
+// Import existing rules as baseline
+// ---------------------------------------------------------------------------
+
+/// Fetch ALL iptables rules from a host (not just TR-managed) and return
+/// them as parsed RuleSpecs for the frontend to import.
+#[tauri::command]
+pub async fn import_existing_rules(
+    host_id: String,
+    pool: State<'_, PoolState>,
+) -> Result<ImportExistingRulesResult, IpcError> {
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let raw = output.stdout.clone();
+    let ruleset = parse_iptables_save(&raw).map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to parse iptables-save output: {}", e),
+        exit_code: 1,
+    })?;
+
+    let mut non_tr_count = 0usize;
+    for table in ruleset.tables.values() {
+        for (chain_name, chain_state) in &table.chains {
+            if !chain_name.starts_with("TR-") {
+                non_tr_count += chain_state.rules.len();
+            }
+        }
+    }
+
+    let rules_json = serde_json::to_value(&ruleset).unwrap_or(serde_json::Value::Null);
+
+    Ok(ImportExistingRulesResult {
+        rules: rules_json,
+        raw_iptables_save: raw,
+        non_tr_rule_count: non_tr_count,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot commands
 // ---------------------------------------------------------------------------
 
@@ -1159,6 +1547,131 @@ pub async fn snapshot_restore(
         safety_timer_expiry: None,
         remote_job_id: None,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Drift detection
+// ---------------------------------------------------------------------------
+
+/// Check if remote iptables rules have changed outside of Traffic Rules.
+///
+/// On first call for a given host, stores the current hash and reports no drift.
+/// On subsequent calls, compares the new hash against the stored one and
+/// returns diff counts if drift is detected.
+#[tauri::command]
+pub async fn check_drift(
+    host_id: String,
+    pool: State<'_, PoolState>,
+    drift_state: State<'_, DriftState>,
+) -> Result<DriftCheckResult, IpcError> {
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let filtered = crate::snapshot::manager::filter_tr_chains(&output.stdout);
+    let new_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        filtered.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    };
+
+    let mut hashes = drift_state.lock().await;
+    let previous = hashes.get(&host_id).cloned();
+    hashes.insert(host_id.clone(), new_hash.clone());
+
+    match previous {
+        None => {
+            // First call — store baseline, no drift
+            Ok(DriftCheckResult {
+                drifted: false,
+                added_rules: 0,
+                removed_rules: 0,
+                modified_rules: 0,
+            })
+        }
+        Some(prev_hash) if prev_hash == new_hash => {
+            Ok(DriftCheckResult {
+                drifted: false,
+                added_rules: 0,
+                removed_rules: 0,
+                modified_rules: 0,
+            })
+        }
+        Some(_) => {
+            // Drift detected — count TR-chain rules as an indicator
+            let ruleset = parse_iptables_save(&filtered).map_err(|e| {
+                IpcError::CommandFailed {
+                    stderr: format!("failed to parse filtered rules: {}", e),
+                    exit_code: 1,
+                }
+            })?;
+
+            let mut total_rules: usize = 0;
+            for table in ruleset.tables.values() {
+                for (chain_name, chain_state) in &table.chains {
+                    if chain_name.starts_with("TR-") {
+                        total_rules += chain_state.rules.len();
+                    }
+                }
+            }
+
+            Ok(DriftCheckResult {
+                drifted: true,
+                added_rules: 0,
+                removed_rules: 0,
+                modified_rules: total_rules,
+            })
+        }
+    }
+}
+
+/// Reset the drift baseline for a host (called after rules are refreshed).
+#[tauri::command]
+pub async fn reset_drift(
+    host_id: String,
+    pool: State<'_, PoolState>,
+    drift_state: State<'_, DriftState>,
+) -> Result<(), IpcError> {
+    let cmd = build_command("sudo", &["iptables-save"]);
+    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
+        IpcError::ConnectionFailed {
+            host_id: host_id.clone(),
+            reason: format!("failed to run iptables-save: {}", e),
+        }
+    })?;
+
+    if output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: output.stderr,
+            exit_code: output.exit_code,
+        });
+    }
+
+    let filtered = crate::snapshot::manager::filter_tr_chains(&output.stdout);
+    let new_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        filtered.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    };
+
+    let mut hashes = drift_state.lock().await;
+    hashes.insert(host_id, new_hash);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

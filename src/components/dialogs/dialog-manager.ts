@@ -16,6 +16,7 @@ import { CreateIpListDialog } from './create-iplist';
 import { FirstSetupDialog } from './first-setup';
 import type { FirstSetupConfig } from './first-setup';
 import { MultiApplyDialog } from './multi-apply';
+import { CompareHostsDialog } from './compare-hosts';
 import { selectActiveHost } from '../../store/selectors';
 
 export class DialogManager extends Component {
@@ -127,6 +128,12 @@ export class DialogManager extends Component {
       }
       case 'multi-apply': {
         const dlg = new MultiApplyDialog(this.el, this.store);
+        this.currentDialog = dlg;
+        this.addChild(dlg);
+        break;
+      }
+      case 'compare-hosts': {
+        const dlg = new CompareHostsDialog(this.el, this.store);
         this.currentDialog = dlg;
         this.addChild(dlg);
         break;

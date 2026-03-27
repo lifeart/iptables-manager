@@ -316,6 +316,27 @@
   color: var(--color-text-tertiary, #AEAEB2);
 }
 
+/* ─── Port Saturation Banner ───────────────── */
+
+.activity-view__saturation-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-default, 12px) var(--space-comfortable, 16px);
+  margin-bottom: var(--space-default, 12px);
+  background: var(--color-warning-bg, rgba(255, 149, 0, 0.08));
+  border: 1px solid var(--color-warning, #FF9500);
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text-primary, #1D1D1F);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.activity-view__saturation-banner::before {
+  content: '\26A0\FE0F';
+  flex-shrink: 0;
+}
+
 /* ─── Conntrack Bar ─────────────────────────── */
 
 .conntrack {
@@ -354,4 +375,118 @@
   border-radius: 2px;
   transition: width 300ms ease-out, background-color 300ms ease;
   background-color: var(--color-allow, #34C759);
+}
+
+/* ─── Audit Log ───────────────────────────────── */
+
+.audit-log__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.audit-log__empty {
+  padding: var(--space-comfortable, 16px);
+  text-align: center;
+  color: var(--color-text-tertiary, #AEAEB2);
+  font-size: var(--font-size-body, 13px);
+}
+
+.audit-log__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-surface, #F5F5F7);
+  font-size: var(--font-size-body, 13px);
+  transition: background var(--transition-fast, 100ms ease);
+}
+
+.audit-log__row:hover {
+  background: var(--color-hover, #F5F5F7);
+}
+
+.audit-log__time {
+  flex-shrink: 0;
+  color: var(--color-text-secondary, #86868B);
+  font-size: var(--font-size-caption, 11px);
+  font-variant-numeric: tabular-nums;
+  min-width: 100px;
+}
+
+.audit-log__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-size-caption, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.audit-log__badge--apply {
+  background: rgba(0, 122, 255, 0.10);
+  color: var(--color-primary, #007AFF);
+}
+
+.audit-log__badge--revert {
+  background: rgba(255, 59, 48, 0.10);
+  color: var(--color-block, #FF3B30);
+}
+
+.audit-log__badge--confirm {
+  background: rgba(52, 199, 89, 0.10);
+  color: var(--color-allow, #34C759);
+}
+
+.audit-log__badge--restore {
+  background: rgba(255, 149, 0, 0.10);
+  color: var(--color-warning, #FF9500);
+}
+
+.audit-log__badge--group-apply {
+  background: rgba(88, 86, 214, 0.10);
+  color: var(--color-log, #5856D6);
+}
+
+.audit-log__host {
+  color: var(--color-text-primary, #1D1D1F);
+  font-weight: 500;
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-log__details {
+  color: var(--color-text-secondary, #86868B);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-log__ago {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary, #AEAEB2);
+  font-size: var(--font-size-caption, 11px);
+  margin-left: auto;
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .audit-log__row {
+    background: var(--color-surface, #1C1C1E);
+  }
+
+  .audit-log__row:hover {
+    background: var(--color-hover, #2C2C2E);
+  }
 }

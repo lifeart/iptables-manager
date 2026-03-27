@@ -78,6 +78,25 @@ export interface ApplyResult {
   remoteJobId?: string;
 }
 
+export interface HostApplyResult {
+  hostId: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface GroupApplyResult {
+  results: HostApplyResult[];
+  strategy: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+export interface PreviewResult {
+  restoreContent: string;
+  restoreCommand: string;
+}
+
 export interface ChainTraversal {
   table: string;
   chain: string;
@@ -172,6 +191,19 @@ export interface ConntrackEvent {
   max: number;
 }
 
+export interface CompareHostsResult {
+  onlyInA: string[];
+  onlyInB: string[];
+  different: string[];
+  identical: number;
+}
+
+export interface ImportExistingRulesResult {
+  rules: unknown;
+  rawIptablesSave: string;
+  nonTrRuleCount: number;
+}
+
 // ─── Tauri Detection ─────────────────────────────────────────
 
 const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -208,6 +240,21 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return { rules: [], defaultPolicy: 'drop', rawIptablesSave: '' } as T;
     case 'rules:apply':
       return { success: true, safetyTimerActive: true, safetyTimerExpiry: Date.now() + 60000 } as T;
+    case 'rules:apply-group': {
+      const hostIds = (_args?.hostIds as string[]) ?? [];
+      return {
+        results: hostIds.map(id => ({ hostId: id, success: true, error: undefined })),
+        strategy: (_args?.strategy as string) ?? 'rolling',
+        total: hostIds.length,
+        succeeded: hostIds.length,
+        failed: 0,
+      } as T;
+    }
+    case 'rules:preview':
+      return {
+        restoreContent: (_args?.changesJson as string) || '# No changes to preview',
+        restoreCommand: 'sudo iptables-restore -w 5 --noflush --counters',
+      } as T;
     case 'rules:revert':
       return undefined as T;
     case 'rules:confirm':
@@ -267,6 +314,14 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return { current: 0, max: 0 } as T;
     case 'activity:fetch':
       return { hitCounters: [], conntrackCurrent: 0, conntrackMax: 0 } as T;
+    case 'drift:check':
+      return { drifted: false, addedRules: 0, removedRules: 0, modifiedRules: 0 } as T;
+    case 'drift:reset':
+      return undefined as T;
+    case 'hosts:compare':
+      return { onlyInA: [], onlyInB: [], different: [], identical: 0 } as T;
+    case 'rules:import-existing':
+      return { rules: { tables: {} }, rawIptablesSave: '', nonTrRuleCount: 0 } as T;
     default:
       return undefined as T;
   }
@@ -284,6 +339,8 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'host:provision': 'host_provision',
   'rules:fetch': 'fetch_rules',
   'rules:apply': 'rules_apply',
+  'rules:apply-group': 'rules_apply_group',
+  'rules:preview': 'rules_preview',
   'rules:revert': 'rules_revert',
   'rules:confirm': 'rules_confirm',
   'rules:explain': 'explain_rule_cmd',
@@ -307,6 +364,10 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'activity:fetch': 'fetch_activity',
   'safety:set-timer': 'set_safety_timer',
   'safety:clear-timer': 'clear_safety_timer',
+  'drift:check': 'check_drift',
+  'drift:reset': 'reset_drift',
+  'hosts:compare': 'compare_hosts',
+  'rules:import-existing': 'import_existing_rules',
 };
 
 function mapCommandName(cmd: string): string {
@@ -386,6 +447,16 @@ export const fetchRules = (hostId: string) =>
 
 export const applyChanges = (hostId: string, changes: StagedChange[]) =>
   ipcCall<ApplyResult>('rules:apply', { hostId, changesJson: JSON.stringify(changes) });
+
+export const applyToGroup = (
+  hostIds: string[],
+  changesJson: string,
+  strategy: 'canary' | 'rolling' | 'parallel',
+) =>
+  ipcCall<GroupApplyResult>('rules:apply-group', { hostIds, changesJson, strategy });
+
+export const previewChanges = (hostId: string, changes: StagedChange[]) =>
+  ipcCall<PreviewResult>('rules:preview', { hostId, changesJson: JSON.stringify(changes) });
 
 export const revertChanges = (hostId: string) =>
   ipcCall<void>('rules:revert', { hostId });
@@ -469,6 +540,28 @@ export const fetchConntrack = (hostId: string) =>
 
 export const fetchActivity = (hostId: string) =>
   ipcCall<ActivityData>('activity:fetch', { hostId });
+
+// Drift Detection
+export interface DriftCheckResult {
+  drifted: boolean;
+  addedRules: number;
+  removedRules: number;
+  modifiedRules: number;
+}
+
+export const checkDrift = (hostId: string) =>
+  ipcCall<DriftCheckResult>('drift:check', { hostId });
+
+export const resetDrift = (hostId: string) =>
+  ipcCall<void>('drift:reset', { hostId });
+
+// Cross-host comparison
+export const compareHosts = (hostIdA: string, hostIdB: string) =>
+  ipcCall<CompareHostsResult>('hosts:compare', { hostIdA, hostIdB });
+
+// Import existing (non-TR) rules as baseline
+export const importExistingRules = (hostId: string) =>
+  ipcCall<ImportExistingRulesResult>('rules:import-existing', { hostId });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

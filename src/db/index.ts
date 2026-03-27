@@ -13,6 +13,7 @@ import type {
   StagedChangeset,
   SafetyTimerState,
   AppSettings,
+  AuditEntry,
 } from '../store/types';
 
 let dbInstance: IDBPDatabase | null = null;
@@ -74,10 +75,11 @@ export async function loadPersistedState(): Promise<{
   stagedChanges: StagedChangeset[];
   safetyTimers: SafetyTimerState[];
   settings: Partial<AppSettings>;
+  auditLog: AuditEntry[];
 }> {
   const db = getDB();
 
-  const [hosts, groups, ipLists, stagedChanges, safetyTimers, settingsEntries] =
+  const [hosts, groups, ipLists, stagedChanges, safetyTimers, settingsEntries, auditLog] =
     await Promise.all([
       db.getAll(STORE_NAMES.HOSTS) as Promise<Host[]>,
       db.getAll(STORE_NAMES.GROUPS) as Promise<HostGroup[]>,
@@ -85,6 +87,7 @@ export async function loadPersistedState(): Promise<{
       db.getAll(STORE_NAMES.STAGED_CHANGES) as Promise<StagedChangeset[]>,
       db.getAll(STORE_NAMES.SAFETY_TIMERS) as Promise<SafetyTimerState[]>,
       db.getAll(STORE_NAMES.SETTINGS) as Promise<Array<{ key: string; value: unknown }>>,
+      db.getAll(STORE_NAMES.AUDIT_LOG) as Promise<AuditEntry[]>,
     ]);
 
   // Reconstruct settings from key-value pairs
@@ -100,6 +103,7 @@ export async function loadPersistedState(): Promise<{
     stagedChanges,
     safetyTimers,
     settings: settings as Partial<AppSettings>,
+    auditLog: auditLog.sort((a, b) => b.timestamp - a.timestamp),
   };
 }
 

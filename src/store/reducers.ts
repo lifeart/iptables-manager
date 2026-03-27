@@ -8,6 +8,7 @@ import type {
 
 const BLOCKED_LOG_CAP = 500;
 const SSH_LOG_CAP = 1000;
+const AUDIT_LOG_CAP = 500;
 
 function cloneMap<K, V>(map: Map<K, V>): Map<K, V> {
   return new Map(map);
@@ -51,6 +52,9 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       if (settings) {
         newState.settings = { ...state.settings, ...settings };
+      }
+      if (action.payload.auditLog) {
+        newState.auditLog = action.payload.auditLog.slice(0, AUDIT_LOG_CAP);
       }
       return newState;
     }
@@ -114,7 +118,10 @@ export function reducer(state: AppState, action: Action): AppState {
       const newFilter = { ...state.ruleFilter, ...action.filter };
       if (
         newFilter.tab === state.ruleFilter.tab &&
-        newFilter.search === state.ruleFilter.search
+        newFilter.search === state.ruleFilter.search &&
+        newFilter.protocol === state.ruleFilter.protocol &&
+        newFilter.port === state.ruleFilter.port &&
+        newFilter.address === state.ruleFilter.address
       ) {
         return state;
       }
@@ -432,9 +439,28 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, operations };
     }
 
+    // ─── Audit Log ────────────────────────────────────────
+    case 'ADD_AUDIT_ENTRY': {
+      const auditLog = [action.entry, ...state.auditLog].slice(0, AUDIT_LOG_CAP);
+      return { ...state, auditLog };
+    }
+
     // ─── Storage ─────────────────────────────────────────
     case 'STORAGE_QUOTA_EXCEEDED':
       return { ...state, storageQuotaExceeded: true };
+
+    // ─── Drift Detection ────────────────────────────────
+    case 'SET_DRIFT_DETECTED': {
+      const driftAlerts = cloneMap(state.driftAlerts);
+      driftAlerts.set(action.drift.hostId, action.drift);
+      return { ...state, driftAlerts };
+    }
+
+    case 'CLEAR_DRIFT': {
+      const driftAlerts = cloneMap(state.driftAlerts);
+      driftAlerts.delete(action.hostId);
+      return { ...state, driftAlerts };
+    }
 
     default:
       return state;

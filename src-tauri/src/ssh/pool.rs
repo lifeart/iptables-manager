@@ -10,6 +10,53 @@ use tokio_util::sync::CancellationToken;
 use crate::ssh::executor::{CommandExecutor, CommandOutput, ExecError};
 
 // ---------------------------------------------------------------------------
+// Rate Limiter — prevents overwhelming a remote host
+// ---------------------------------------------------------------------------
+
+/// Simple per-host rate limiter. Tracks command execution timestamps and
+/// enforces a maximum of `max_per_second` commands per second by inserting
+/// a small delay when the rate is exceeded.
+struct RateLimiter {
+    /// Timestamps of recent command executions (ring buffer style).
+    timestamps: std::collections::VecDeque<tokio::time::Instant>,
+    max_per_second: usize,
+}
+
+impl RateLimiter {
+    fn new(max_per_second: usize) -> Self {
+        Self {
+            timestamps: std::collections::VecDeque::with_capacity(max_per_second + 1),
+            max_per_second,
+        }
+    }
+
+    /// Record a command execution and return an optional delay to wait.
+    fn record(&mut self) -> Option<tokio::time::Duration> {
+        let now = tokio::time::Instant::now();
+        let one_second_ago = now - tokio::time::Duration::from_secs(1);
+
+        // Remove timestamps older than 1 second
+        while self.timestamps.front().map_or(false, |t| *t < one_second_ago) {
+            self.timestamps.pop_front();
+        }
+
+        if self.timestamps.len() >= self.max_per_second {
+            // Calculate how long to wait until the oldest timestamp is > 1s old
+            if let Some(oldest) = self.timestamps.front() {
+                let wait_until = *oldest + tokio::time::Duration::from_secs(1);
+                if wait_until > now {
+                    self.timestamps.push_back(wait_until);
+                    return Some(wait_until - now);
+                }
+            }
+        }
+
+        self.timestamps.push_back(now);
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
@@ -108,6 +155,7 @@ struct ManagedSession {
 pub struct ConnectionPool {
     sessions: RwLock<HashMap<String, Arc<ManagedSession>>>,
     apply_locks: DashMap<String, Arc<Mutex<()>>>,
+    rate_limiters: DashMap<String, Mutex<RateLimiter>>,
     max_concurrent_per_host: usize,
     transport: Box<dyn SshTransport>,
     is_shutdown: std::sync::atomic::AtomicBool,
@@ -119,6 +167,7 @@ impl ConnectionPool {
         Self {
             sessions: RwLock::new(HashMap::new()),
             apply_locks: DashMap::new(),
+            rate_limiters: DashMap::new(),
             max_concurrent_per_host: 3,
             transport,
             is_shutdown: std::sync::atomic::AtomicBool::new(false),
@@ -130,6 +179,7 @@ impl ConnectionPool {
         Self {
             sessions: RwLock::new(HashMap::new()),
             apply_locks: DashMap::new(),
+            rate_limiters: DashMap::new(),
             max_concurrent_per_host: max_concurrent,
             transport,
             is_shutdown: std::sync::atomic::AtomicBool::new(false),
@@ -186,12 +236,14 @@ impl ConnectionPool {
         Ok(())
     }
 
-    /// Execute a command on a connected host, respecting the concurrency semaphore.
+    /// Execute a command on a connected host, respecting the concurrency semaphore
+    /// and rate limiter (max 10 commands/second per host).
     pub async fn execute(
         &self,
         host_id: &str,
         command: &str,
     ) -> Result<CommandOutput, ExecError> {
+        self.wait_for_rate_limit(host_id).await;
         let session = self.get_session(host_id).await?;
         let _permit = self.acquire_concurrency(&session).await?;
         session.executor.exec(command).await
@@ -204,6 +256,7 @@ impl ConnectionPool {
         command: &str,
         stdin: &[u8],
     ) -> Result<CommandOutput, ExecError> {
+        self.wait_for_rate_limit(host_id).await;
         let session = self.get_session(host_id).await?;
         let _permit = self.acquire_concurrency(&session).await?;
         session.executor.exec_with_stdin(command, stdin).await
@@ -253,6 +306,21 @@ impl ConnectionPool {
     }
 
     // -- helpers --
+
+    /// Enforce per-host rate limiting (max 10 commands/second).
+    async fn wait_for_rate_limit(&self, host_id: &str) {
+        let limiter = self
+            .rate_limiters
+            .entry(host_id.to_string())
+            .or_insert_with(|| Mutex::new(RateLimiter::new(10)));
+        let delay = {
+            let mut rl = limiter.lock().await;
+            rl.record()
+        };
+        if let Some(d) = delay {
+            tokio::time::sleep(d).await;
+        }
+    }
 
     async fn get_session(&self, host_id: &str) -> Result<Arc<ManagedSession>, ExecError> {
         let sessions = self.sessions.read().await;
@@ -637,6 +705,29 @@ mod tests {
 
         let result = pool.execute("host-1", "echo hello").await.unwrap();
         assert_eq!(result.stdout, "hello world");
+    }
+
+    #[test]
+    fn test_rate_limiter_enforces_limit() {
+        let mut limiter = RateLimiter::new(10);
+
+        // First 10 calls should return None (no delay needed)
+        for i in 0..10 {
+            let delay = limiter.record();
+            assert!(
+                delay.is_none(),
+                "call {} should not require a delay, got {:?}",
+                i + 1,
+                delay
+            );
+        }
+
+        // 11th call should return Some(duration) — rate limit exceeded
+        let delay = limiter.record();
+        assert!(
+            delay.is_some(),
+            "11th call should require a delay when rate limit is 10/sec"
+        );
     }
 
     #[tokio::test]

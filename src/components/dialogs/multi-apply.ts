@@ -1,16 +1,21 @@
 /**
  * Multi-Apply dialog — apply staged changes to multiple hosts
  * in a group with configurable deployment strategy.
+ *
+ * Uses the rules:apply-group IPC command which delegates to the
+ * backend multi_apply module for canary/rolling/parallel strategies.
  */
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, Host, HostGroup } from '../../store/types';
-import { applyChanges } from '../../ipc/bridge';
+import type { Host, HostGroup } from '../../store/types';
+import { applyToGroup } from '../../ipc/bridge';
+import type { GroupApplyResult } from '../../ipc/bridge';
 import { h, trapFocus } from '../../utils/dom';
+import { addAuditEntry } from '../../store/audit';
 
 type Strategy = 'canary' | 'rolling' | 'parallel';
-type HostApplyStatus = 'pending' | 'applying' | 'confirmed' | 'failed';
+type HostApplyStatus = 'pending' | 'applying' | 'confirmed' | 'failed' | 'skipped';
 
 interface HostProgress {
   hostId: string;
@@ -18,46 +23,79 @@ interface HostProgress {
   error?: string;
 }
 
+const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
+  canary: 'Apply to first host, then all remaining if it succeeds.',
+  rolling: 'Apply one host at a time, stopping on first failure.',
+  parallel: 'Apply to all hosts concurrently.',
+};
+
 export class MultiApplyDialog extends Component {
   private overlay!: HTMLElement;
   private strategy: Strategy = 'rolling';
+  private selectedGroupId: string | null = null;
   private hostProgresses: HostProgress[] = [];
   private applyBtn!: HTMLButtonElement;
   private progressContainer!: HTMLElement;
+  private hostListEl!: HTMLElement;
+  private strategyDescEl!: HTMLElement;
+  private summaryEl!: HTMLElement;
   private isApplying = false;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
+    // Pick initial group from active host or first available
+    const state = this.store.getState();
+    const activeHostId = state.activeHostId;
+    if (activeHostId) {
+      const activeHost = state.hosts.get(activeHostId);
+      if (activeHost && activeHost.groupIds.length > 0) {
+        this.selectedGroupId = activeHost.groupIds[0];
+      }
+    }
+    if (!this.selectedGroupId) {
+      const groups = this.getAvailableGroups();
+      if (groups.length > 0) {
+        this.selectedGroupId = groups[0].id;
+      }
+    }
     this.render();
   }
 
-  private getGroupAndHosts(): { group: HostGroup | null; hosts: Host[] } {
+  private getAvailableGroups(): HostGroup[] {
     const state = this.store.getState();
-    const activeHostId = state.activeHostId;
-    if (!activeHostId) return { group: null, hosts: [] };
+    const result: HostGroup[] = [];
+    for (const [, group] of state.groups) {
+      if (group.memberHostIds.length > 0) {
+        result.push(group);
+      }
+    }
+    return result;
+  }
 
-    const activeHost = state.hosts.get(activeHostId);
-    if (!activeHost) return { group: null, hosts: [] };
-
-    // Find first group
-    for (const groupId of activeHost.groupIds) {
-      const group = state.groups.get(groupId);
+  private getSelectedHosts(): Host[] {
+    const state = this.store.getState();
+    if (this.selectedGroupId) {
+      const group = state.groups.get(this.selectedGroupId);
       if (group) {
         const hosts: Host[] = [];
         for (const memberId of group.memberHostIds) {
-          const h = state.hosts.get(memberId);
-          if (h) hosts.push(h);
+          const host = state.hosts.get(memberId);
+          if (host) hosts.push(host);
         }
-        return { group, hosts };
+        return hosts;
       }
     }
 
-    // No group — just the active host
-    return { group: null, hosts: activeHost ? [activeHost] : [] };
+    // Fallback: active host only
+    const activeHostId = state.activeHostId;
+    if (!activeHostId) return [];
+    const activeHost = state.hosts.get(activeHostId);
+    return activeHost ? [activeHost] : [];
   }
 
   private render(): void {
-    const { group, hosts } = this.getGroupAndHosts();
+    const hosts = this.getSelectedHosts();
+    const groups = this.getAvailableGroups();
 
     this.overlay = h('div', { className: 'dialog-overlay' });
     const titleId = 'multiapply-dialog-title';
@@ -70,8 +108,7 @@ export class MultiApplyDialog extends Component {
 
     // Header
     const header = h('div', { className: 'dialog-header' },
-      h('span', { className: 'dialog-title', id: titleId },
-        group ? `Apply to ${group.name}` : 'Multi-Host Apply'),
+      h('span', { className: 'dialog-title', id: titleId }, 'Apply to Group'),
       h('button', { className: 'dialog-close', 'aria-label': 'Close' }, '\u00D7'),
     );
     dialog.appendChild(header);
@@ -79,24 +116,35 @@ export class MultiApplyDialog extends Component {
     // Body
     const body = h('div', { className: 'dialog-body' });
 
-    // Host list with status
-    const hostList = h('div', { className: 'dialog-members-list' });
-    this.hostProgresses = [];
-    for (const host of hosts) {
-      const progress: HostProgress = { hostId: host.id, status: 'pending' };
-      this.hostProgresses.push(progress);
-
-      const statusText = host.status === 'connected' ? 'Connected' : host.status;
-      const row = h('div', { className: 'dialog-member-row' },
-        h('span', { className: 'dialog-member-label' }, host.name),
-        h('span', {
-          className: `rule-table__host-status rule-table__host-status--${host.status}`,
-          dataset: { hostProgressId: host.id },
-        }, statusText),
-      );
-      hostList.appendChild(row);
+    // Group selector (if multiple groups)
+    if (groups.length > 1) {
+      const groupField = h('div', { className: 'dialog-field' });
+      groupField.appendChild(h('label', { className: 'dialog-label' }, 'Host Group'));
+      const groupSelect = document.createElement('select');
+      groupSelect.className = 'dialog-input';
+      for (const group of groups) {
+        const opt = document.createElement('option');
+        opt.value = group.id;
+        opt.textContent = `${group.name} (${group.memberHostIds.length} hosts)`;
+        opt.selected = group.id === this.selectedGroupId;
+        groupSelect.appendChild(opt);
+      }
+      this.listen(groupSelect, 'change', () => {
+        this.selectedGroupId = groupSelect.value;
+        this.refreshHostList();
+      });
+      groupField.appendChild(groupSelect);
+      body.appendChild(groupField);
+    } else if (groups.length === 1) {
+      body.appendChild(h('div', { className: 'dialog-field' },
+        h('label', { className: 'dialog-label' }, `Group: ${groups[0].name}`),
+      ));
     }
-    body.appendChild(hostList);
+
+    // Host list with status
+    this.hostListEl = h('div', { className: 'dialog-members-list' });
+    this.buildHostList(hosts);
+    body.appendChild(this.hostListEl);
 
     // Strategy selector
     const strategyField = h('div', { className: 'dialog-field', style: { marginTop: '16px' } });
@@ -118,12 +166,23 @@ export class MultiApplyDialog extends Component {
       radio.checked = s.value === this.strategy;
       this.listen(radio, 'change', () => {
         this.strategy = s.value;
+        this.strategyDescEl.textContent = STRATEGY_DESCRIPTIONS[s.value];
       });
       strategyGroup.appendChild(radio);
       strategyGroup.appendChild(h('label', { for: `strategy-${s.value}` }, s.label));
     }
     strategyField.appendChild(strategyGroup);
+
+    this.strategyDescEl = h('div', { className: 'dialog-help-text' },
+      STRATEGY_DESCRIPTIONS[this.strategy]);
+    strategyField.appendChild(this.strategyDescEl);
+
     body.appendChild(strategyField);
+
+    // Summary (shown after apply)
+    this.summaryEl = h('div', { className: 'dialog-test-status' });
+    this.summaryEl.style.display = 'none';
+    body.appendChild(this.summaryEl);
 
     // Progress display
     this.progressContainer = h('div', { className: 'dialog-test-status' });
@@ -138,7 +197,8 @@ export class MultiApplyDialog extends Component {
     this.applyBtn = document.createElement('button');
     this.applyBtn.className = 'dialog-btn dialog-btn--primary';
     this.applyBtn.textContent = 'Apply';
-    this.applyBtn.disabled = hosts.filter(h => h.status === 'connected').length === 0;
+    const connectedCount = hosts.filter(host => host.status === 'connected').length;
+    this.applyBtn.disabled = connectedCount === 0;
 
     footer.appendChild(spacer);
     footer.appendChild(cancelBtn);
@@ -162,26 +222,124 @@ export class MultiApplyDialog extends Component {
     this.listen(this.applyBtn, 'click', () => this.handleApply());
   }
 
+  private buildHostList(hosts: Host[]): void {
+    this.hostListEl.innerHTML = '';
+    this.hostProgresses = [];
+    for (const host of hosts) {
+      const progress: HostProgress = { hostId: host.id, status: 'pending' };
+      this.hostProgresses.push(progress);
+
+      const statusText = host.status === 'connected' ? 'Ready' :
+                         host.status === 'disconnected' ? 'Disconnected' : host.status;
+      const row = h('div', { className: 'dialog-member-row' },
+        h('span', { className: 'dialog-member-label' }, host.name),
+        h('span', {
+          className: `rule-table__host-status rule-table__host-status--${host.status}`,
+          dataset: { hostProgressId: host.id },
+        }, statusText),
+      );
+      this.hostListEl.appendChild(row);
+    }
+  }
+
+  private refreshHostList(): void {
+    const hosts = this.getSelectedHosts();
+    this.buildHostList(hosts);
+    const connectedCount = hosts.filter(host => host.status === 'connected').length;
+    this.applyBtn.disabled = connectedCount === 0;
+  }
+
   private async handleApply(): Promise<void> {
     if (this.isApplying) return;
     this.isApplying = true;
     this.applyBtn.disabled = true;
     this.applyBtn.textContent = 'Applying...';
+    this.progressContainer.innerHTML = '';
+    this.summaryEl.style.display = 'none';
 
     const state = this.store.getState();
-    const connectedHosts = this.hostProgresses.filter(hp => {
-      const host = state.hosts.get(hp.hostId);
-      return host && host.status === 'connected';
-    });
+    const hosts = this.getSelectedHosts();
+    const connectedHostIds = hosts
+      .filter(host => host.status === 'connected')
+      .map(host => host.id);
 
-    if (this.strategy === 'parallel') {
-      await Promise.all(connectedHosts.map(hp => this.applyToHost(hp, state)));
-    } else {
-      // canary: apply to first, then wait; rolling: apply sequentially
-      for (const hp of connectedHosts) {
-        await this.applyToHost(hp, state);
-        if (hp.status === 'failed' && this.strategy === 'canary') {
-          break;
+    if (connectedHostIds.length === 0) {
+      this.isApplying = false;
+      this.applyBtn.textContent = 'Apply';
+      this.applyBtn.disabled = false;
+      return;
+    }
+
+    // Mark all connected hosts as applying, others as skipped
+    for (const hp of this.hostProgresses) {
+      const host = state.hosts.get(hp.hostId);
+      if (host && host.status === 'connected') {
+        hp.status = 'applying';
+      } else {
+        hp.status = 'skipped';
+      }
+      this.updateProgressDisplay(hp);
+    }
+
+    // Get changes from the active host's staged changeset
+    const activeHostId = state.activeHostId;
+    let changesJson = '';
+    let changeCount = 0;
+    if (activeHostId) {
+      const changeset = state.stagedChanges.get(activeHostId);
+      if (changeset) {
+        changesJson = JSON.stringify(changeset.changes);
+        changeCount = changeset.changes.length;
+      }
+    }
+
+    try {
+      const result: GroupApplyResult = await applyToGroup(
+        connectedHostIds,
+        changesJson,
+        this.strategy,
+      );
+
+      // Update per-host status from results
+      for (const hostResult of result.results) {
+        const hp = this.hostProgresses.find(p => p.hostId === hostResult.hostId);
+        if (hp) {
+          hp.status = hostResult.success ? 'confirmed' : 'failed';
+          hp.error = hostResult.error;
+          this.updateProgressDisplay(hp);
+
+          // Audit successful applies
+          if (hostResult.success) {
+            const host = state.hosts.get(hostResult.hostId);
+            addAuditEntry(
+              hostResult.hostId,
+              host?.name ?? hostResult.hostId,
+              'group-apply',
+              changeCount,
+              `Group apply (${this.strategy}): ${changeCount} change${changeCount !== 1 ? 's' : ''}`,
+            );
+          }
+        }
+      }
+
+      // Mark hosts that were not in results (e.g., skipped due to canary failure)
+      for (const hp of this.hostProgresses) {
+        if (hp.status === 'applying') {
+          hp.status = 'skipped';
+          this.updateProgressDisplay(hp);
+        }
+      }
+
+      // Show summary
+      this.showSummary(result);
+
+    } catch (err) {
+      // Mark all applying hosts as failed
+      for (const hp of this.hostProgresses) {
+        if (hp.status === 'applying') {
+          hp.status = 'failed';
+          hp.error = err instanceof Error ? err.message : 'Apply failed';
+          this.updateProgressDisplay(hp);
         }
       }
     }
@@ -190,21 +348,19 @@ export class MultiApplyDialog extends Component {
     this.applyBtn.textContent = 'Done';
   }
 
-  private async applyToHost(hp: HostProgress, state: AppState): Promise<void> {
-    hp.status = 'applying';
-    this.updateProgressDisplay(hp);
+  private showSummary(result: GroupApplyResult): void {
+    this.summaryEl.innerHTML = '';
+    this.summaryEl.style.display = '';
 
-    const changeset = state.stagedChanges.get(hp.hostId);
-    const changes = changeset?.changes ?? [];
+    const strategyLabel = result.strategy.charAt(0).toUpperCase() + result.strategy.slice(1);
+    const allOk = result.failed === 0;
+    const className = allOk ? 'dialog-test-item dialog-test-item--ok' : 'dialog-test-item dialog-test-item--error';
 
-    try {
-      await applyChanges(hp.hostId, changes);
-      hp.status = 'confirmed';
-    } catch (err) {
-      hp.status = 'failed';
-      hp.error = err instanceof Error ? err.message : 'Apply failed';
-    }
-    this.updateProgressDisplay(hp);
+    const summary = h('div', { className },
+      `${strategyLabel}: ${result.succeeded}/${result.total} succeeded` +
+      (result.failed > 0 ? `, ${result.failed} failed` : ''),
+    );
+    this.summaryEl.appendChild(summary);
   }
 
   private updateProgressDisplay(hp: HostProgress): void {
@@ -215,18 +371,31 @@ export class MultiApplyDialog extends Component {
     const statusMap: Record<HostApplyStatus, string> = {
       pending: 'Pending',
       applying: 'Applying...',
-      confirmed: 'Confirmed',
+      confirmed: 'Success',
       failed: `Failed${hp.error ? ': ' + hp.error : ''}`,
+      skipped: 'Skipped',
     };
 
+    // Update inline host status badge
     const statusEl = this.overlay.querySelector<HTMLElement>(`[data-host-progress-id="${hp.hostId}"]`);
     if (statusEl) {
       statusEl.textContent = statusMap[hp.status];
+      statusEl.className = 'rule-table__host-status';
+      if (hp.status === 'confirmed') {
+        statusEl.classList.add('rule-table__host-status--connected');
+      } else if (hp.status === 'failed') {
+        statusEl.classList.add('rule-table__host-status--unreachable');
+      } else if (hp.status === 'applying') {
+        statusEl.classList.add('rule-table__host-status--connecting');
+      } else if (hp.status === 'skipped') {
+        statusEl.classList.add('rule-table__host-status--disconnected');
+      }
     }
 
-    // Also update progress container
+    // Update progress container log
     let entry = this.progressContainer.querySelector(`[data-progress-host="${hp.hostId}"]`);
     if (!entry) {
+      if (hp.status === 'pending') return;
       const isOk = hp.status === 'confirmed';
       const isError = hp.status === 'failed';
       entry = h('div', {

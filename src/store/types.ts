@@ -239,6 +239,16 @@ export interface SshLogEntry {
   timestamp: number;
 }
 
+export interface AuditEntry {
+  id: string;
+  timestamp: number;
+  hostId: string;
+  hostName: string;
+  action: 'apply' | 'revert' | 'confirm' | 'snapshot-restore' | 'group-apply';
+  changeCount: number;
+  details: string;
+}
+
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   lastActiveHostId?: string;
@@ -268,7 +278,16 @@ export type DialogType =
   | 'create-iplist'
   | 'first-setup'
   | 'multi-apply'
+  | 'compare-hosts'
   | null;
+
+export interface DriftInfo {
+  hostId: string;
+  addedRules: number;
+  removedRules: number;
+  modifiedRules: number;
+  detectedAt: number;
+}
 
 export interface OperationState {
   type: string;
@@ -320,7 +339,13 @@ export interface AppState {
   commandPaletteOpen: boolean;
   quickBlockOpen: boolean;
   openDialog: DialogType;
-  ruleFilter: { tab: 'all' | 'allow' | 'block' | 'log'; search: string };
+  ruleFilter: {
+    tab: 'all' | 'allow' | 'block' | 'log';
+    search: string;
+    protocol: '' | 'tcp' | 'udp' | 'icmp';
+    port: string;
+    address: string;
+  };
 
   // @persisted — synced to IndexedDB
   hosts: Map<string, Host>;
@@ -332,11 +357,17 @@ export interface AppState {
   stagedChanges: Map<string, StagedChangeset>;
   safetyTimers: Map<string, SafetyTimerState>;
 
+  // @persisted — audit trail of rule changes
+  auditLog: AuditEntry[];
+
   // @ephemeral — re-fetched on connect, never persisted
   hostStates: Map<string, HostState>;
 
   // Async operation tracking
   operations: Map<string, OperationState>;
+
+  // @ephemeral — drift detection alerts per host
+  driftAlerts: Map<string, DriftInfo>;
 
   // Storage
   storageQuotaExceeded: boolean;
@@ -357,7 +388,7 @@ export function createInitialState(): AppState {
     commandPaletteOpen: false,
     quickBlockOpen: false,
     openDialog: null,
-    ruleFilter: { tab: 'all', search: '' },
+    ruleFilter: { tab: 'all', search: '', protocol: '', port: '', address: '' },
 
     hosts: new Map(),
     groups: new Map(),
@@ -373,8 +404,10 @@ export function createInitialState(): AppState {
 
     stagedChanges: new Map(),
     safetyTimers: new Map(),
+    auditLog: [],
     hostStates: new Map(),
     operations: new Map(),
+    driftAlerts: new Map(),
     storageQuotaExceeded: false,
   };
 }

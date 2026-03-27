@@ -14,6 +14,7 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { SafetyTimerState } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
+import { addAuditEntry } from '../../store/audit';
 
 export class SafetyBanner extends Component {
   private bannerEl: HTMLElement;
@@ -184,6 +185,8 @@ export class SafetyBanner extends Component {
       const timer = this.currentTimers.get(hostId);
       const { confirmChanges: confirmIpc } = await import('../../ipc/bridge');
       await confirmIpc(hostId, timer?.remoteJobId, timer?.mechanism);
+      const host = this.store.getState().hosts.get(hostId);
+      addAuditEntry(hostId, host?.name ?? hostId, 'confirm', 0, 'Confirmed applied changes');
     } catch {
       // Confirm failure is non-critical
     }
@@ -203,6 +206,8 @@ export class SafetyBanner extends Component {
     try {
       const { revertChanges: revertIpc } = await import('../../ipc/bridge');
       await revertIpc(hostId);
+      const host = this.store.getState().hosts.get(hostId);
+      addAuditEntry(hostId, host?.name ?? hostId, 'revert', 0, 'Reverted applied changes');
     } catch {
       // Revert failure is non-critical; clear the timer UI regardless
     }

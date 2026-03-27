@@ -16,6 +16,8 @@ import type {
   IpListEntry,
   DialogType,
   RuleConflict,
+  AuditEntry,
+  DriftInfo,
 } from './types';
 
 // ─── Hydration ─────────────────────────────────────────────────
@@ -29,6 +31,7 @@ export interface HydrateAction {
     stagedChanges?: Array<StagedChangeset>;
     safetyTimers?: Array<SafetyTimerState>;
     settings?: Partial<AppSettings>;
+    auditLog?: Array<AuditEntry>;
   };
 }
 
@@ -275,12 +278,31 @@ export interface StorageQuotaExceededAction {
   type: 'STORAGE_QUOTA_EXCEEDED';
 }
 
+// ─── Audit Log ────────────────────────────────────────────────
+
+export interface AddAuditEntryAction {
+  type: 'ADD_AUDIT_ENTRY';
+  entry: AuditEntry;
+}
+
 // ─── IP List Entries ──────────────────────────────────────────
 
 export interface SetIpListEntriesAction {
   type: 'SET_IP_LIST_ENTRIES';
   ipListId: string;
   entries: IpListEntry[];
+}
+
+// ─── Drift Detection ──────────────────────────────────────────
+
+export interface SetDriftDetectedAction {
+  type: 'SET_DRIFT_DETECTED';
+  drift: DriftInfo;
+}
+
+export interface ClearDriftAction {
+  type: 'CLEAR_DRIFT';
+  hostId: string;
 }
 
 // ─── Discriminated Union ──────────────────────────────────────
@@ -329,4 +351,7 @@ export type Action =
   | FailOperationAction
   | ClearOperationAction
   | StorageQuotaExceededAction
-  | SetIpListEntriesAction;
+  | SetIpListEntriesAction
+  | AddAuditEntryAction
+  | SetDriftDetectedAction
+  | ClearDriftAction;

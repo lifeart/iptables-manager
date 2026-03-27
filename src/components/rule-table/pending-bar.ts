@@ -13,16 +13,20 @@ import { formatCount } from '../../utils/format';
 import { h } from '../../utils/dom';
 import * as ipc from '../../ipc/bridge';
 import { IpcError } from '../../ipc/bridge';
+import { addAuditEntry } from '../../store/audit';
 
 export class PendingBar extends Component {
   private countEl!: HTMLElement;
   private discardBtn!: HTMLButtonElement;
+  private previewBtn!: HTMLButtonElement;
   private applyBtn!: HTMLButtonElement;
+  private groupApplyBtn!: HTMLButtonElement;
   private showChangesLink!: HTMLElement;
   private changesListEl!: HTMLElement;
   private changesExpanded = false;
   private tooltipEl: HTMLElement | null = null;
   private tooltipTimeout: ReturnType<typeof setTimeout> | null = null;
+  private previewModalEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -59,6 +63,19 @@ export class PendingBar extends Component {
     this.discardBtn.textContent = 'Discard';
     this.el.appendChild(this.discardBtn);
 
+    // Preview button
+    this.previewBtn = document.createElement('button');
+    this.previewBtn.className = 'rule-table__pending-bar-preview';
+    this.previewBtn.textContent = 'Preview';
+    this.el.appendChild(this.previewBtn);
+
+    // Apply to Group button (only shown when host is in a group)
+    this.groupApplyBtn = document.createElement('button');
+    this.groupApplyBtn.className = 'rule-table__pending-bar-group-apply';
+    this.groupApplyBtn.textContent = 'Apply to Group';
+    this.groupApplyBtn.style.display = 'none';
+    this.el.appendChild(this.groupApplyBtn);
+
     // Apply button (wrapped in container for tooltip positioning)
     const applyContainer = h('div', {
       className: 'rule-table__pending-bar-apply-wrap',
@@ -85,8 +102,16 @@ export class PendingBar extends Component {
       }
     });
 
+    this.listen(this.previewBtn, 'click', () => {
+      this.showPreview();
+    });
+
     this.listen(this.applyBtn, 'click', () => {
       this.applyChanges();
+    });
+
+    this.listen(this.groupApplyBtn, 'click', () => {
+      this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'multi-apply' });
     });
 
     // "Show changes" toggle
@@ -273,7 +298,9 @@ export class PendingBar extends Component {
       this.applyBtn.textContent = 'Applying...';
 
       await ipc.applyChanges(hostId, changeset.changes);
+      const changeCount = changeset.changes.length;
       this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
+      addAuditEntry(hostId, host?.name ?? hostId, 'apply', changeCount, `Applied ${changeCount} change${changeCount !== 1 ? 's' : ''}`);
 
       // Set safety timer for real connected hosts
       if (isRealHost) {
@@ -291,7 +318,9 @@ export class PendingBar extends Component {
         if (proceed) {
           try {
             await ipc.applyChanges(hostId, changeset.changes);
+            const forceChangeCount = changeset.changes.length;
             this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
+            addAuditEntry(hostId, host?.name ?? hostId, 'apply', forceChangeCount, `Force-applied ${forceChangeCount} change${forceChangeCount !== 1 ? 's' : ''} (lockout warning overridden)`);
 
             // Schedule safety timer for force-applied changes too
             if (isRealHost) {
@@ -322,6 +351,98 @@ export class PendingBar extends Component {
     }
   }
 
+  private async showPreview(): Promise<void> {
+    const state = this.store.getState();
+    const hostId = state.activeHostId;
+    if (!hostId) return;
+
+    const changeset = state.stagedChanges.get(hostId);
+    if (!changeset || changeset.changes.length === 0) return;
+
+    try {
+      this.previewBtn.disabled = true;
+      this.previewBtn.textContent = 'Loading...';
+
+      const result = await ipc.previewChanges(hostId, changeset.changes);
+      this.renderPreviewModal(result.restoreContent, result.restoreCommand);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Preview failed';
+      this.showError(msg);
+    } finally {
+      this.previewBtn.disabled = false;
+      this.previewBtn.textContent = 'Preview';
+    }
+  }
+
+  private renderPreviewModal(restoreContent: string, restoreCommand: string): void {
+    this.closePreviewModal();
+
+    // Backdrop
+    const backdrop = h('div', { className: 'preview-modal__backdrop' });
+
+    // Modal
+    const modal = h('div', { className: 'preview-modal' });
+
+    // Header
+    const header = h('div', { className: 'preview-modal__header' });
+    header.appendChild(h('h3', { className: 'preview-modal__title' }, 'Preview: iptables-restore'));
+    const closeBtn = h('button', { className: 'preview-modal__close', type: 'button' }, '\u00D7');
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Command line
+    const cmdSection = h('div', { className: 'preview-modal__section' });
+    cmdSection.appendChild(h('label', { className: 'preview-modal__label' }, 'Command'));
+    const cmdPre = h('pre', { className: 'preview-modal__code preview-modal__code--cmd' });
+    cmdPre.appendChild(h('code', {}, restoreCommand));
+    cmdSection.appendChild(cmdPre);
+    modal.appendChild(cmdSection);
+
+    // Restore content (stdin)
+    const contentSection = h('div', { className: 'preview-modal__section' });
+    const contentHeader = h('div', { className: 'preview-modal__section-header' });
+    contentHeader.appendChild(h('label', { className: 'preview-modal__label' }, 'Stdin content'));
+    const copyBtn = h('button', { className: 'preview-modal__copy', type: 'button' }, 'Copy');
+    contentHeader.appendChild(copyBtn);
+    contentSection.appendChild(contentHeader);
+
+    const contentPre = h('pre', { className: 'preview-modal__code' });
+    contentPre.appendChild(h('code', {}, restoreContent));
+    contentSection.appendChild(contentPre);
+    modal.appendChild(contentSection);
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    this.previewModalEl = backdrop;
+
+    // Events
+    const close = () => this.closePreviewModal();
+    closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    }, { once: true });
+
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(restoreContent).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      }).catch(() => {
+        copyBtn.textContent = 'Failed';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  }
+
+  private closePreviewModal(): void {
+    if (this.previewModalEl) {
+      this.previewModalEl.remove();
+      this.previewModalEl = null;
+    }
+  }
+
   private bindSubscriptions(): void {
     this.subscribe(
       selectPendingChangeCount,
@@ -338,6 +459,19 @@ export class PendingBar extends Component {
           this.showChangesLink.textContent = 'Show changes';
           this.changesListEl.style.display = 'none';
         }
+      },
+    );
+
+    // Show/hide "Apply to Group" button based on whether active host belongs to a group
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return false;
+        const host = s.hosts.get(hostId);
+        return !!(host && host.groupIds.length > 0);
+      },
+      (hasGroup) => {
+        this.groupApplyBtn.style.display = hasGroup ? '' : 'none';
       },
     );
   }

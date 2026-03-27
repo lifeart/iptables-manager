@@ -10,6 +10,7 @@ import { selectActiveHost } from '../../store/selectors';
 import type { AppState, Snapshot } from '../../store/types';
 import * as ipc from '../../ipc/bridge';
 import type { SnapshotMeta } from '../../ipc/bridge';
+import { addAuditEntry } from '../../store/audit';
 
 export class SnapshotHistory extends Component {
   private listEl: HTMLElement;
@@ -171,6 +172,7 @@ export class SnapshotHistory extends Component {
       const { convertRuleSet } = await import('../../services/rule-converter');
       const rules = convertRuleSet(ruleSet);
       this.store.dispatch({ type: 'SET_HOST_RULES', hostId: host.id, rules });
+      addAuditEntry(host.id, host.name, 'snapshot-restore', rules.length, `Restored snapshot with ${rules.length} rule${rules.length !== 1 ? 's' : ''}`);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Restore failed';
       window.alert(`Snapshot restore failed: ${errorMsg}`);

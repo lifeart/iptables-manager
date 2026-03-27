@@ -10,17 +10,22 @@ pub mod export;
 pub mod temporary;
 pub mod sysctl;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use ssh::pool::{ConnectionPool, OpensshTransport};
-use ipc::commands::PoolState;
+use ipc::commands::{PoolState, DriftState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Create the connection pool with real SSH transport
     let pool: PoolState = Arc::new(ConnectionPool::new(Box::new(OpensshTransport)));
 
+    // Create drift detection state (in-memory hash store per host)
+    let drift_state: DriftState = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
     tauri::Builder::default()
         .manage(pool)
+        .manage(drift_state)
         .invoke_handler(tauri::generate_handler![
             // Host connection commands
             ipc::commands::host_connect,
@@ -32,6 +37,8 @@ pub fn run() {
             // Rules commands
             ipc::commands::fetch_rules,
             ipc::commands::rules_apply,
+            ipc::commands::rules_apply_group,
+            ipc::commands::rules_preview,
             ipc::commands::rules_revert,
             ipc::commands::rules_confirm,
             ipc::commands::rules_trace,
@@ -39,6 +46,9 @@ pub fn run() {
             ipc::commands::rules_detect_conflicts,
             ipc::commands::explain_rule_cmd,
             ipc::commands::export_rules,
+            // Cross-host comparison and import
+            ipc::commands::compare_hosts,
+            ipc::commands::import_existing_rules,
             // Activity polling commands
             ipc::commands::activity_subscribe,
             ipc::commands::activity_unsubscribe,
@@ -60,6 +70,9 @@ pub fn run() {
             // Safety timer commands
             ipc::commands::set_safety_timer,
             ipc::commands::clear_safety_timer,
+            // Drift detection commands
+            ipc::commands::check_drift,
+            ipc::commands::reset_drift,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

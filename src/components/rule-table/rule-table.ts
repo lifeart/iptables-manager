@@ -8,7 +8,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { AppState, EffectiveRule, HitCounter, Host, OperationState } from '../../store/types';
+import type { AppState, EffectiveRule, HitCounter, Host, OperationState, Rule } from '../../store/types';
 import {
   selectActiveHost,
   selectEffectiveRules,
@@ -22,7 +22,7 @@ import { PendingBar } from './pending-bar';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
-import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket, provisionHost, detectConflicts } from '../../ipc/bridge';
+import { disconnectHost, connectHost, fetchRules, exportRules, tracePacket, provisionHost, detectConflicts, importExistingRules } from '../../ipc/bridge';
 import type { TestPacket, RuleConflict } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import Sortable from 'sortablejs';
@@ -48,6 +48,8 @@ export class RuleTable extends Component {
   private errorBanner: HTMLElement | null = null;
   private conflictsBanner: HTMLElement | null = null;
   private conflictsExpanded = false;
+  private importBanner: HTMLElement | null = null;
+  private importDismissed = new Set<string>();
 
   // Tab content panels
   private activityPanel: HTMLElement | null = null;
@@ -316,6 +318,23 @@ export class RuleTable extends Component {
       },
     );
 
+    // Check for non-TR rules when rules load (for import-as-baseline banner)
+    this.subscribe(
+      (s: AppState) => {
+        const hostId = s.activeHostId;
+        if (!hostId) return null;
+        return s.hostStates.get(hostId)?.rules ?? null;
+      },
+      (rules) => {
+        const hostId = this.store.getState().activeHostId;
+        if (hostId && rules && rules.length > 0) {
+          this.checkImportBanner(hostId);
+        } else {
+          this.removeImportBanner();
+        }
+      },
+    );
+
     // Initial renders
     this.updateTabStyling();
     this.renderRules();
@@ -442,6 +461,93 @@ export class RuleTable extends Component {
         list.appendChild(item);
       }
       this.conflictsBanner.appendChild(list);
+    }
+  }
+
+  private checkImportBanner(hostId: string): void {
+    if (this.importDismissed.has(hostId)) {
+      this.removeImportBanner();
+      return;
+    }
+
+    const state = this.store.getState();
+    const hostState = state.hostStates.get(hostId);
+    if (!hostState) return;
+
+    const importedCount = hostState.rules.filter(
+      r => r.origin?.type === 'imported' || r.origin?.type === 'system',
+    ).length;
+
+    if (importedCount > 0 && !this.importBanner) {
+      this.importBanner = h('div', { className: 'rule-table__import-banner' });
+
+      const text = h('span', { className: 'rule-table__import-text' },
+        `This host has ${importedCount} existing iptables rule${importedCount === 1 ? '' : 's'} not managed by Traffic Rules. Import them?`);
+      this.importBanner.appendChild(text);
+
+      const importBtn = h('button', {
+        className: 'rule-table__import-btn',
+        type: 'button',
+      }, 'Import');
+      this.listen(importBtn, 'click', () => this.handleImportRules(hostId));
+      this.importBanner.appendChild(importBtn);
+
+      const dismissBtn = h('button', {
+        className: 'rule-table__import-dismiss',
+        type: 'button',
+        'aria-label': 'Dismiss',
+      }, '\u00D7');
+      this.listen(dismissBtn, 'click', () => {
+        this.importDismissed.add(hostId);
+        this.removeImportBanner();
+      });
+      this.importBanner.appendChild(dismissBtn);
+
+      this.sectionsContainer.insertBefore(this.importBanner, this.sectionsContainer.firstChild);
+    } else if (importedCount === 0) {
+      this.removeImportBanner();
+    }
+  }
+
+  private removeImportBanner(): void {
+    if (this.importBanner) {
+      this.importBanner.remove();
+      this.importBanner = null;
+    }
+  }
+
+  private async handleImportRules(hostId: string): Promise<void> {
+    try {
+      const result = await importExistingRules(hostId);
+      if (result.nonTrRuleCount === 0) {
+        this.removeImportBanner();
+        return;
+      }
+
+      const ruleSet = {
+        rules: [] as Rule[],
+        defaultPolicy: 'drop',
+        rawIptablesSave: result.rawIptablesSave,
+      };
+      const allRules = convertRuleSet(ruleSet);
+
+      for (let i = 0; i < allRules.length; i++) {
+        const rule = allRules[i];
+        rule.origin = { type: 'imported' };
+        this.store.dispatch({
+          type: 'ADD_STAGED_CHANGE',
+          hostId,
+          change: { type: 'add', rule, position: i },
+        });
+      }
+
+      this.importDismissed.add(hostId);
+      this.removeImportBanner();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Import failed';
+      const errorEl = h('div', { className: 'rule-table__import-error' }, msg);
+      this.importBanner?.appendChild(errorEl);
+      setTimeout(() => errorEl.remove(), 5000);
     }
   }
 

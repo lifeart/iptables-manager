@@ -151,12 +151,22 @@ export class Sidebar extends Component {
     ipListsSection.appendChild(this.ipListsContainer);
     this.el.appendChild(ipListsSection);
 
-    // Add button
+    // Bottom buttons
+    const bottomBtns = h('div', { className: 'sidebar__bottom-actions' });
+
     const addBtn = h('button', {
       className: 'sidebar__add-btn',
       'aria-label': 'Add host',
     }, '+ Add Host');
-    this.el.appendChild(addBtn);
+    bottomBtns.appendChild(addBtn);
+
+    const compareBtn = h('button', {
+      className: 'sidebar__compare-btn',
+      'aria-label': 'Compare hosts',
+    }, 'Compare');
+    bottomBtns.appendChild(compareBtn);
+
+    this.el.appendChild(bottomBtns);
 
     // Resize handle
     this.resizeHandle = h('div', {
@@ -284,6 +294,13 @@ export class Sidebar extends Component {
     if (addBtn) {
       this.listen(addBtn, 'click', () => {
         this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'add-host' });
+      });
+    }
+
+    const compareBtn = this.el.querySelector<HTMLElement>('.sidebar__compare-btn');
+    if (compareBtn) {
+      this.listen(compareBtn, 'click', () => {
+        this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'compare-hosts' });
       });
     }
 
