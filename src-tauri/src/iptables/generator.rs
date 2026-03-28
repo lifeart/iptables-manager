@@ -618,6 +618,34 @@ mod tests {
     }
 
     #[test]
+    fn test_dual_stack_icmp_protocol_detection() {
+        // ICMP rule should be v4-only, ICMPv6 should be v6-only
+        let icmp_spec = make_spec(None, None, Some(Protocol::Icmp), AddressFamily::Both);
+        assert!(is_ipv4_only(&icmp_spec), "ICMP should be detected as IPv4-only");
+        assert!(!is_ipv6_only(&icmp_spec), "ICMP should NOT be IPv6-only");
+
+        let icmpv6_spec = make_spec(None, None, Some(Protocol::Icmpv6), AddressFamily::Both);
+        assert!(!is_ipv4_only(&icmpv6_spec), "ICMPv6 should NOT be IPv4-only");
+        assert!(is_ipv6_only(&icmpv6_spec), "ICMPv6 should be detected as IPv6-only");
+
+        // TCP with no addresses should be neither v4-only nor v6-only
+        let tcp_spec = make_spec(None, None, Some(Protocol::Tcp), AddressFamily::Both);
+        assert!(!is_ipv4_only(&tcp_spec), "plain TCP should not be IPv4-only");
+        assert!(!is_ipv6_only(&tcp_spec), "plain TCP should not be IPv6-only");
+    }
+
+    #[test]
+    fn test_generate_restore_empty_chain() {
+        let mut chains: HashMap<String, Vec<String>> = HashMap::new();
+        chains.insert("TR-INPUT".to_string(), vec![]);
+
+        let result = generate_restore_from_lines(&chains, "filter");
+        assert!(result.contains(":TR-INPUT - [0:0]\n"), "should have reset line");
+        assert!(!result.contains("-A TR-INPUT"), "should have no rules");
+        assert!(result.ends_with("COMMIT\n"));
+    }
+
+    #[test]
     fn test_dual_stack_mixed() {
         // Mix of v4-only, v6-only, and both rules
         let v4_spec = make_spec(
