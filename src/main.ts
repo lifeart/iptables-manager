@@ -145,6 +145,24 @@ async function autoReconnect(): Promise<void> {
   }
 }
 
+async function scheduleUpdateCheck(): Promise<void> {
+  try {
+    const { checkForUpdates } = await import('./services/update-checker');
+    const { UpdateBanner } = await import('./components/update-banner/update-banner');
+
+    const info = await checkForUpdates();
+    if (!info) return;
+
+    // Don't show if user already dismissed this version
+    if (UpdateBanner.isDismissed(info.latestVersion)) return;
+
+    const banner = new UpdateBanner(info);
+    banner.mount(document.body);
+  } catch {
+    // Update check is non-critical — never block the app
+  }
+}
+
 let bootstrapped = false;
 
 async function bootstrap(): Promise<void> {
@@ -196,6 +214,13 @@ async function bootstrap(): Promise<void> {
     autoReconnect().catch((err) => {
       console.warn('Auto-reconnect failed:', err);
     });
+
+    // 8. Check for updates after a short delay (Tauri mode only)
+    if (IS_TAURI) {
+      setTimeout(() => {
+        scheduleUpdateCheck();
+      }, 5000);
+    }
   } catch (e) {
     // Bootstrap failure is shown in the UI error screen below
     hideLoadingScreen();

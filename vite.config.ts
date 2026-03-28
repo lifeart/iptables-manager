@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import pkg from './package.json';
 
 // @tauri-apps/cli sets these environment variables
 const host = process.env.TAURI_DEV_HOST;
@@ -27,6 +28,9 @@ export default defineConfig({
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     // produce sourcemaps for debug builds
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   // TODO: Add ts-rs sync plugin when implemented
 });
