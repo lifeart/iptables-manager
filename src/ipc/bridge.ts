@@ -16,7 +16,9 @@ import type {
 import type {
   ActivityData,
   ApplyResult,
+  ChainOwnerGroup,
   ChainTraversal,
+  CoexistenceProfile,
   CompareHostsResult,
   ConnectionResult,
   ConvertToIpsetResult,
@@ -48,7 +50,9 @@ import type {
 export type {
   ActivityData,
   ApplyResult,
+  ChainOwnerGroup,
   ChainTraversal,
+  CoexistenceProfile,
   CompareHostsResult,
   ConnectionResult,
   ConvertToIpsetResult,
@@ -269,6 +273,18 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
         ruleCountV4: 0,
         ruleCountV6: 0,
       } as T;
+    case 'coexistence:profile':
+      return {
+        owners: [
+          { owner: 'Docker', chains: ['DOCKER', 'DOCKER-USER'], ruleCount: 8, isAppManaged: false },
+          { owner: 'fail2ban', chains: ['f2b-sshd'], ruleCount: 3, isAppManaged: false },
+          { owner: 'App', chains: ['TR-INPUT', 'TR-CONNTRACK'], ruleCount: 5, isAppManaged: true },
+          { owner: 'Built-in', chains: ['INPUT', 'FORWARD', 'OUTPUT'], ruleCount: 0, isAppManaged: false },
+        ],
+        totalChains: 8,
+        appManagedChains: 2,
+        externalChains: 3,
+      } as T;
     default:
       return undefined as T;
   }
@@ -320,6 +336,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'ipset:analyze': 'analyze_ipset_opportunities',
   'ipset:convert': 'convert_to_ipset',
   'dualstack:check-divergence': 'check_v4_v6_divergence',
+  'coexistence:profile': 'get_coexistence_profile',
 };
 
 function mapCommandName(cmd: string): string {
@@ -520,6 +537,10 @@ export const convertToIpset = (hostId: string, suggestion: string) =>
 // Dual-stack divergence check
 export const checkDualStackDivergence = (hostId: string) =>
   ipcCall<DualStackDivergence>('dualstack:check-divergence', { hostId });
+
+// Coexistence profile
+export const getCoexistenceProfile = (hostId: string) =>
+  ipcCall<CoexistenceProfile>('coexistence:profile', { hostId });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

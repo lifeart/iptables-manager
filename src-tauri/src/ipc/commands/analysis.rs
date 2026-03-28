@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
 use crate::iptables::ipset_suggest::{self, IpsetSuggestion};
+use crate::iptables::system_detect::{build_coexistence_profile, CoexistenceProfile, detect_all_chain_owners};
 use crate::ssh::command::build_command;
 
 use crate::ssh::executor::CommandExecutor;
@@ -426,6 +427,24 @@ fn extract_tr_chains(raw: &str) -> HashMap<String, Vec<String>> {
         }
     }
     result
+}
+
+/// Get the coexistence profile for a host, showing which chains are owned
+/// by external tools (Docker, fail2ban, Kubernetes, etc.).
+#[tauri::command]
+pub async fn get_coexistence_profile(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<CoexistenceProfile, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    let (_raw, mut ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
+    detect_all_chain_owners(&mut ruleset);
+
+    Ok(build_coexistence_profile(&ruleset))
 }
 
 // ---------------------------------------------------------------------------

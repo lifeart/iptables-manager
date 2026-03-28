@@ -1,4 +1,111 @@
+use std::collections::HashMap;
+
+use serde::Serialize;
+use ts_rs::TS;
+
 use crate::iptables::types::*;
+
+// ---------------------------------------------------------------------------
+// Coexistence profile types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct CoexistenceProfile {
+    pub owners: Vec<ChainOwnerGroup>,
+    pub total_chains: usize,
+    pub app_managed_chains: usize,
+    pub external_chains: usize,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ChainOwnerGroup {
+    pub owner: String,
+    pub chains: Vec<String>,
+    pub rule_count: usize,
+    pub is_app_managed: bool,
+}
+
+/// Build a coexistence profile from a parsed ruleset.
+///
+/// Groups chains by detected owner and counts rules per group.
+pub fn build_coexistence_profile(ruleset: &ParsedRuleset) -> CoexistenceProfile {
+    let mut groups: HashMap<String, (Vec<String>, usize, bool)> = HashMap::new();
+    let mut total_chains = 0usize;
+
+    for table in ruleset.tables.values() {
+        for (chain_name, chain_state) in &table.chains {
+            total_chains += 1;
+            let (owner_label, is_app) = match &chain_state.owner {
+                ChainOwner::System(tool) => {
+                    let label = match tool {
+                        SystemTool::Docker => "Docker",
+                        SystemTool::Fail2ban => "fail2ban",
+                        SystemTool::Kubernetes => "Kubernetes",
+                        SystemTool::Csf => "CSF",
+                        SystemTool::WgQuick => "WireGuard",
+                        SystemTool::Ufw => "UFW",
+                        SystemTool::Firewalld => "firewalld",
+                    };
+                    (label.to_string(), false)
+                }
+                ChainOwner::App => ("App".to_string(), true),
+                ChainOwner::BuiltIn => ("Built-in".to_string(), false),
+                ChainOwner::Unknown => ("Unknown".to_string(), false),
+            };
+
+            let entry = groups.entry(owner_label).or_insert_with(|| (Vec::new(), 0, is_app));
+            entry.0.push(chain_name.clone());
+            entry.1 += chain_state.rules.len();
+        }
+    }
+
+    let mut app_managed_chains = 0usize;
+    let mut external_chains = 0usize;
+    let mut owners: Vec<ChainOwnerGroup> = Vec::new();
+
+    for (owner, (mut chains, rule_count, is_app)) in groups {
+        chains.sort();
+        let chain_count = chains.len();
+        if is_app {
+            app_managed_chains += chain_count;
+        } else if owner != "Built-in" && owner != "Unknown" {
+            external_chains += chain_count;
+        }
+        owners.push(ChainOwnerGroup {
+            owner,
+            chains,
+            rule_count,
+            is_app_managed: is_app,
+        });
+    }
+
+    // Sort groups: App first, then external tools alphabetically, then Built-in/Unknown last
+    owners.sort_by(|a, b| {
+        fn sort_key(g: &ChainOwnerGroup) -> (u8, &str) {
+            if g.is_app_managed {
+                (0, &g.owner)
+            } else if g.owner == "Built-in" {
+                (2, &g.owner)
+            } else if g.owner == "Unknown" {
+                (3, &g.owner)
+            } else {
+                (1, &g.owner)
+            }
+        }
+        sort_key(a).cmp(&sort_key(b))
+    });
+
+    CoexistenceProfile {
+        owners,
+        total_chains,
+        app_managed_chains,
+        external_chains,
+    }
+}
 
 /// Detect who owns a chain based on its name and rule content.
 ///
@@ -184,5 +291,99 @@ mod tests {
     #[test]
     fn test_unknown_chain() {
         assert_eq!(detect_chain_owner("MY-CUSTOM-CHAIN", &[]), ChainOwner::Unknown);
+    }
+
+    // ─── Coexistence profile tests ──────────────────────────
+
+    fn make_chain(name: &str, rule_count: usize, owner: ChainOwner) -> (String, ChainState) {
+        let rules: Vec<ParsedRule> = (0..rule_count)
+            .map(|_| ParsedRule {
+                raw: String::new(),
+                parsed: None,
+                warnings: Vec::new(),
+                chain: name.to_string(),
+                table: "filter".to_string(),
+            })
+            .collect();
+        (
+            name.to_string(),
+            ChainState {
+                name: name.to_string(),
+                policy: None,
+                counters: None,
+                rules,
+                owner,
+            },
+        )
+    }
+
+    fn make_ruleset(chains: Vec<(String, ChainState)>) -> ParsedRuleset {
+        let mut table = TableState {
+            name: "filter".to_string(),
+            chains: HashMap::new(),
+        };
+        for (name, state) in chains {
+            table.chains.insert(name, state);
+        }
+        let mut tables = HashMap::new();
+        tables.insert("filter".to_string(), table);
+        ParsedRuleset {
+            tables,
+            header_comments: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_profile_docker_host() {
+        let ruleset = make_ruleset(vec![
+            make_chain("DOCKER-USER", 3, ChainOwner::System(SystemTool::Docker)),
+            make_chain("DOCKER", 5, ChainOwner::System(SystemTool::Docker)),
+            make_chain("INPUT", 0, ChainOwner::BuiltIn),
+        ]);
+        let profile = build_coexistence_profile(&ruleset);
+
+        assert_eq!(profile.total_chains, 3);
+        assert_eq!(profile.external_chains, 2);
+        assert_eq!(profile.app_managed_chains, 0);
+
+        let docker_group = profile.owners.iter().find(|g| g.owner == "Docker").unwrap();
+        assert_eq!(docker_group.chains.len(), 2);
+        assert_eq!(docker_group.rule_count, 8);
+        assert!(!docker_group.is_app_managed);
+    }
+
+    #[test]
+    fn test_profile_mixed() {
+        let ruleset = make_ruleset(vec![
+            make_chain("DOCKER-USER", 2, ChainOwner::System(SystemTool::Docker)),
+            make_chain("f2b-sshd", 4, ChainOwner::System(SystemTool::Fail2ban)),
+            make_chain("TR-INPUT", 3, ChainOwner::App),
+            make_chain("INPUT", 0, ChainOwner::BuiltIn),
+        ]);
+        let profile = build_coexistence_profile(&ruleset);
+
+        assert_eq!(profile.total_chains, 4);
+        assert_eq!(profile.app_managed_chains, 1);
+        assert_eq!(profile.external_chains, 2);
+
+        // Should have at least Docker, fail2ban, and App groups
+        let owner_names: Vec<&str> = profile.owners.iter().map(|g| g.owner.as_str()).collect();
+        assert!(owner_names.contains(&"Docker"));
+        assert!(owner_names.contains(&"fail2ban"));
+        assert!(owner_names.contains(&"App"));
+    }
+
+    #[test]
+    fn test_profile_empty() {
+        let ruleset = ParsedRuleset {
+            tables: HashMap::new(),
+            header_comments: Vec::new(),
+        };
+        let profile = build_coexistence_profile(&ruleset);
+
+        assert_eq!(profile.total_chains, 0);
+        assert_eq!(profile.app_managed_chains, 0);
+        assert_eq!(profile.external_chains, 0);
+        assert!(profile.owners.is_empty());
     }
 }

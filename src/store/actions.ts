@@ -19,6 +19,7 @@ import type {
   AuditEntry,
   DriftInfo,
   MixedBackendInfo,
+  CoexistenceProfile,
 } from './types';
 
 // ─── Hydration ─────────────────────────────────────────────────
@@ -300,6 +301,14 @@ export interface SetIpListEntriesAction {
   entries: IpListEntry[];
 }
 
+// ─── Coexistence Profile ──────────────────────────────────────
+
+export interface SetCoexistenceProfileAction {
+  type: 'SET_COEXISTENCE_PROFILE';
+  hostId: string;
+  profile: CoexistenceProfile;
+}
+
 // ─── Drift Detection ──────────────────────────────────────────
 
 export interface SetDriftDetectedAction {
@@ -373,6 +382,7 @@ export type Action =
   | StorageQuotaExceededAction
   | SetIpListEntriesAction
   | AddAuditEntryAction
+  | SetCoexistenceProfileAction
   | SetDriftDetectedAction
   | ClearDriftAction
   | SetMixedBackendAction

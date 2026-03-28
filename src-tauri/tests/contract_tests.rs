@@ -337,6 +337,7 @@ fn test_apply_result_serialization() {
         safety_timer_expiry: Some(1700003600),
         remote_job_id: Some("job-abc".into()),
         safety_timer_mechanism: Some("At".into()),
+        external_chain_warning: Some("Changes affect chains managed by Docker.".into()),
     };
     let json = serde_json::to_value(&result).unwrap();
 
@@ -345,12 +346,14 @@ fn test_apply_result_serialization() {
     assert_eq!(json["safetyTimerExpiry"], 1700003600u64);
     assert_eq!(json["remoteJobId"], "job-abc");
     assert_eq!(json["safetyTimerMechanism"], "At");
+    assert_eq!(json["externalChainWarning"], "Changes affect chains managed by Docker.");
 
     // Must NOT have snake_case
     assert_no_key(&json, "safety_timer_active");
     assert_no_key(&json, "safety_timer_expiry");
     assert_no_key(&json, "remote_job_id");
     assert_no_key(&json, "safety_timer_mechanism");
+    assert_no_key(&json, "external_chain_warning");
 }
 
 #[test]
@@ -361,6 +364,7 @@ fn test_apply_result_optional_fields_null() {
         safety_timer_expiry: None,
         remote_job_id: None,
         safety_timer_mechanism: None,
+        external_chain_warning: None,
     };
     let json = serde_json::to_value(&result).unwrap();
 

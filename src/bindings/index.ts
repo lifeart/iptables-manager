@@ -3,7 +3,9 @@
 
 export type { ActivityData } from './ActivityData';
 export type { ApplyResult } from './ApplyResult';
+export type { ChainOwnerGroup } from './ChainOwnerGroup';
 export type { ChainTraversal } from './ChainTraversal';
+export type { CoexistenceProfile } from './CoexistenceProfile';
 export type { CompareHostsResult } from './CompareHostsResult';
 export type { ConflictType } from './ConflictType';
 export type { ConnectionResult } from './ConnectionResult';

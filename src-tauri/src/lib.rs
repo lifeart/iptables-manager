@@ -94,6 +94,8 @@ pub fn run() {
             ipc::commands::convert_to_ipset,
             // Dual-stack divergence
             ipc::commands::check_v4_v6_divergence,
+            // Coexistence profile
+            ipc::commands::get_coexistence_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

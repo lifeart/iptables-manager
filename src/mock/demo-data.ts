@@ -440,6 +440,23 @@ export function loadDemoData(store: Store): void {
     store.dispatch({ type: 'ADD_SSH_LOG_ENTRY', hostId: HOST_WEB01, entry });
   }
 
+  // Set coexistence profile for web-01 (demo: Docker + fail2ban present)
+  store.dispatch({
+    type: 'SET_COEXISTENCE_PROFILE',
+    hostId: HOST_WEB01,
+    profile: {
+      owners: [
+        { owner: 'App', chains: ['TR-INPUT', 'TR-CONNTRACK'], ruleCount: 5, isAppManaged: true },
+        { owner: 'Docker', chains: ['DOCKER', 'DOCKER-USER', 'DOCKER-ISOLATION-STAGE-1'], ruleCount: 12, isAppManaged: false },
+        { owner: 'fail2ban', chains: ['f2b-sshd', 'f2b-nginx-http-auth'], ruleCount: 6, isAppManaged: false },
+        { owner: 'Built-in', chains: ['INPUT', 'FORWARD', 'OUTPUT'], ruleCount: 0, isAppManaged: false },
+      ],
+      totalChains: 10,
+      appManagedChains: 2,
+      externalChains: 5,
+    },
+  });
+
   // Select web-01 as the active host
   store.dispatch({ type: 'SET_ACTIVE_HOST', hostId: HOST_WEB01 });
 }
