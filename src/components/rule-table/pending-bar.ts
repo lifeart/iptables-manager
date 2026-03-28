@@ -240,42 +240,6 @@ export class PendingBar extends Component {
     }
   }
 
-  /**
-   * Schedule a safety timer after a successful apply.
-   * If the timer fails, revert the just-applied changes and show an error.
-   */
-  private async scheduleSafetyTimer(hostId: string, timeoutSec: number): Promise<void> {
-    const now = Date.now();
-    try {
-      const timerResult = await ipc.setSafetyTimer(hostId, timeoutSec);
-      this.store.dispatch({
-        type: 'SET_SAFETY_TIMER',
-        timer: {
-          hostId,
-          expiresAt: now + timeoutSec * 1000,
-          remoteJobId: timerResult.jobId,
-          mechanism: timerResult.mechanism,
-          startedAt: now,
-        },
-      });
-    } catch {
-      // Safety timer failed — revert the just-applied rules so the server
-      // is not left in a state with no automatic rollback protection.
-      try {
-        await ipc.revertChanges(hostId);
-        this.showError('Safety timer failed \u2014 changes reverted for your protection.');
-      } catch (revertErr) {
-        // Revert also failed — this is critical
-        const revertDetail = revertErr instanceof Error ? revertErr.message : String(revertErr);
-        this.showError(
-          'CRITICAL: Safety timer AND revert both failed. Rules applied with NO rollback protection. Verify server access immediately.'
-        );
-        console.error('Revert failed after safety timer failure:', revertDetail);
-      }
-      throw new Error('Safety timer scheduling failed');
-    }
-  }
-
   private showError(message: string): void {
     // Try to parse as a CommandFailed detail with explanation
     const detail = parseCommandFailedDetail(message);
@@ -447,9 +411,7 @@ export class PendingBar extends Component {
             this.showIpcError(forceErr);
           }
         }
-      } else if (!(err instanceof Error && err.message === 'Safety timer scheduling failed')) {
-        // Show error feedback (but not for safety timer failures,
-        // which are already reported by scheduleSafetyTimer)
+      } else {
         this.showIpcError(err);
       }
     } finally {

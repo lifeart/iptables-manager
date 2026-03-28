@@ -23,7 +23,11 @@ export class TerminalTab extends Component {
 
     const placeholder = h('div', { className: 'rule-table__terminal-placeholder' });
 
-    const subTabs = h('div', { className: 'rule-table__terminal-sub-tabs' });
+    const subTabs = h('div', {
+      className: 'rule-table__terminal-sub-tabs',
+      role: 'tablist',
+      'aria-label': 'Terminal views',
+    });
     const state = this.store.getState();
     const activeSubTab = state.activeTerminalSubTab;
 
@@ -35,9 +39,12 @@ export class TerminalTab extends Component {
     ];
 
     for (const st of subTabDefs) {
+      const isActive = activeSubTab === st.id;
       const btn = h('button', {
-        className: `rule-table__terminal-sub-tab${activeSubTab === st.id ? ' rule-table__terminal-sub-tab--active' : ''}`,
+        className: `rule-table__terminal-sub-tab${isActive ? ' rule-table__terminal-sub-tab--active' : ''}`,
         type: 'button',
+        role: 'tab',
+        'aria-selected': isActive ? 'true' : 'false',
         dataset: { subTab: st.id },
       }, st.label);
       this.listen(btn, 'click', () => {
@@ -48,7 +55,7 @@ export class TerminalTab extends Component {
     }
     placeholder.appendChild(subTabs);
 
-    const contentEl = h('div', { className: 'terminal__content' });
+    const contentEl = h('div', { className: 'terminal__content', role: 'tabpanel' });
 
     switch (activeSubTab) {
       case 'raw':
