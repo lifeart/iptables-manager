@@ -86,6 +86,8 @@ pub fn run() {
             // Drift detection commands
             ipc::commands::check_drift,
             ipc::commands::reset_drift,
+            // Coexistence profile
+            ipc::commands::get_coexistence_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

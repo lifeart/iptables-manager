@@ -120,5 +120,6 @@ pub async fn snapshot_restore(
         safety_timer_expiry: None,
         remote_job_id: None,
         safety_timer_mechanism: None,
+        external_chain_warning: None,
     })
 }

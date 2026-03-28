@@ -14,7 +14,7 @@ import { reconcileList } from '../reconciler';
 import { createHostRow, updateHostRow } from './host-row';
 import { createGroupRow, updateGroupRow } from './group-row';
 import { h } from '../../utils/dom';
-import { fetchRules, deleteHost, deleteCredential } from '../../ipc/bridge';
+import { fetchRules, deleteHost, deleteCredential, getCoexistenceProfile } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 
 type ScaleMode = 'all' | 'medium' | 'large';
@@ -412,6 +412,15 @@ export class Sidebar extends Component {
           const rules = convertRuleSet(ruleSet);
           this.store.dispatch({ type: 'SET_HOST_RULES', hostId, rules });
           this.store.dispatch({ type: 'COMPLETE_OPERATION', operationId });
+
+          // Fetch coexistence profile after rules are loaded
+          getCoexistenceProfile(hostId)
+            .then((profile) => {
+              this.store.dispatch({ type: 'SET_COEXISTENCE_PROFILE', hostId, profile });
+            })
+            .catch(() => {
+              // Non-critical — profile display is informational only
+            });
         })
         .catch((err) => {
           const errorMsg = err instanceof Error ? err.message : 'Failed to fetch rules';

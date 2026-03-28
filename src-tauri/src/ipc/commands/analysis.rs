@@ -5,6 +5,7 @@ use tracing::{debug, warn};
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
+use crate::iptables::system_detect::{build_coexistence_profile, CoexistenceProfile, detect_all_chain_owners};
 use crate::ssh::command::build_command;
 
 use super::helpers::{exec_failed, fetch_current_ruleset, PoolProxyExecutor};
@@ -182,6 +183,24 @@ pub async fn reset_drift(
     debug!("Drift baseline reset for {}", host_id);
     state.drift.insert(host_id, new_hash);
     Ok(())
+}
+
+/// Get the coexistence profile for a host, showing which chains are owned
+/// by external tools (Docker, fail2ban, Kubernetes, etc.).
+#[tauri::command]
+pub async fn get_coexistence_profile(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<CoexistenceProfile, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    let (_raw, mut ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
+    detect_all_chain_owners(&mut ruleset);
+
+    Ok(build_coexistence_profile(&ruleset))
 }
 
 // ---------------------------------------------------------------------------

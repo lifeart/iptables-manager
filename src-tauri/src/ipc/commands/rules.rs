@@ -5,6 +5,8 @@ use tracing::{debug, warn};
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::explain::explain_rule;
+use crate::iptables::system_detect::detect_chain_owner;
+use crate::iptables::types::ChainOwner;
 use crate::iptables::types::RuleSpec;
 use crate::ssh::command::build_command;
 use crate::ssh::executor::CommandExecutor;
@@ -69,6 +71,9 @@ pub async fn rules_apply(
         host_id: host_id.clone(),
     };
 
+    // Step 0: Check for external chain modifications
+    let external_chain_warning = detect_external_chain_warning(&changes_json);
+
     // Step 1: Save backup of current rules
     create_pre_apply_backup(&proxy, &host_id).await?;
     debug!("Created pre-apply backup for {}", host_id);
@@ -119,6 +124,7 @@ pub async fn rules_apply(
         }),
         remote_job_id: timer_result.as_ref().map(|j| j.id.clone()),
         safety_timer_mechanism: timer_result.as_ref().map(|j| format!("{:?}", j.mechanism)),
+        external_chain_warning,
     })
 }
 
@@ -492,6 +498,49 @@ pub async fn export_rules(
     let (raw, _ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
 
     Ok(raw)
+}
+
+/// Parse iptables-restore content to extract chain names being modified,
+/// then check if any belong to external tools.
+fn detect_external_chain_warning(changes_json: &str) -> Option<String> {
+    use std::collections::HashMap;
+
+    let mut external_owners: HashMap<String, Vec<String>> = HashMap::new();
+
+    for line in changes_json.lines() {
+        let trimmed = line.trim();
+        // Lines like "-A DOCKER-USER ..." or "-I f2b-sshd ..." modify chains
+        if trimmed.starts_with("-A ")
+            || trimmed.starts_with("-I ")
+            || trimmed.starts_with("-D ")
+            || trimmed.starts_with("-R ")
+        {
+            // Extract chain name (second token)
+            let rest = &trimmed[3..];
+            let chain_name = rest.split_whitespace().next().unwrap_or("");
+            if chain_name.is_empty() || chain_name.starts_with("TR-") {
+                continue;
+            }
+            let owner = detect_chain_owner(chain_name, &[]);
+            if let ChainOwner::System(tool) = owner {
+                let tool_name = format!("{:?}", tool);
+                external_owners
+                    .entry(tool_name)
+                    .or_default()
+                    .push(chain_name.to_string());
+            }
+        }
+    }
+
+    if external_owners.is_empty() {
+        return None;
+    }
+
+    let tool_names: Vec<String> = external_owners.keys().cloned().collect();
+    Some(format!(
+        "Changes affect chains managed by {}. This may conflict with those tools' networking.",
+        tool_names.join(", ")
+    ))
 }
 
 // ---------------------------------------------------------------------------

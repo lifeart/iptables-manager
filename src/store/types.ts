@@ -2,8 +2,8 @@
 // Fields annotated @persisted are synced to IndexedDB.
 // Fields annotated @ephemeral are in-memory only.
 
-import type { RuleConflict } from '../bindings';
-export type { RuleConflict };
+import type { RuleConflict, CoexistenceProfile } from '../bindings';
+export type { RuleConflict, CoexistenceProfile };
 
 // ─── Domain Types ───────────────────────────────────────────────
 
@@ -305,6 +305,7 @@ export interface HostState {
   conntrackUsage: { current: number; max: number };
   sshCommandLog: SshLogEntry[];
   ruleConflicts: RuleConflict[];
+  coexistenceProfile?: CoexistenceProfile;
 }
 
 // ─── Effective Rule (computed, never stored) ───────────────────

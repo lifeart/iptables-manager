@@ -1,0 +1,116 @@
+/* ─── External Chains (Coexistence Profile) ─────────────── */
+
+.external-chains {
+  margin-top: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.external-chains__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-surface-secondary, var(--color-sidebar));
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.external-chains__header:hover {
+  background: var(--color-surface-hover, var(--color-border));
+}
+
+.external-chains__chevron {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  transition: transform 0.15s ease;
+  font-size: 10px;
+}
+
+.external-chains--collapsed .external-chains__chevron {
+  transform: rotate(-90deg);
+}
+
+.external-chains__count {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.external-chains__body {
+  padding: 0;
+}
+
+.external-chains--collapsed .external-chains__body {
+  display: none;
+}
+
+.external-chains__group {
+  border-top: 1px solid var(--color-border);
+}
+
+.external-chains__group:first-child {
+  border-top: none;
+}
+
+.external-chains__group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background: var(--color-surface, var(--color-background));
+}
+
+.external-chains__group-icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.external-chains__group-name {
+  font-weight: 600;
+}
+
+.external-chains__group-stats {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.external-chains__chain-list {
+  padding: 4px 14px 8px 42px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.external-chains__chain {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-surface-secondary, #f0f0f0);
+  color: var(--color-text-tertiary);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.external-chains__empty {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}

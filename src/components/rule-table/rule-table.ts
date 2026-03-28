@@ -26,6 +26,7 @@ import { ImportBanner } from './import-banner';
 import { TerminalTab } from './terminal-tab';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
+import { ExternalChains } from './external-chains';
 import { generateFromTemplate } from '../../services/templates';
 import Sortable from 'sortablejs';
 
@@ -53,6 +54,8 @@ export class RuleTable extends Component {
   private tabsComponent!: RuleTableTabs;
   private conflictBanner!: ConflictBanner;
   private importBannerComponent!: ImportBanner;
+  private externalChainsContainer!: HTMLElement;
+  private externalChainsComponent!: ExternalChains;
 
   // Tab content panels
   private activityPanel: HTMLElement | null = null;
@@ -128,6 +131,12 @@ export class RuleTable extends Component {
     this.addChild(this.conflictBanner);
     this.importBannerComponent = new ImportBanner(this.el, this.store, this.sectionsContainer);
     this.addChild(this.importBannerComponent);
+
+    // External chains section (collapsed by default, read-only)
+    this.externalChainsContainer = h('div', { className: 'rule-table__external-chains-container' });
+    this.sectionsContainer.appendChild(this.externalChainsContainer);
+    this.externalChainsComponent = new ExternalChains(this.externalChainsContainer, this.store);
+    this.addChild(this.externalChainsComponent);
 
     // Activity tab panel (hidden by default)
     this.activityPanel = h('div', {

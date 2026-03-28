@@ -452,6 +452,14 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'STORAGE_QUOTA_EXCEEDED':
       return { ...state, storageQuotaExceeded: true };
 
+    // ─── Coexistence Profile ────────────────────────────
+    case 'SET_COEXISTENCE_PROFILE': {
+      const hostStates = cloneMap(state.hostStates);
+      const hs = ensureHostState(state, action.hostId);
+      hostStates.set(action.hostId, { ...hs, coexistenceProfile: action.profile });
+      return { ...state, hostStates };
+    }
+
     // ─── Drift Detection ────────────────────────────────
     case 'SET_DRIFT_DETECTED': {
       const driftAlerts = cloneMap(state.driftAlerts);

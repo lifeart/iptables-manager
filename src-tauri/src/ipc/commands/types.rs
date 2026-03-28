@@ -69,6 +69,7 @@ pub struct ApplyResult {
     pub safety_timer_expiry: Option<u64>,
     pub remote_job_id: Option<String>,
     pub safety_timer_mechanism: Option<String>,
+    pub external_chain_warning: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]

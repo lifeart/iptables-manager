@@ -6,7 +6,7 @@
 import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { Host } from '../../store/types';
-import { testConnection, connectHost, detectHost, fetchRules, provisionHost, storeCredential } from '../../ipc/bridge';
+import { testConnection, connectHost, detectHost, fetchRules, provisionHost, storeCredential, getCoexistenceProfile } from '../../ipc/bridge';
 import type { TestResult, CredentialPayload } from '../../ipc/bridge';
 import { convertRuleSet } from '../../services/rule-converter';
 import { h, trapFocus } from '../../utils/dom';
@@ -519,6 +519,15 @@ export class AddHostDialog extends Component {
           if (rules.length === 0) {
             this.store.dispatch({ type: 'OPEN_DIALOG', dialog: 'first-setup' });
           }
+
+          // Fetch coexistence profile after rules are loaded
+          getCoexistenceProfile(host.id)
+            .then((profile) => {
+              this.store.dispatch({ type: 'SET_COEXISTENCE_PROFILE', hostId: host.id, profile });
+            })
+            .catch(() => {
+              // Non-critical — profile display is informational only
+            });
         })
         .catch(() => {
           // Rule fetch failure after connect is handled by the empty state UI
