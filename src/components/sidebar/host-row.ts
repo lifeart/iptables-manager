@@ -4,7 +4,7 @@
  * Status indicators use distinct SVG shapes for accessibility.
  */
 
-import type { Host, HostStatus } from '../../store/types';
+import type { Host, HostStatus, MixedBackendInfo } from '../../store/types';
 import { h } from '../../utils/dom';
 
 // ─── Status SVG Generators ──────────────────────────────────
@@ -144,7 +144,7 @@ function createChevronSvg(): SVGElement {
 
 // ─── Host Row Create/Update ──────────────────────────────────
 
-export function createHostRow(host: Host, isActive: boolean): HTMLElement {
+export function createHostRow(host: Host, isActive: boolean, mixedBackendAlerts?: Map<string, MixedBackendInfo>): HTMLElement {
   const row = h('div', {
     className: 'sidebar__host-row' + (isActive ? ' sidebar__host-row--selected' : ''),
     tabindex: '0',
@@ -159,6 +159,16 @@ export function createHostRow(host: Host, isActive: boolean): HTMLElement {
 
   const nameEl = h('span', { className: 'sidebar__host-name' }, host.name);
   row.appendChild(nameEl);
+
+  // Mixed backend warning icon
+  if (mixedBackendAlerts && mixedBackendAlerts.has(host.id)) {
+    const warnIcon = h('span', {
+      className: 'sidebar__mixed-backend-warn',
+      title: 'Mixed iptables backend detected',
+      'aria-label': 'Mixed iptables backend warning',
+    }, '\u26A0');
+    row.appendChild(warnIcon);
+  }
 
   const chevron = createChevronSvg();
   row.appendChild(chevron);
@@ -175,7 +185,7 @@ export function createHostRow(host: Host, isActive: boolean): HTMLElement {
   return row;
 }
 
-export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean): void {
+export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean, mixedBackendAlerts?: Map<string, MixedBackendInfo>): void {
   // Update selected state
   el.classList.toggle('sidebar__host-row--selected', isActive);
   el.setAttribute('aria-label', `${host.name} - ${STATUS_CONFIGS[host.status].label}`);
@@ -195,5 +205,25 @@ export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean): v
   const nameEl = el.querySelector('.sidebar__host-name');
   if (nameEl && nameEl.textContent !== host.name) {
     nameEl.textContent = host.name;
+  }
+
+  // Update mixed backend warning icon
+  const existingWarn = el.querySelector('.sidebar__mixed-backend-warn');
+  const hasMixed = mixedBackendAlerts && mixedBackendAlerts.has(host.id);
+  if (hasMixed && !existingWarn) {
+    const warnIcon = h('span', {
+      className: 'sidebar__mixed-backend-warn',
+      title: 'Mixed iptables backend detected',
+      'aria-label': 'Mixed iptables backend warning',
+    }, '\u26A0');
+    // Insert before chevron
+    const chevron = el.querySelector('.sidebar__chevron');
+    if (chevron) {
+      el.insertBefore(warnIcon, chevron);
+    } else {
+      el.appendChild(warnIcon);
+    }
+  } else if (!hasMixed && existingWarn) {
+    existingWarn.remove();
   }
 }

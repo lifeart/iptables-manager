@@ -165,6 +165,9 @@ export function reducer(state: AppState, action: Action): AppState {
       const safetyTimers = cloneMap(state.safetyTimers);
       safetyTimers.delete(action.hostId);
 
+      const mixedBackendAlerts = cloneMap(state.mixedBackendAlerts);
+      mixedBackendAlerts.delete(action.hostId);
+
       const activeHostId = state.activeHostId === action.hostId ? null : state.activeHostId;
 
       // Cascade: remove hostId from all groups' memberHostIds
@@ -187,7 +190,7 @@ export function reducer(state: AppState, action: Action): AppState {
         }
       }
 
-      return { ...state, hosts, hostStates, stagedChanges, safetyTimers, activeHostId, groups, operations };
+      return { ...state, hosts, hostStates, stagedChanges, safetyTimers, activeHostId, groups, operations, mixedBackendAlerts };
     }
 
     case 'SET_HOST_STATUS': {
@@ -463,6 +466,19 @@ export function reducer(state: AppState, action: Action): AppState {
       const driftAlerts = cloneMap(state.driftAlerts);
       driftAlerts.delete(action.hostId);
       return { ...state, driftAlerts };
+    }
+
+    // ─── Mixed Backend ──────────────────────────────────
+    case 'SET_MIXED_BACKEND': {
+      const mixedBackendAlerts = cloneMap(state.mixedBackendAlerts);
+      mixedBackendAlerts.set(action.info.hostId, action.info);
+      return { ...state, mixedBackendAlerts };
+    }
+
+    case 'CLEAR_MIXED_BACKEND': {
+      const mixedBackendAlerts = cloneMap(state.mixedBackendAlerts);
+      mixedBackendAlerts.delete(action.hostId);
+      return { ...state, mixedBackendAlerts };
     }
 
     default:

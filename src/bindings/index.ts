@@ -19,6 +19,7 @@ export type { GroupApplyResult } from './GroupApplyResult';
 export type { HitCounter } from './HitCounter';
 export type { HostApplyResult } from './HostApplyResult';
 export type { ImportExistingRulesResult } from './ImportExistingRulesResult';
+export type { MixedBackendCheckResult } from './MixedBackendCheckResult';
 export type { PreviewResult } from './PreviewResult';
 export type { ProvisionResult } from './ProvisionResult';
 export type { RuleConflict } from './RuleConflict';

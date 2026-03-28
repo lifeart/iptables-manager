@@ -44,6 +44,9 @@ pub enum IpcError {
 
     #[error("command failed (exit {exit_code}): {stderr}")]
     CommandFailed { stderr: String, exit_code: i32 },
+
+    #[error("mixed iptables backend: {legacy_count} legacy rules, {nft_count} nft rules")]
+    MixedBackend { legacy_count: usize, nft_count: usize },
 }
 
 // Tauri requires `Into<tauri::ipc::InvokeError>` or a manual `Serialize` impl

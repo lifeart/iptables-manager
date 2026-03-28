@@ -319,6 +319,15 @@
   opacity: 1;
 }
 
+/* Mixed backend warning icon */
+.sidebar__mixed-backend-warn {
+  font-size: 11px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 2px;
+}
+
 /* ── Group Row ───────────────────────────────────────── */
 
 .sidebar__group-row {

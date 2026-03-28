@@ -160,6 +160,16 @@ pub struct HostApplyResult {
 #[derive(Debug, Serialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
+pub struct MixedBackendCheckResult {
+    pub is_mixed: bool,
+    pub legacy_rule_count: usize,
+    pub nft_rule_count: usize,
+    pub remediation: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
 pub struct GroupApplyResult {
     pub results: Vec<HostApplyResult>,
     pub strategy: String,

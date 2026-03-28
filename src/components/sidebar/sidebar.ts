@@ -370,6 +370,12 @@ export class Sidebar extends Component {
       },
     );
 
+    // Subscribe to mixed backend alerts (re-render hosts to update warning icons)
+    this.subscribe(
+      (s: AppState) => s.mixedBackendAlerts,
+      () => this.renderHosts(),
+    );
+
     // Subscribe to groups
     this.subscribe(
       (s: AppState) => s.groups,
@@ -442,6 +448,7 @@ export class Sidebar extends Component {
   private renderHosts(): void {
     const state = this.store.getState();
     const activeHostId = state.activeHostId;
+    const mixedAlerts = state.mixedBackendAlerts;
     const scaleMode = this.getScaleMode();
 
     // Update status filter pill
@@ -466,11 +473,11 @@ export class Sidebar extends Component {
         recentHosts,
         (host) => `recent-${host.id}`,
         (host) => {
-          const row = createHostRow(host, host.id === activeHostId);
+          const row = createHostRow(host, host.id === activeHostId, mixedAlerts);
           row.dataset.key = `recent-${host.id}`;
           return row;
         },
-        (el, host) => updateHostRow(el, host, host.id === activeHostId),
+        (el, host) => updateHostRow(el, host, host.id === activeHostId, mixedAlerts),
       );
     } else {
       this.recentSection.style.display = 'none';
@@ -499,8 +506,8 @@ export class Sidebar extends Component {
         this.hostsContainer,
         hosts,
         (host) => host.id,
-        (host) => createHostRow(host, host.id === activeHostId),
-        (el, host) => updateHostRow(el, host, host.id === activeHostId),
+        (host) => createHostRow(host, host.id === activeHostId, mixedAlerts),
+        (el, host) => updateHostRow(el, host, host.id === activeHostId, mixedAlerts),
       );
     } else {
       // Large mode with all-hosts collapsed and no search: hide main host list
@@ -512,6 +519,7 @@ export class Sidebar extends Component {
     const state = this.store.getState();
     const groups = Array.from(state.groups.values());
     const activeHostId = state.activeHostId;
+    const mixedAlerts = state.mixedBackendAlerts;
     const scaleMode = this.getScaleMode();
 
     // Clear and rebuild to handle nested member hosts
@@ -532,7 +540,7 @@ export class Sidebar extends Component {
         for (const memberId of group.memberHostIds) {
           const host = state.hosts.get(memberId);
           if (host) {
-            const memberRow = createHostRow(host, host.id === activeHostId);
+            const memberRow = createHostRow(host, host.id === activeHostId, mixedAlerts);
             memberRow.classList.add('sidebar__host-row--indented');
             memberRow.dataset.key = `group-member-${group.id}-${host.id}`;
             this.groupsContainer.appendChild(memberRow);
