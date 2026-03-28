@@ -14,6 +14,7 @@ import { h } from '../../utils/dom';
 import * as ipc from '../../ipc/bridge';
 import { IpcError } from '../../ipc/bridge';
 import { addAuditEntry } from '../../store/audit';
+import { parseCommandFailedDetail, showErrorPopover } from '../error-popover';
 
 export class PendingBar extends Component {
   private countEl!: HTMLElement;
@@ -276,6 +277,14 @@ export class PendingBar extends Component {
   }
 
   private showError(message: string): void {
+    // Try to parse as a CommandFailed detail with explanation
+    const detail = parseCommandFailedDetail(message);
+    if (detail && detail.explanation) {
+      showErrorPopover(detail);
+      return;
+    }
+
+    // Fallback: inline error message
     const errorEl = document.createElement('span');
     errorEl.className = 'rule-table__pending-bar-error';
     errorEl.textContent = message;
@@ -350,6 +359,22 @@ export class PendingBar extends Component {
     this.el.appendChild(banner);
   }
 
+  /**
+   * Show an error from an IpcError instance, using the popover for
+   * CommandFailed errors that include an explanation.
+   */
+  private showIpcError(err: unknown): void {
+    if (err instanceof IpcError && err.kind === 'CommandFailed') {
+      const detail = parseCommandFailedDetail(err.detail);
+      if (detail) {
+        showErrorPopover(detail);
+        return;
+      }
+    }
+    const msg = err instanceof Error ? err.message : 'Apply failed';
+    this.showError(msg);
+  }
+
   private async applyChanges(): Promise<void> {
     const state = this.store.getState();
     const hostId = state.activeHostId;
@@ -419,15 +444,13 @@ export class PendingBar extends Component {
               });
             }
           } catch (forceErr) {
-            const forceMsg = forceErr instanceof Error ? forceErr.message : 'Apply failed';
-            this.showError(forceMsg);
+            this.showIpcError(forceErr);
           }
         }
       } else if (!(err instanceof Error && err.message === 'Safety timer scheduling failed')) {
-        // Show error feedback inline (but not for safety timer failures,
+        // Show error feedback (but not for safety timer failures,
         // which are already reported by scheduleSafetyTimer)
-        const errorMsg = err instanceof Error ? err.message : 'Apply failed';
-        this.showError(errorMsg);
+        this.showIpcError(err);
       }
     } finally {
       this.applyBtn.disabled = false;

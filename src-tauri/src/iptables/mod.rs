@@ -11,4 +11,5 @@ pub mod duplicate;
 pub mod live_trace;
 pub mod lock;
 pub mod types;
+pub mod error_catalog;
 pub mod ipset_suggest;

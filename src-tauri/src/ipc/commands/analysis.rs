@@ -191,6 +191,7 @@ pub async fn check_drift(
         return Err(IpcError::CommandFailed {
             stderr: output.stderr,
             exit_code: output.exit_code,
+            explanation: None,
         });
     }
 
@@ -311,6 +312,7 @@ pub async fn reset_drift(
         return Err(IpcError::CommandFailed {
             stderr: output.stderr,
             exit_code: output.exit_code,
+            explanation: None,
         });
     }
 
