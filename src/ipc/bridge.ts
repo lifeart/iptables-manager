@@ -23,6 +23,7 @@ import type {
   DetectionResult,
   DriftCheckResult,
   DuplicateCheckResult,
+  EnablePersistenceResult,
   Fail2banBan,
   GroupApplyResult,
   HostApplyResult,
@@ -49,6 +50,7 @@ export type {
   DetectionResult,
   DriftCheckResult,
   DuplicateCheckResult,
+  EnablePersistenceResult,
   Fail2banBan,
   GroupApplyResult,
   HostApplyResult,
@@ -232,6 +234,8 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return { onlyInA: [], onlyInB: [], different: [], identical: 0 } as T;
     case 'rules:import-existing':
       return { rules: { tables: {} }, rawIptablesSave: '', nonTrRuleCount: 0 } as T;
+    case 'host:enable-persistence':
+      return { success: true, method: 'iptables-persistent', message: 'Persistence enabled (mock).' } as T;
     default:
       return undefined as T;
   }
@@ -247,6 +251,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'host:detect': 'host_detect',
   'host:delete': 'host_delete',
   'host:provision': 'host_provision',
+  'host:enable-persistence': 'enable_persistence',
   'rules:fetch': 'fetch_rules',
   'rules:apply': 'rules_apply',
   'rules:apply-group': 'rules_apply_group',
@@ -460,6 +465,10 @@ export const compareHosts = (hostIdA: string, hostIdB: string) =>
 // Import existing (non-TR) rules as baseline
 export const importExistingRules = (hostId: string) =>
   ipcCall<ImportExistingRulesResult>('rules:import-existing', { hostId });
+
+// Persistence
+export const enablePersistence = (hostId: string) =>
+  ipcCall<EnablePersistenceResult>('host:enable-persistence', { hostId });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

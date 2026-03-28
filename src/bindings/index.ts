@@ -14,6 +14,7 @@ export type { DetectionResult } from './DetectionResult';
 export type { Direction } from './Direction';
 export type { DriftCheckResult } from './DriftCheckResult';
 export type { DuplicateCheckResult } from './DuplicateCheckResult';
+export type { EnablePersistenceResult } from './EnablePersistenceResult';
 export type { Fail2banBan } from './Fail2banBan';
 export type { GroupApplyResult } from './GroupApplyResult';
 export type { HitCounter } from './HitCounter';

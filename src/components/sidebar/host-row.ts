@@ -4,7 +4,7 @@
  * Status indicators use distinct SVG shapes for accessibility.
  */
 
-import type { Host, HostStatus } from '../../store/types';
+import type { Host, HostStatus, PersistenceStatus } from '../../store/types';
 import { h } from '../../utils/dom';
 
 // ─── Status SVG Generators ──────────────────────────────────
@@ -142,6 +142,13 @@ function createChevronSvg(): SVGElement {
   return svg;
 }
 
+// ─── Persistence Badge Helper ────────────────────────────────
+
+function needsPersistenceBadge(ps?: PersistenceStatus): boolean {
+  if (!ps) return false;
+  return !ps.packageInstalled || !ps.serviceEnabled;
+}
+
 // ─── Host Row Create/Update ──────────────────────────────────
 
 export function createHostRow(host: Host, isActive: boolean): HTMLElement {
@@ -159,6 +166,15 @@ export function createHostRow(host: Host, isActive: boolean): HTMLElement {
 
   const nameEl = h('span', { className: 'sidebar__host-name' }, host.name);
   row.appendChild(nameEl);
+
+  // Persistence badge
+  if (needsPersistenceBadge(host.capabilities?.persistenceStatus)) {
+    const badge = h('span', {
+      className: 'sidebar__persistence-badge',
+      title: 'Rules not persistent \u2014 will be lost on reboot',
+    }, 'NP');
+    row.appendChild(badge);
+  }
 
   const chevron = createChevronSvg();
   row.appendChild(chevron);
@@ -195,5 +211,24 @@ export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean): v
   const nameEl = el.querySelector('.sidebar__host-name');
   if (nameEl && nameEl.textContent !== host.name) {
     nameEl.textContent = host.name;
+  }
+
+  // Update persistence badge
+  const existingBadge = el.querySelector('.sidebar__persistence-badge');
+  const showBadge = needsPersistenceBadge(host.capabilities?.persistenceStatus);
+  if (showBadge && !existingBadge) {
+    const badge = h('span', {
+      className: 'sidebar__persistence-badge',
+      title: 'Rules not persistent \u2014 will be lost on reboot',
+    }, 'NP');
+    // Insert before chevron
+    const chevron = el.querySelector('.sidebar__chevron');
+    if (chevron) {
+      el.insertBefore(badge, chevron);
+    } else {
+      el.appendChild(badge);
+    }
+  } else if (!showBadge && existingBadge) {
+    existingBadge.remove();
   }
 }

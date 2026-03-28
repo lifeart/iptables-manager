@@ -167,3 +167,12 @@ pub struct GroupApplyResult {
     pub succeeded: usize,
     pub failed: usize,
 }
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct EnablePersistenceResult {
+    pub success: bool,
+    pub method: String,
+    pub message: String,
+}

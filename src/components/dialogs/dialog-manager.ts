@@ -17,6 +17,7 @@ import { FirstSetupDialog } from './first-setup';
 import type { FirstSetupConfig } from './first-setup';
 import { MultiApplyDialog } from './multi-apply';
 import { CompareHostsDialog } from './compare-hosts';
+import { PersistenceSetupDialog } from './persistence-setup';
 import { selectActiveHost } from '../../store/selectors';
 
 export class DialogManager extends Component {
@@ -134,6 +135,12 @@ export class DialogManager extends Component {
       }
       case 'compare-hosts': {
         const dlg = new CompareHostsDialog(this.el, this.store);
+        this.currentDialog = dlg;
+        this.addChild(dlg);
+        break;
+      }
+      case 'persistence-setup': {
+        const dlg = new PersistenceSetupDialog(this.el, this.store);
         this.currentDialog = dlg;
         this.addChild(dlg);
         break;
