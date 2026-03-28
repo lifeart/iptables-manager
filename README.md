@@ -123,7 +123,7 @@ Produces `.msi` in `src-tauri/target/release/bundle/msi/`.
 │   │   ├── export/         # Shell, Ansible, iptables-save
 │   │   └── ipc/            # Tauri command handlers
 │   ├── scripts/            # revert.sh, expire-rule.sh
-│   └── tests/              # 470 tests with fixtures
+│   └── tests/              # 472 tests with fixtures
 │
 ├── docs/
 │   ├── ux/                 # 12 UX spec files
@@ -144,7 +144,7 @@ cd src-tauri
 cargo test
 ```
 
-470 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log, mixed-backend detection, xtables lock retry, live traffic trace (TRACE rule lifecycle, parsers), ipset optimization suggestions, error catalog (13 patterns), dual-stack generation, coexistence profiles, persistence detection.
+472 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log, mixed-backend detection, xtables lock retry, live traffic trace (TRACE rule lifecycle, parsers), ipset optimization suggestions, error catalog (13 patterns), dual-stack generation, coexistence profiles, persistence detection.
 
 ### TypeScript type checking
 

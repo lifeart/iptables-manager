@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.0.0] - 2026-03-28
+
+### Added
+- **Mixed-backend detection**: warns when both legacy iptables and nf_tables rules exist on a host, blocks apply until resolved, shows sidebar warning icon
+- **xtables lock handling**: detects lock holder by PID/process name, retries with exponential backoff (1s/2s/4s), shows context-aware tips for fail2ban/Docker/UFW
+- **Live traffic trace**: insert kernel TRACE rules via SSH, collect real packet path via xtables-monitor (nft) or dmesg (legacy), auto-remove after configurable timeout
+- **ipset optimization**: analyzes rulesets for chains with 50+ rules differing only in source IP, suggests compiling to ipset hash:net for O(1) lookups, one-click conversion
+- **Enhanced drift detection**: shows exactly what changed (added/removed/modified rules) with expandable diff view, not just "drifted" flag
+- **Error explanation layer**: maps 13 common iptables/SSH error patterns to human-readable explanations with context-aware remediation steps, shows popover instead of raw stderr
+- **Dual-stack IPv4/IPv6**: single rule definition generates both v4 and v6, per-rule "Apply to" dropdown, v4/v6 divergence detection, side-by-side comparison view
+- **Ecosystem coexistence**: auto-detects Docker/K8s/fail2ban/UFW/firewalld/CSF chain ownership, read-only external chains section, pre-apply warning when changes affect external tools
+- **Persistence assistant**: detects if iptables-persistent/iptables-services installed and enabled, "NP" sidebar badge, one-click setup dialog for Debian/RHEL
+- Input validation for live trace fields (prevents flag injection)
+- Server-side trace timeout clamped to 120s max
+- 472 Rust tests (up from 204)
+
+### Fixed
+- HostCapabilities serialization: added camelCase serde rename to HostCapabilities, NetworkInterface, DetectedService, DetectedTool (pre-existing bug causing undefined fields on frontend)
+- Missing terminal.css import in index.html
+- ipset suggested name now uses "allowlist" for ACCEPT patterns (was always "blocklist")
+- UTF-8 safe ipset name truncation (chars().take() instead of byte slice)
+- Error catalog xtables lock detection now matches exit_code 4 alone (consistent with lock.rs)
+
 ## [2.3.0] - 2026-03-27
 
 ### Added
