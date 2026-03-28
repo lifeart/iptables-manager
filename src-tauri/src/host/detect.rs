@@ -1225,8 +1225,6 @@ LISTEN   0       511     0.0.0.0:443         0.0.0.0:*          users:(("nginx",
 
     // ─── Mixed Backend Detection Tests ──────────────────────────
 
-    use crate::ssh::executor::{CommandOutput, ExecError};
-    use async_trait::async_trait;
     use std::sync::Mutex;
 
     struct MixedMockExecutor {
