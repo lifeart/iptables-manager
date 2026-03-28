@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0] - 2026-03-27
+
+### Added
+- Update notification: checks GitHub for new releases on app startup (5s delay)
+- Non-intrusive banner with Download button, dismissible per-version via localStorage
+- Version injected at build time via Vite `define` from package.json
+
 ## [2.1.1] - 2026-03-27
 
 ### Added
