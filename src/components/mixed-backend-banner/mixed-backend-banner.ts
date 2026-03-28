@@ -155,11 +155,13 @@ export class MixedBackendBanner extends Component {
   }
 
   private handleLearnMore(): void {
-    // Open documentation or show explanation
-    window.open(
-      'https://wiki.nftables.org/wiki-nftables/index.php/Moving_from_iptables_to_nftables',
-      '_blank',
-    );
+    const url = 'https://wiki.nftables.org/wiki-nftables/index.php/Moving_from_iptables_to_nftables';
+    const mod = '@tauri-apps/plugin-shell';
+    import(/* @vite-ignore */ mod)
+      .then(({ open }: { open: (url: string) => Promise<void> }) => open(url))
+      .catch(() => {
+        window.open(url, '_blank');
+      });
   }
 
   private handleDismiss(hostId: string): void {

@@ -216,7 +216,7 @@ export class DriftBanner extends Component {
         changesSection.appendChild(changesList);
       }
 
-      this.bannerEl.appendChild(changesSection);
+      this.contentEl.appendChild(changesSection);
     }
   }
 
@@ -272,16 +272,14 @@ export class DriftBanner extends Component {
     this.store.dispatch({ type: 'CLEAR_DRIFT', hostId });
 
     try {
-      // Re-fetch rules
+      // Re-fetch rules using the same pattern as the rest of the app:
+      // fetchRules -> convertRuleSet -> SET_HOST_RULES
       const { fetchRules, resetDrift: resetDriftIpc } = await import('../../ipc/bridge');
-      const result = await fetchRules(hostId);
+      const { convertRuleSet } = await import('../../services/rule-converter');
+      const ruleSet = await fetchRules(hostId);
+      const rules = convertRuleSet(ruleSet);
 
-      // Update rules in the store
-      this.store.dispatch({
-        type: 'SET_HOST_RULES',
-        hostId,
-        rules: result.rules as unknown as import('../../store/types').Rule[],
-      });
+      this.store.dispatch({ type: 'SET_HOST_RULES', hostId, rules });
 
       // Reset drift baseline
       await resetDriftIpc(hostId);
