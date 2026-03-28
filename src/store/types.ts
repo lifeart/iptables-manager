@@ -15,6 +15,14 @@ export type HostStatus =
   | 'drifted'
   | 'pending';
 
+export interface PersistenceStatus {
+  method: 'iptables-persistent' | 'iptables-services' | 'manual';
+  packageInstalled: boolean;
+  serviceEnabled: boolean;
+  serviceActive: boolean;
+  lastSaved: string | null;
+}
+
 export interface HostCapabilities {
   iptablesVariant: 'iptables-legacy' | 'iptables-nft';
   iptablesVersion: string;
@@ -28,6 +36,7 @@ export interface HostCapabilities {
   interfaces: NetworkInterface[];
   runningServices: DetectedService[];
   persistenceMethod: 'iptables-persistent' | 'iptables-services' | 'manual';
+  persistenceStatus?: PersistenceStatus;
   managementInterface?: string;
   managementIsVpn: boolean;
 }
@@ -280,6 +289,7 @@ export type DialogType =
   | 'first-setup'
   | 'multi-apply'
   | 'compare-hosts'
+  | 'persistence-setup'
   | null;
 
 export interface MixedBackendInfo {

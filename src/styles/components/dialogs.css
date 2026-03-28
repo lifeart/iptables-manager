@@ -694,3 +694,45 @@
   text-align: center;
   padding: 20px 0;
 }
+
+/* ─── Persistence Setup Dialog ─────────────────────────── */
+
+.dialog-card--persistence-setup {
+  width: 460px;
+}
+
+.persistence-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-tight, 4px) 0;
+  font-size: var(--font-size-rule-name, 14px);
+}
+
+.persistence-status-label {
+  font-weight: 500;
+  color: var(--color-text-primary, #1D1D1F);
+  min-width: 110px;
+}
+
+.persistence-status-value {
+  font-size: var(--font-size-rule-name, 14px);
+}
+
+.persistence-status-value--ok {
+  color: var(--color-allow, #34C759);
+}
+
+.persistence-status-value--warn {
+  color: var(--color-warning, #FF9500);
+}
+
+.persistence-warning {
+  font-size: var(--font-size-rule-protocol, 12px);
+  color: var(--color-warning, #FF9500);
+  margin-top: var(--space-default, 12px);
+  padding: var(--space-compact, 8px) var(--space-default, 12px);
+  background: rgba(255, 149, 0, 0.08);
+  border-radius: var(--radius-md, 6px);
+  line-height: 1.4;
+}

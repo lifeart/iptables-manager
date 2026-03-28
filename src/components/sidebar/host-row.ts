@@ -4,7 +4,7 @@
  * Status indicators use distinct SVG shapes for accessibility.
  */
 
-import type { Host, HostStatus, MixedBackendInfo } from '../../store/types';
+import type { Host, HostStatus, MixedBackendInfo, PersistenceStatus } from '../../store/types';
 import { h } from '../../utils/dom';
 
 // ─── Status SVG Generators ──────────────────────────────────
@@ -142,6 +142,13 @@ function createChevronSvg(): SVGElement {
   return svg;
 }
 
+// ─── Persistence Badge Helper ────────────────────────────────
+
+function needsPersistenceBadge(ps?: PersistenceStatus): boolean {
+  if (!ps) return false;
+  return !ps.packageInstalled || !ps.serviceEnabled;
+}
+
 // ─── Host Row Create/Update ──────────────────────────────────
 
 export function createHostRow(host: Host, isActive: boolean, mixedBackendAlerts?: Map<string, MixedBackendInfo>): HTMLElement {
@@ -168,6 +175,15 @@ export function createHostRow(host: Host, isActive: boolean, mixedBackendAlerts?
       'aria-label': 'Mixed iptables backend warning',
     }, '\u26A0');
     row.appendChild(warnIcon);
+  }
+
+  // Persistence badge
+  if (needsPersistenceBadge(host.capabilities?.persistenceStatus)) {
+    const badge = h('span', {
+      className: 'sidebar__persistence-badge',
+      title: 'Rules not persistent \u2014 will be lost on reboot',
+    }, 'NP');
+    row.appendChild(badge);
   }
 
   const chevron = createChevronSvg();
@@ -225,5 +241,24 @@ export function updateHostRow(el: HTMLElement, host: Host, isActive: boolean, mi
     }
   } else if (!hasMixed && existingWarn) {
     existingWarn.remove();
+  }
+
+  // Update persistence badge
+  const existingBadge = el.querySelector('.sidebar__persistence-badge');
+  const showBadge = needsPersistenceBadge(host.capabilities?.persistenceStatus);
+  if (showBadge && !existingBadge) {
+    const badge = h('span', {
+      className: 'sidebar__persistence-badge',
+      title: 'Rules not persistent \u2014 will be lost on reboot',
+    }, 'NP');
+    // Insert before chevron
+    const chevron2 = el.querySelector('.sidebar__chevron');
+    if (chevron2) {
+      el.insertBefore(badge, chevron2);
+    } else {
+      el.appendChild(badge);
+    }
+  } else if (!showBadge && existingBadge) {
+    existingBadge.remove();
   }
 }

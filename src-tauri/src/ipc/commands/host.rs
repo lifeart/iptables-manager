@@ -10,7 +10,7 @@ use crate::ssh::pool::ConnectionConfig;
 
 use super::helpers::{exec_failed, uuid_v4, PoolProxyExecutor};
 use super::types::{
-    ConnectionResult, DetectionResult, MixedBackendCheckResult, ProvisionResult,
+    ConnectionResult, DetectionResult, EnablePersistenceResult, MixedBackendCheckResult, ProvisionResult,
     TestConnectionParams, TestConnectionResult,
 };
 use super::AppState;
@@ -251,6 +251,120 @@ pub async fn check_mixed_backend(
             legacy_rule_count: 0,
             nft_rule_count: 0,
             remediation: String::new(),
+        }),
+    }
+}
+
+/// Enable persistence for iptables rules on a remote host.
+///
+/// Installs the appropriate package and enables the service based on the
+/// detected distro family. For Debian, installs iptables-persistent;
+/// for RHEL, installs iptables-services.
+#[tauri::command]
+pub async fn enable_persistence(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<EnablePersistenceResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Detect the distro family to determine which persistence method to use
+    let caps = detect_capabilities(&proxy).await.map_err(|e| {
+        exec_failed(&host_id, format!("detection failed: {}", e))
+    })?;
+
+    let distro_family = &caps.distro.family;
+
+    match distro_family {
+        crate::host::detect::DistroFamily::Debian => {
+            // Install iptables-persistent non-interactively
+            let install_cmd = build_command(
+                "sudo",
+                &[
+                    "bash", "-c",
+                    "DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent",
+                ],
+            );
+            let install_out = proxy.pool.execute(&host_id, &install_cmd).await.map_err(|e| {
+                exec_failed(&host_id, format!("install failed: {}", e))
+            })?;
+            if install_out.exit_code != 0 {
+                return Ok(EnablePersistenceResult {
+                    success: false,
+                    method: "iptables-persistent".to_string(),
+                    message: format!(
+                        "Package installation failed: {}",
+                        install_out.stderr.trim()
+                    ),
+                });
+            }
+
+            // Enable the service
+            let enable_cmd = build_command(
+                "sudo",
+                &["systemctl", "enable", "netfilter-persistent"],
+            );
+            let _ = proxy.pool.execute(&host_id, &enable_cmd).await;
+
+            // Save current rules
+            let save_cmd = build_command(
+                "sudo",
+                &["netfilter-persistent", "save"],
+            );
+            let _ = proxy.pool.execute(&host_id, &save_cmd).await;
+
+            Ok(EnablePersistenceResult {
+                success: true,
+                method: "iptables-persistent".to_string(),
+                message: "iptables-persistent installed and enabled successfully.".to_string(),
+            })
+        }
+        crate::host::detect::DistroFamily::Rhel => {
+            // Install iptables-services
+            let install_cmd = build_command(
+                "sudo",
+                &["yum", "install", "-y", "iptables-services"],
+            );
+            let install_out = proxy.pool.execute(&host_id, &install_cmd).await.map_err(|e| {
+                exec_failed(&host_id, format!("install failed: {}", e))
+            })?;
+            if install_out.exit_code != 0 {
+                return Ok(EnablePersistenceResult {
+                    success: false,
+                    method: "iptables-services".to_string(),
+                    message: format!(
+                        "Package installation failed: {}",
+                        install_out.stderr.trim()
+                    ),
+                });
+            }
+
+            // Enable the service
+            let enable_cmd = build_command(
+                "sudo",
+                &["systemctl", "enable", "iptables"],
+            );
+            let _ = proxy.pool.execute(&host_id, &enable_cmd).await;
+
+            // Save current rules
+            let save_cmd = build_command(
+                "sudo",
+                &["service", "iptables", "save"],
+            );
+            let _ = proxy.pool.execute(&host_id, &save_cmd).await;
+
+            Ok(EnablePersistenceResult {
+                success: true,
+                method: "iptables-services".to_string(),
+                message: "iptables-services installed and enabled successfully.".to_string(),
+            })
+        }
+        _ => Ok(EnablePersistenceResult {
+            success: false,
+            method: "manual".to_string(),
+            message: "Automatic persistence setup not supported for this distribution. Please configure manually.".to_string(),
         }),
     }
 }

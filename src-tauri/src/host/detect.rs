@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use ts_rs::TS;
 
 use crate::safety::timer::{detect_mechanism, SafetyMechanism};
 use crate::ssh::command::build_command;
@@ -108,6 +109,7 @@ pub struct HostCapabilities {
     pub running_services: Vec<DetectedService>,
     pub detected_tools: Vec<DetectedTool>,
     pub persistence_method: PersistenceMethod,
+    pub persistence_status: PersistenceStatus,
     pub management_interface: Option<String>,
     pub management_is_vpn: bool,
     pub mixed_backend: MixedBackendStatus,
@@ -196,7 +198,7 @@ pub struct DetectedTool {
     pub rule_count: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub enum PersistenceMethod {
     #[serde(rename = "iptables-persistent")]
     IptablesPersistent,
@@ -204,6 +206,17 @@ pub enum PersistenceMethod {
     IptablesServices,
     #[serde(rename = "manual")]
     Manual,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct PersistenceStatus {
+    pub method: PersistenceMethod,
+    pub package_installed: bool,
+    pub service_enabled: bool,
+    pub service_active: bool,
+    pub last_saved: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +267,11 @@ pub async fn detect_capabilities(
         _ => PersistenceMethod::Manual,
     };
 
-    // 11. Detect management interface
+    // 11. Detect persistence status
+    let persistence_status =
+        detect_persistence_status(executor, &distro.family).await;
+
+    // 12. Detect management interface
     let (management_interface, management_is_vpn) =
         detect_management_interface(executor).await;
 
@@ -275,6 +292,7 @@ pub async fn detect_capabilities(
         running_services,
         detected_tools,
         persistence_method,
+        persistence_status,
         management_interface,
         management_is_vpn,
         mixed_backend,
@@ -828,12 +846,255 @@ fn extract_dev_from_route(output: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Persistence detection
+// ---------------------------------------------------------------------------
+
+/// Detect whether iptables rule persistence is properly configured.
+///
+/// Checks if the appropriate package is installed, the service is enabled
+/// and active, and when rules were last saved.
+pub async fn detect_persistence_status(
+    executor: &dyn CommandExecutor,
+    distro_family: &DistroFamily,
+) -> PersistenceStatus {
+    match distro_family {
+        DistroFamily::Debian => detect_persistence_debian(executor).await,
+        DistroFamily::Rhel => detect_persistence_rhel(executor).await,
+        _ => PersistenceStatus {
+            method: PersistenceMethod::Manual,
+            package_installed: false,
+            service_enabled: false,
+            service_active: false,
+            last_saved: None,
+        },
+    }
+}
+
+async fn detect_persistence_debian(executor: &dyn CommandExecutor) -> PersistenceStatus {
+    // Check if iptables-persistent is installed
+    let dpkg_cmd = build_command(
+        "bash",
+        &["-c", "dpkg -l iptables-persistent 2>/dev/null | grep '^ii'"],
+    );
+    let package_installed = match executor.exec(&dpkg_cmd).await {
+        Ok(o) => o.exit_code == 0 && !o.stdout.trim().is_empty(),
+        Err(_) => false,
+    };
+
+    // Check if netfilter-persistent service is enabled
+    let enabled_cmd = build_command(
+        "bash",
+        &["-c", "systemctl is-enabled netfilter-persistent 2>/dev/null"],
+    );
+    let service_enabled = match executor.exec(&enabled_cmd).await {
+        Ok(o) => o.exit_code == 0 && o.stdout.trim() == "enabled",
+        Err(_) => false,
+    };
+
+    // Check if netfilter-persistent service is active
+    let active_cmd = build_command(
+        "bash",
+        &["-c", "systemctl is-active netfilter-persistent 2>/dev/null"],
+    );
+    let service_active = match executor.exec(&active_cmd).await {
+        Ok(o) => o.exit_code == 0 && o.stdout.trim() == "active",
+        Err(_) => false,
+    };
+
+    // Check last saved timestamp
+    let stat_cmd = build_command(
+        "bash",
+        &["-c", "stat -c %Y /etc/iptables/rules.v4 2>/dev/null"],
+    );
+    let last_saved = match executor.exec(&stat_cmd).await {
+        Ok(o) if o.exit_code == 0 && !o.stdout.trim().is_empty() => {
+            Some(o.stdout.trim().to_string())
+        }
+        _ => None,
+    };
+
+    PersistenceStatus {
+        method: PersistenceMethod::IptablesPersistent,
+        package_installed,
+        service_enabled,
+        service_active,
+        last_saved,
+    }
+}
+
+async fn detect_persistence_rhel(executor: &dyn CommandExecutor) -> PersistenceStatus {
+    // Check if iptables-services is installed
+    let rpm_cmd = build_command(
+        "bash",
+        &["-c", "rpm -q iptables-services 2>/dev/null"],
+    );
+    let package_installed = match executor.exec(&rpm_cmd).await {
+        Ok(o) => o.exit_code == 0,
+        Err(_) => false,
+    };
+
+    // Check if iptables service is enabled
+    let enabled_cmd = build_command(
+        "bash",
+        &["-c", "systemctl is-enabled iptables 2>/dev/null"],
+    );
+    let service_enabled = match executor.exec(&enabled_cmd).await {
+        Ok(o) => o.exit_code == 0 && o.stdout.trim() == "enabled",
+        Err(_) => false,
+    };
+
+    // Check if iptables service is active
+    let active_cmd = build_command(
+        "bash",
+        &["-c", "systemctl is-active iptables 2>/dev/null"],
+    );
+    let service_active = match executor.exec(&active_cmd).await {
+        Ok(o) => o.exit_code == 0 && o.stdout.trim() == "active",
+        Err(_) => false,
+    };
+
+    // Check last saved timestamp
+    let stat_cmd = build_command(
+        "bash",
+        &["-c", "stat -c %Y /etc/sysconfig/iptables 2>/dev/null"],
+    );
+    let last_saved = match executor.exec(&stat_cmd).await {
+        Ok(o) if o.exit_code == 0 && !o.stdout.trim().is_empty() => {
+            Some(o.stdout.trim().to_string())
+        }
+        _ => None,
+    };
+
+    PersistenceStatus {
+        method: PersistenceMethod::IptablesServices,
+        package_installed,
+        service_enabled,
+        service_active,
+        last_saved,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ssh::executor::{CommandOutput, ExecError};
+    use async_trait::async_trait;
+
+    /// Simple mock executor for persistence detection tests.
+    struct MockExec {
+        responses: Vec<(String, CommandOutput)>,
+    }
+
+    impl MockExec {
+        fn new(responses: Vec<(&str, i32, &str)>) -> Self {
+            Self {
+                responses: responses
+                    .into_iter()
+                    .map(|(pattern, exit_code, stdout)| {
+                        (
+                            pattern.to_string(),
+                            CommandOutput {
+                                stdout: stdout.to_string(),
+                                stderr: String::new(),
+                                exit_code,
+                            },
+                        )
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CommandExecutor for MockExec {
+        async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
+            for (pattern, output) in &self.responses {
+                if command.contains(pattern) {
+                    return Ok(output.clone());
+                }
+            }
+            Ok(CommandOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: 1,
+            })
+        }
+
+        async fn exec_with_stdin(
+            &self,
+            command: &str,
+            _stdin: &[u8],
+        ) -> Result<CommandOutput, ExecError> {
+            self.exec(command).await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_persistence_debian_installed() {
+        let exec = MockExec::new(vec![
+            ("dpkg -l iptables-persistent", 0, "ii  iptables-persistent  1.0.16  all  boot-time loader for netfilter"),
+            ("systemctl is-enabled netfilter-persistent", 0, "enabled"),
+            ("systemctl is-active netfilter-persistent", 0, "active"),
+            ("stat -c %Y /etc/iptables/rules.v4", 0, "1700000000"),
+        ]);
+
+        let status = detect_persistence_status(&exec, &DistroFamily::Debian).await;
+        assert_eq!(status.method, PersistenceMethod::IptablesPersistent);
+        assert!(status.package_installed);
+        assert!(status.service_enabled);
+        assert!(status.service_active);
+        assert_eq!(status.last_saved, Some("1700000000".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_persistence_debian_not_installed() {
+        let exec = MockExec::new(vec![
+            ("dpkg -l iptables-persistent", 1, ""),
+            ("systemctl is-enabled netfilter-persistent", 1, ""),
+            ("systemctl is-active netfilter-persistent", 1, ""),
+            ("stat -c %Y /etc/iptables/rules.v4", 1, ""),
+        ]);
+
+        let status = detect_persistence_status(&exec, &DistroFamily::Debian).await;
+        assert_eq!(status.method, PersistenceMethod::IptablesPersistent);
+        assert!(!status.package_installed);
+        assert!(!status.service_enabled);
+        assert!(!status.service_active);
+        assert_eq!(status.last_saved, None);
+    }
+
+    #[tokio::test]
+    async fn test_persistence_rhel_installed() {
+        let exec = MockExec::new(vec![
+            ("rpm -q iptables-services", 0, "iptables-services-1.8.4-22.el8.x86_64"),
+            ("systemctl is-enabled iptables", 0, "enabled"),
+            ("systemctl is-active iptables", 0, "active"),
+            ("stat -c %Y /etc/sysconfig/iptables", 0, "1700000000"),
+        ]);
+
+        let status = detect_persistence_status(&exec, &DistroFamily::Rhel).await;
+        assert_eq!(status.method, PersistenceMethod::IptablesServices);
+        assert!(status.package_installed);
+        assert!(status.service_enabled);
+        assert!(status.service_active);
+        assert_eq!(status.last_saved, Some("1700000000".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_persistence_manual() {
+        let exec = MockExec::new(vec![]);
+
+        let status = detect_persistence_status(&exec, &DistroFamily::Arch).await;
+        assert_eq!(status.method, PersistenceMethod::Manual);
+        assert!(!status.package_installed);
+        assert!(!status.service_enabled);
+        assert!(!status.service_active);
+        assert_eq!(status.last_saved, None);
+    }
 
     #[test]
     fn test_parse_iptables_version_nft() {

@@ -49,6 +49,7 @@ pub fn run() {
             ipc::commands::host_delete,
             ipc::commands::host_provision,
             ipc::commands::check_mixed_backend,
+            ipc::commands::enable_persistence,
             // Rules commands
             ipc::commands::fetch_rules,
             ipc::commands::rules_apply,
