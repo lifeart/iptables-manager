@@ -263,6 +263,7 @@ pub async fn check_mixed_backend(
 #[tauri::command]
 pub async fn enable_persistence(
     host_id: String,
+    distro_family: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<EnablePersistenceResult, IpcError> {
     let proxy = PoolProxyExecutor {
@@ -270,14 +271,21 @@ pub async fn enable_persistence(
         host_id: host_id.clone(),
     };
 
-    // Detect the distro family to determine which persistence method to use
-    let caps = detect_capabilities(&proxy).await.map_err(|e| {
-        exec_failed(&host_id, format!("detection failed: {}", e))
-    })?;
+    // Use provided distro_family if available, otherwise detect
+    let resolved_family = if let Some(ref family_str) = distro_family {
+        match family_str.to_lowercase().as_str() {
+            "debian" => crate::host::detect::DistroFamily::Debian,
+            "rhel" => crate::host::detect::DistroFamily::Rhel,
+            _ => crate::host::detect::DistroFamily::Other,
+        }
+    } else {
+        let caps = detect_capabilities(&proxy).await.map_err(|e| {
+            exec_failed(&host_id, format!("detection failed: {}", e))
+        })?;
+        caps.distro.family
+    };
 
-    let distro_family = &caps.distro.family;
-
-    match distro_family {
+    match resolved_family {
         crate::host::detect::DistroFamily::Debian => {
             // Install iptables-persistent non-interactively
             let install_cmd = build_command(
@@ -301,24 +309,66 @@ pub async fn enable_persistence(
                 });
             }
 
+            let mut warnings: Vec<String> = Vec::new();
+
             // Enable the service
             let enable_cmd = build_command(
                 "sudo",
                 &["systemctl", "enable", "netfilter-persistent"],
             );
-            let _ = proxy.pool.execute(&host_id, &enable_cmd).await;
+            let enable_result = proxy.pool.execute(&host_id, &enable_cmd).await;
+            let enable_ok = match &enable_result {
+                Ok(o) if o.exit_code == 0 => true,
+                Ok(o) => {
+                    warnings.push(format!(
+                        "systemctl enable failed (exit {}): {}",
+                        o.exit_code,
+                        o.stderr.trim()
+                    ));
+                    false
+                }
+                Err(e) => {
+                    warnings.push(format!("systemctl enable failed: {}", e));
+                    false
+                }
+            };
 
             // Save current rules
             let save_cmd = build_command(
                 "sudo",
                 &["netfilter-persistent", "save"],
             );
-            let _ = proxy.pool.execute(&host_id, &save_cmd).await;
+            let save_result = proxy.pool.execute(&host_id, &save_cmd).await;
+            match &save_result {
+                Ok(o) if o.exit_code == 0 => {}
+                Ok(o) => {
+                    warnings.push(format!(
+                        "netfilter-persistent save failed (exit {}): {}",
+                        o.exit_code,
+                        o.stderr.trim()
+                    ));
+                }
+                Err(e) => {
+                    warnings.push(format!("netfilter-persistent save failed: {}", e));
+                }
+            }
+
+            // Success requires install + enable; save failure is a warning
+            let success = enable_ok;
+            let message = if warnings.is_empty() {
+                "iptables-persistent installed and enabled successfully.".to_string()
+            } else {
+                format!(
+                    "iptables-persistent installed{}. Warnings: {}",
+                    if enable_ok { " and enabled" } else { " but enable failed" },
+                    warnings.join("; ")
+                )
+            };
 
             Ok(EnablePersistenceResult {
-                success: true,
+                success,
                 method: "iptables-persistent".to_string(),
-                message: "iptables-persistent installed and enabled successfully.".to_string(),
+                message,
             })
         }
         crate::host::detect::DistroFamily::Rhel => {
@@ -341,24 +391,66 @@ pub async fn enable_persistence(
                 });
             }
 
+            let mut warnings: Vec<String> = Vec::new();
+
             // Enable the service
             let enable_cmd = build_command(
                 "sudo",
                 &["systemctl", "enable", "iptables"],
             );
-            let _ = proxy.pool.execute(&host_id, &enable_cmd).await;
+            let enable_result = proxy.pool.execute(&host_id, &enable_cmd).await;
+            let enable_ok = match &enable_result {
+                Ok(o) if o.exit_code == 0 => true,
+                Ok(o) => {
+                    warnings.push(format!(
+                        "systemctl enable failed (exit {}): {}",
+                        o.exit_code,
+                        o.stderr.trim()
+                    ));
+                    false
+                }
+                Err(e) => {
+                    warnings.push(format!("systemctl enable failed: {}", e));
+                    false
+                }
+            };
 
             // Save current rules
             let save_cmd = build_command(
                 "sudo",
                 &["service", "iptables", "save"],
             );
-            let _ = proxy.pool.execute(&host_id, &save_cmd).await;
+            let save_result = proxy.pool.execute(&host_id, &save_cmd).await;
+            match &save_result {
+                Ok(o) if o.exit_code == 0 => {}
+                Ok(o) => {
+                    warnings.push(format!(
+                        "service iptables save failed (exit {}): {}",
+                        o.exit_code,
+                        o.stderr.trim()
+                    ));
+                }
+                Err(e) => {
+                    warnings.push(format!("service iptables save failed: {}", e));
+                }
+            }
+
+            // Success requires install + enable; save failure is a warning
+            let success = enable_ok;
+            let message = if warnings.is_empty() {
+                "iptables-services installed and enabled successfully.".to_string()
+            } else {
+                format!(
+                    "iptables-services installed{}. Warnings: {}",
+                    if enable_ok { " and enabled" } else { " but enable failed" },
+                    warnings.join("; ")
+                )
+            };
 
             Ok(EnablePersistenceResult {
-                success: true,
+                success,
                 method: "iptables-services".to_string(),
-                message: "iptables-services installed and enabled successfully.".to_string(),
+                message,
             })
         }
         _ => Ok(EnablePersistenceResult {

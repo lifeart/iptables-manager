@@ -197,6 +197,20 @@ pub async fn run_live_trace(
     // Build filter args as &str slices for build_iptables_command
     let filter_refs: Vec<&str> = filter_args.iter().map(|s| s.as_str()).collect();
 
+    // ── Schedule background cleanup in case SSH disconnects during collection ──
+    let filter_str = filter_args.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+    let cleanup_script = format!(
+        "sudo iptables -w 5 -t raw -D PREROUTING {} -j TRACE 2>/dev/null; \
+         sudo iptables -w 5 -t raw -D OUTPUT {} -j TRACE 2>/dev/null",
+        filter_str, filter_str
+    );
+    let cleanup_delay = timeout_secs + 30;
+    // Best-effort: at may not be available
+    let _ = executor.exec(&format!(
+        "echo '{}' | at now + {} seconds 2>/dev/null || true",
+        cleanup_script, cleanup_delay
+    )).await;
+
     // ── Step 1: Insert TRACE rules ──────────────────────────────
 
     // PREROUTING
@@ -633,8 +647,9 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
 
     #[tokio::test]
     async fn test_trace_cleanup_always_runs() {
-        // Simulate: insert succeeds, collection fails, delete should still run
+        // Simulate: at cleanup scheduled, insert succeeds, collection fails, delete should still run
         let executor = MockExecutor::new(vec![
+            ("| at now", 0, "", ""),
             ("-I PREROUTING", 0, "", ""),
             ("-I OUTPUT", 0, "", ""),
             ("xtables-monitor", 1, "", "xtables-monitor: not found"),
@@ -656,21 +671,26 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
 
         let calls = executor.get_calls();
 
-        // Verify delete commands were issued
-        let has_del_pre = calls.iter().any(|c| c.contains("-D PREROUTING"));
-        let has_del_out = calls.iter().any(|c| c.contains("-D OUTPUT"));
+        // Verify background at cleanup was scheduled
+        let has_at = calls.iter().any(|c| c.contains("| at now"));
+        assert!(has_at, "should schedule at cleanup; calls: {:?}", calls);
+
+        // Verify delete commands were issued (not counting the at cleanup script)
+        let has_del_pre = calls.iter().any(|c| c.contains("-D PREROUTING") && !c.contains("| at now"));
+        let has_del_out = calls.iter().any(|c| c.contains("-D OUTPUT") && !c.contains("| at now"));
         assert!(has_del_pre, "should issue -D PREROUTING; calls: {:?}", calls);
         assert!(has_del_out, "should issue -D OUTPUT; calls: {:?}", calls);
 
-        // Verify order: insert before delete
+        // Verify order: insert before delete (excluding at cleanup command)
         let insert_idx = calls.iter().position(|c| c.contains("-I PREROUTING")).unwrap();
-        let delete_idx = calls.iter().position(|c| c.contains("-D PREROUTING")).unwrap();
+        let delete_idx = calls.iter().position(|c| c.contains("-D PREROUTING") && !c.contains("| at now")).unwrap();
         assert!(insert_idx < delete_idx, "insert must come before delete");
     }
 
     #[tokio::test]
     async fn test_trace_insert_failure_returns_error() {
         let executor = MockExecutor::new(vec![
+            ("| at now", 0, "", ""),
             ("-I PREROUTING", 1, "", "iptables: Permission denied"),
         ]);
 
@@ -699,6 +719,7 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
         // PREROUTING insert succeeds but OUTPUT insert fails.
         // The code MUST delete the PREROUTING rule before returning error.
         let executor = MockExecutor::new(vec![
+            ("| at now", 0, "", ""),
             ("-I PREROUTING", 0, "", ""),
             ("-I OUTPUT", 1, "", "iptables: Permission denied"),
             ("-D PREROUTING", 0, "", ""),
@@ -723,9 +744,9 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
             other => panic!("expected InsertFailed, got: {:?}", other),
         }
 
-        // Verify PREROUTING was cleaned up
+        // Verify PREROUTING was cleaned up (not counting the at cleanup script)
         let calls = executor.get_calls();
-        let has_del_pre = calls.iter().any(|c| c.contains("-D PREROUTING"));
+        let has_del_pre = calls.iter().any(|c| c.contains("-D PREROUTING") && !c.contains("| at now"));
         assert!(
             has_del_pre,
             "MUST clean up PREROUTING rule on OUTPUT failure to avoid leaked TRACE rules; calls: {:?}",
@@ -737,6 +758,7 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
     async fn test_legacy_variant_uses_dmesg() {
         // Verify the Legacy variant constructs a dmesg-based collection command
         let executor = MockExecutor::new(vec![
+            ("| at now", 0, "", ""),
             ("-I PREROUTING", 0, "", ""),
             ("-I OUTPUT", 0, "", ""),
             ("dmesg", 0, "[12345.678] TRACE: raw:PREROUTING:policy:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 PROTO=TCP DPT=80", ""),

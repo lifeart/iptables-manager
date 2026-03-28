@@ -283,6 +283,22 @@ async fn apply_to_single_host(
         host_id: host_id.to_string(),
     };
 
+    // Check for mixed backend — block apply if both legacy and nft rules exist
+    if let Ok(MixedBackendStatus::Mixed {
+        legacy_rule_count,
+        nft_rule_count,
+    }) = detect_mixed_backend(&proxy).await
+    {
+        return HostApplyResult {
+            host_id: host_id.to_string(),
+            success: false,
+            error: Some(format!(
+                "Mixed backend: {} legacy rules, {} nft rules",
+                legacy_rule_count, nft_rule_count
+            )),
+        };
+    }
+
     // Create backup
     if let Err(e) = create_pre_apply_backup(&proxy, host_id).await {
         return HostApplyResult {

@@ -548,8 +548,8 @@ export const getCoexistenceProfile = (hostId: string) =>
   ipcCall<CoexistenceProfile>('coexistence:profile', { hostId });
 
 // Persistence
-export const enablePersistence = (hostId: string) =>
-  ipcCall<EnablePersistenceResult>('host:enable-persistence', { hostId });
+export const enablePersistence = (hostId: string, distroFamily?: string) =>
+  ipcCall<EnablePersistenceResult>('host:enable-persistence', { hostId, distroFamily: distroFamily ?? null });
 
 // ─── Event Listeners ─────────────────────────────────────────
 
