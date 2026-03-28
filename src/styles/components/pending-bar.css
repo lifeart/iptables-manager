@@ -1,0 +1,362 @@
+/* Pending Bar — pending changes bar + preview modal */
+
+/* ── Pending Bar ─────────────────────────────────────── */
+
+.rule-table__pending-bar-container {
+  position: relative;
+}
+
+.rule-table__pending-bar {
+  display: flex;
+  align-items: center;
+  height: var(--row-height);
+  padding: 0 var(--space-spacious);
+  background: var(--color-elevated);
+  border-top: 2px solid var(--color-warning);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  transform: translateY(100%);
+  transition: transform var(--transition-default);
+  gap: var(--space-compact);
+}
+
+.rule-table__pending-bar--visible {
+  transform: translateY(0);
+}
+
+.rule-table__pending-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  flex-shrink: 0;
+}
+
+.rule-table__pending-bar-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.rule-table__pending-bar-spacer {
+  flex: 1;
+}
+
+.rule-table__pending-bar-discard {
+  font-family: var(--font-family);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast);
+}
+
+.rule-table__pending-bar-discard:hover {
+  color: var(--color-block);
+}
+
+.rule-table__pending-bar-apply {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+  transition: opacity var(--transition-fast);
+}
+
+.rule-table__pending-bar-apply:hover {
+  opacity: 0.9;
+}
+
+.rule-table__pending-bar-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rule-table__pending-bar-apply kbd {
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.rule-table__pending-bar-group-apply {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: none;
+  border: 1px solid var(--color-primary);
+  cursor: pointer;
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.rule-table__pending-bar-group-apply:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+/* ── Pending Bar Extras ─────────────────────────────────── */
+
+.rule-table__pending-bar-show-changes {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-family);
+  padding: 0 var(--space-compact);
+  transition: opacity var(--transition-fast);
+}
+
+.rule-table__pending-bar-show-changes:hover {
+  opacity: 0.8;
+}
+
+.rule-table__pending-bar-apply-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.rule-table__pending-bar-changes-list {
+  padding: var(--space-compact) var(--space-comfortable);
+  font-size: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.rule-table__pending-bar-change-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.rule-table__pending-bar-undo-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-family);
+  padding: 0 4px;
+  transition: opacity var(--transition-fast);
+}
+
+.rule-table__pending-bar-undo-btn:hover {
+  opacity: 0.8;
+}
+
+.rule-table__pending-bar-empty {
+  color: var(--color-text-secondary);
+}
+
+.rule-table__pending-bar-error {
+  color: var(--color-block);
+  font-size: 12px;
+  margin-left: var(--space-compact);
+}
+
+.rule-table__pending-bar-tooltip {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 6px;
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-compact) var(--space-default);
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: var(--shadow-popover);
+  color: var(--color-text-primary);
+}
+
+.rule-table__pending-bar-tooltip-item {
+  padding: 1px 0;
+}
+
+/* ── Preview Button ────────────────────────────────── */
+
+.rule-table__pending-bar-preview {
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  padding: 5px 14px;
+  border-radius: var(--radius-md);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.rule-table__pending-bar-preview:hover {
+  background: var(--color-hover);
+  border-color: var(--color-border-strong);
+}
+
+.rule-table__pending-bar-preview:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Preview Modal ─────────────────────────────────── */
+
+.preview-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.preview-modal {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 640px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.preview-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.preview-modal__title {
+  font-family: var(--font-family);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.preview-modal__close {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 4px);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.preview-modal__close:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.preview-modal__section {
+  padding: 12px 20px;
+  overflow: auto;
+}
+
+.preview-modal__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.preview-modal__label {
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.preview-modal__section-header .preview-modal__label {
+  margin-bottom: 0;
+}
+
+.preview-modal__code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 0;
+  overflow: auto;
+  max-height: 400px;
+  white-space: pre;
+  word-break: break-all;
+  tab-size: 4;
+}
+
+.preview-modal__code--cmd {
+  max-height: none;
+  color: var(--color-text-secondary);
+  background: var(--color-hover);
+}
+
+.preview-modal__copy {
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--color-primary);
+  background: none;
+  border: 1px solid var(--color-primary);
+  cursor: pointer;
+  padding: 3px 10px;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.preview-modal__copy:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+/* ── Dark Theme ──────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .preview-modal {
+    background: var(--color-elevated);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  }
+
+  .preview-modal__backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+}

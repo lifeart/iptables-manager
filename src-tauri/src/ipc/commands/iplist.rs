@@ -3,17 +3,17 @@ use tauri::State;
 use crate::ipc::errors::IpcError;
 
 use super::helpers::PoolProxyExecutor;
-use super::PoolState;
+use super::AppState;
 
 /// Sync (refresh) an ipset on the remote host.
 #[tauri::command]
 pub async fn iplist_sync(
     host_id: String,
     ip_list_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     let empty: Vec<String> = Vec::new();
@@ -35,10 +35,10 @@ pub async fn iplist_sync(
 pub async fn iplist_delete(
     host_id: String,
     ip_list_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::ipset::manager::delete_ipset(&proxy, &ip_list_id)

@@ -1513,4 +1513,125 @@ COMMIT
             conflicts
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Truncation / capping tests
+    // -----------------------------------------------------------------------
+
+    /// Create 100+ conflicting rules and verify only 50 are returned with
+    /// `truncated: true`.
+    #[test]
+    fn test_detect_conflicts_caps_at_limit() {
+        // Create 102 rules on INPUT, all ACCEPT tcp any->any port 22.
+        // Every pair with the same action is a redundancy, so the number of
+        // conflicts is C(102,2) = 5151, far exceeding the default limit of 50.
+        let mut rules = Vec::new();
+        for i in 0..102 {
+            rules.push(EffectiveRule {
+                id: format!("rule-{}", i),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None,
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: i + 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            });
+        }
+
+        let result = detect_conflicts(&rules);
+        assert_eq!(
+            result.conflicts.len(),
+            50,
+            "should cap at 50 conflicts, got {}",
+            result.conflicts.len()
+        );
+        assert!(
+            result.truncated,
+            "should set truncated=true when results are capped"
+        );
+    }
+
+    /// Create only 3 conflicting rules and verify `truncated: false`.
+    #[test]
+    fn test_detect_conflicts_no_truncation_under_limit() {
+        // 3 rules: all ACCEPT tcp port 22 with overlapping sources.
+        // Rule A: any source, Rule B: 10.0.0.0/8, Rule C: 10.1.0.0/16
+        // B is subset of A (redundancy), C is subset of A (redundancy),
+        // C is subset of B (redundancy) => 3 conflicts total.
+        let rules = vec![
+            EffectiveRule {
+                id: "A".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: None, // any
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 1,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "B".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.0.0.0/8".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 2,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+            EffectiveRule {
+                id: "C".to_string(),
+                action: RuleAction::Accept,
+                protocol: Some(Protocol::Tcp),
+                source: Some("10.1.0.0/16".to_string()),
+                destination: None,
+                ports: Some(PortSpec::Single(22)),
+                direction: RuleDirection::Input,
+                position: 3,
+                source_negated: false,
+                destination_negated: false,
+                protocol_negated: false,
+                in_interface: None,
+                out_interface: None,
+            },
+        ];
+
+        let result = detect_conflicts(&rules);
+        assert_eq!(
+            result.conflicts.len(),
+            3,
+            "should have exactly 3 redundancy conflicts, got {}",
+            result.conflicts.len()
+        );
+        assert!(
+            !result.truncated,
+            "should set truncated=false when under the limit"
+        );
+
+        // All should be redundancy type
+        for c in &result.conflicts {
+            assert_eq!(
+                c.conflict_type,
+                ConflictType::Redundancy,
+                "all conflicts should be Redundancy, got {:?}",
+                c.conflict_type
+            );
+        }
+    }
 }

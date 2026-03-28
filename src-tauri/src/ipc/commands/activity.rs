@@ -4,7 +4,7 @@ use crate::ipc::errors::IpcError;
 
 use super::helpers::PoolProxyExecutor;
 use super::types::ActivityData;
-use super::PoolState;
+use super::AppState;
 
 /// Subscribe to activity polling for a host (no-op; frontend polls via fetch_* calls).
 #[tauri::command]
@@ -23,10 +23,10 @@ pub async fn activity_unsubscribe(stream_id: String) -> Result<(), IpcError> {
 #[tauri::command]
 pub async fn activity_fetch_hit_counters(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<Vec<crate::activity::monitor::HitCounter>, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::activity::monitor::fetch_hit_counters(&proxy)
@@ -41,10 +41,10 @@ pub async fn activity_fetch_hit_counters(
 #[tauri::command]
 pub async fn activity_fetch_conntrack_table(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<Vec<crate::activity::monitor::ConntrackEntry>, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::activity::monitor::fetch_conntrack_table(&proxy)
@@ -59,10 +59,10 @@ pub async fn activity_fetch_conntrack_table(
 #[tauri::command]
 pub async fn activity_fetch_bans(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<Vec<crate::activity::monitor::Fail2banBan>, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::activity::monitor::fetch_fail2ban_bans(&proxy)
@@ -77,10 +77,10 @@ pub async fn activity_fetch_bans(
 #[tauri::command]
 pub async fn fetch_activity(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ActivityData, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -109,10 +109,10 @@ pub async fn fetch_activity(
 #[tauri::command]
 pub async fn activity_fetch_conntrack(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<crate::activity::monitor::ConntrackUsage, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::activity::monitor::fetch_conntrack_usage(&proxy)

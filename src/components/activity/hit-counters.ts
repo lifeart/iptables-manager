@@ -24,6 +24,7 @@ interface HitRow {
 export class HitCounters extends Component {
   private container!: HTMLElement;
   private sparklines: Map<string, Sparkline> = new Map();
+  private renderTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -44,6 +45,16 @@ export class HitCounters extends Component {
     this.bindSubscriptions();
   }
 
+  private scheduleRender(): void {
+    if (this.renderTimer !== null) {
+      clearTimeout(this.renderTimer);
+    }
+    this.renderTimer = setTimeout(() => {
+      this.renderTimer = null;
+      this.renderRows();
+    }, 1000);
+  }
+
   private bindSubscriptions(): void {
     this.subscribe(
       (s: AppState) => {
@@ -51,12 +62,12 @@ export class HitCounters extends Component {
         if (!hostId) return null;
         return s.hostStates.get(hostId)?.hitCounters ?? null;
       },
-      () => this.renderRows(),
+      () => this.scheduleRender(),
     );
 
     this.subscribe(
       selectEffectiveRules as (s: AppState) => EffectiveRule[] | null,
-      () => this.renderRows(),
+      () => this.scheduleRender(),
     );
 
     this.renderRows();
@@ -191,6 +202,10 @@ export class HitCounters extends Component {
   }
 
   override destroy(): void {
+    if (this.renderTimer !== null) {
+      clearTimeout(this.renderTimer);
+      this.renderTimer = null;
+    }
     for (const sparkline of this.sparklines.values()) {
       sparkline.destroy();
     }

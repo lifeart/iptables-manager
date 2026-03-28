@@ -510,10 +510,15 @@ impl SshTransport for OpensshTransport {
             builder.jump_hosts(vec![jump_dest]);
         }
 
-        let session = builder
-            .connect(&config.hostname)
-            .await
-            .map_err(|e| ConnectError::Transport(format!("SSH connection failed: {}", e)))?;
+        let session = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            builder.connect(&config.hostname),
+        )
+        .await
+        .map_err(|_| ConnectError::Transport(format!(
+            "SSH connection to {} timed out after 10 seconds", config.hostname
+        )))?
+        .map_err(|e| ConnectError::Transport(format!("SSH connection failed: {}", e)))?;
 
         Ok(Box::new(OpensshExecutor {
             session: Arc::new(session),
@@ -882,5 +887,104 @@ mod tests {
 
         // Wait a bit to confirm no panics from the keepalive task
         tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+
+    /// Verify that when the keepalive detects a dead connection, the session
+    /// is removed from the pool AND `get_status` returns `Disconnected`.
+    #[tokio::test]
+    async fn test_keepalive_removes_session_from_pool() {
+        // success_count=1: first keepalive succeeds, second fails.
+        let pool = ConnectionPool::with_keepalive_interval(
+            Box::new(CountdownTransport { success_count: 1 }),
+            Duration::from_millis(50),
+        );
+        pool.connect("host-1", test_config()).await.unwrap();
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Connected);
+
+        // Wait long enough for the keepalive to fail (2 ticks + margin)
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Verify status is Disconnected
+        assert_eq!(
+            pool.get_status("host-1"),
+            ConnectionStatus::Disconnected,
+            "get_status should return Disconnected after keepalive failure"
+        );
+
+        // Verify session is removed from the internal map (execute should fail
+        // with ConnectionLost, not succeed)
+        let exec_result = pool.execute("host-1", "echo hi").await;
+        assert!(
+            matches!(exec_result, Err(ExecError::ConnectionLost(_))),
+            "execute should fail with ConnectionLost after session is removed, got: {:?}",
+            exec_result
+        );
+    }
+
+    /// Verify that keepalive heartbeats don't interfere with normal command
+    /// execution — commands execute correctly while keepalive is active.
+    #[tokio::test]
+    async fn test_keepalive_does_not_interfere_with_normal_commands() {
+        let output = CommandOutput {
+            stdout: "hello world\n".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        let pool = ConnectionPool::with_keepalive_interval(
+            Box::new(MockTransport::with_output(output)),
+            Duration::from_millis(100),
+        );
+        pool.connect("host-1", test_config()).await.unwrap();
+
+        // Execute several commands while keepalive is ticking
+        for i in 0..5 {
+            let result = pool.execute("host-1", &format!("echo {}", i)).await;
+            assert!(
+                result.is_ok(),
+                "command {} should succeed while keepalive is active: {:?}",
+                i,
+                result
+            );
+            assert_eq!(result.unwrap().stdout, "hello world\n");
+        }
+
+        // Also test exec_with_stdin works alongside keepalive
+        let stdin_result = pool
+            .execute_with_stdin("host-1", "cat", b"data")
+            .await;
+        assert!(
+            stdin_result.is_ok(),
+            "exec_with_stdin should succeed while keepalive is active"
+        );
+
+        // Session should still be connected (MockTransport always returns success)
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Connected);
+    }
+
+    /// Verify that rapid calls are delayed by the rate limiter (max 10/sec).
+    #[tokio::test]
+    async fn test_rate_limiter_serializes_under_load() {
+        let pool = ConnectionPool::new(Box::new(MockTransport::new()));
+        pool.connect("host-1", test_config()).await.unwrap();
+
+        let start = tokio::time::Instant::now();
+
+        // Fire 15 commands rapidly — the first 10 should be instant,
+        // the next 5 should be delayed by the rate limiter.
+        for i in 0..15 {
+            let result = pool.execute("host-1", &format!("cmd {}", i)).await;
+            assert!(result.is_ok(), "command {} should succeed", i);
+        }
+
+        let elapsed = start.elapsed();
+
+        // If the rate limiter works, the last 5 commands should have been
+        // delayed. With 10 commands/sec, 15 commands need at least ~500ms.
+        // Be generous with the lower bound to avoid flaky tests.
+        assert!(
+            elapsed >= Duration::from_millis(200),
+            "15 rapid commands should take at least 200ms due to rate limiting, took {:?}",
+            elapsed
+        );
     }
 }

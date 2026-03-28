@@ -5,13 +5,23 @@ use dashmap::DashMap;
 use crate::ssh::pool::ConnectionPool;
 
 // ---------------------------------------------------------------------------
-// Shared state type aliases
+// Shared state type aliases (kept for backward compat in tests)
 // ---------------------------------------------------------------------------
 
 pub type PoolState = Arc<ConnectionPool>;
 
 /// Managed state holding the last-known rule hash per host for drift detection.
 pub type DriftState = Arc<DashMap<String, String>>;
+
+// ---------------------------------------------------------------------------
+// Consolidated application state
+// ---------------------------------------------------------------------------
+
+/// Single managed state struct holding all shared resources.
+pub struct AppState {
+    pub pool: Arc<ConnectionPool>,
+    pub drift: Arc<DashMap<String, String>>,
+}
 
 // ---------------------------------------------------------------------------
 // Submodules

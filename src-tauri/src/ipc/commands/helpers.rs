@@ -37,6 +37,18 @@ impl CommandExecutor for PoolProxyExecutor {
 }
 
 // ---------------------------------------------------------------------------
+// Error helpers
+// ---------------------------------------------------------------------------
+
+/// Shorthand for the common `IpcError::ConnectionFailed` construction pattern.
+pub(crate) fn exec_failed(host_id: &str, reason: impl std::fmt::Display) -> IpcError {
+    IpcError::ConnectionFailed {
+        host_id: host_id.to_string(),
+        reason: reason.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
@@ -62,10 +74,7 @@ pub(crate) async fn fetch_current_ruleset(
 ) -> Result<(String, ParsedRuleset), IpcError> {
     let cmd = build_command("sudo", &["iptables-save"]);
     let output = executor.exec(&cmd).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.to_string(),
-            reason: format!("failed to run iptables-save: {}", e),
-        }
+        exec_failed(host_id, format!("failed to run iptables-save: {}", e))
     })?;
 
     if output.exit_code != 0 {
@@ -95,10 +104,7 @@ pub(crate) async fn create_pre_apply_backup(
     // Fetch current IPv4 rules
     let save_cmd = build_command("sudo", &["iptables-save", "-w", "5"]);
     let save_output = executor.exec(&save_cmd).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.to_string(),
-            reason: format!("failed to run iptables-save for backup: {}", e),
-        }
+        exec_failed(host_id, format!("failed to run iptables-save for backup: {}", e))
     })?;
     if save_output.exit_code != 0 {
         return Err(IpcError::CommandFailed {
@@ -446,6 +452,89 @@ COMMIT
             v6_write.is_none(),
             "should NOT write backup.v6 when ip6tables-save fails"
         );
+    }
+
+    // -------------------------------------------------------------------
+    // fetch_current_ruleset tests
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_fetch_current_ruleset_parses_valid_output() {
+        let iptables_output = r#"*filter
+:INPUT ACCEPT [100:5000]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [50:2500]
+-A INPUT -p tcp --dport 22 -j ACCEPT
+-A INPUT -p tcp --dport 80 -j ACCEPT
+-A INPUT -p udp --dport 53 -j DROP
+COMMIT
+*nat
+:PREROUTING ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A POSTROUTING -o eth0 -j MASQUERADE
+COMMIT
+"#;
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+        ]);
+
+        let result = fetch_current_ruleset(&executor, "test-host").await;
+        assert!(result.is_ok(), "should parse valid output: {:?}", result);
+
+        let (raw, ruleset) = result.unwrap();
+
+        // Raw output preserved
+        assert_eq!(raw, iptables_output);
+
+        // Tables parsed correctly
+        assert!(ruleset.tables.contains_key("filter"), "should have filter table");
+        assert!(ruleset.tables.contains_key("nat"), "should have nat table");
+
+        // Chains parsed correctly
+        let filter = &ruleset.tables["filter"];
+        assert!(filter.chains.contains_key("INPUT"), "filter should have INPUT chain");
+        assert!(filter.chains.contains_key("FORWARD"), "filter should have FORWARD chain");
+        assert!(filter.chains.contains_key("OUTPUT"), "filter should have OUTPUT chain");
+
+        // Rules parsed correctly
+        let input_chain = &filter.chains["INPUT"];
+        assert_eq!(input_chain.rules.len(), 3, "INPUT should have 3 rules");
+        assert_eq!(
+            input_chain.policy.as_deref(),
+            Some("ACCEPT"),
+            "INPUT policy should be ACCEPT"
+        );
+
+        // FORWARD chain policy
+        let forward_chain = &filter.chains["FORWARD"];
+        assert_eq!(
+            forward_chain.policy.as_deref(),
+            Some("DROP"),
+            "FORWARD policy should be DROP"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_current_ruleset_returns_error_on_failure() {
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 1, "", "iptables: Permission denied"),
+        ]);
+
+        let result = fetch_current_ruleset(&executor, "test-host").await;
+        assert!(result.is_err(), "should return error on exit code 1");
+
+        match result.unwrap_err() {
+            IpcError::CommandFailed { stderr, exit_code } => {
+                assert_eq!(exit_code, 1);
+                assert!(
+                    stderr.contains("Permission denied"),
+                    "error should contain stderr message, got: {}",
+                    stderr
+                );
+            }
+            other => panic!("expected CommandFailed, got {:?}", other),
+        }
     }
 
     #[tokio::test]

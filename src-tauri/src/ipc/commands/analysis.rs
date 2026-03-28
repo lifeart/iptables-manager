@@ -6,23 +6,23 @@ use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
 use crate::ssh::command::build_command;
 
-use super::helpers::{fetch_current_ruleset, PoolProxyExecutor};
+use super::helpers::{exec_failed, fetch_current_ruleset, PoolProxyExecutor};
 use super::types::{CompareHostsResult, DriftCheckResult, ImportExistingRulesResult};
-use super::{DriftState, PoolState};
+use super::AppState;
 
 /// Compare iptables rules between two connected hosts.
 #[tauri::command]
 pub async fn compare_hosts(
     host_id_a: String,
     host_id_b: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<CompareHostsResult, IpcError> {
     let proxy_a = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id_a.clone(),
     };
     let proxy_b = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id_b.clone(),
     };
 
@@ -48,10 +48,10 @@ pub async fn compare_hosts(
 #[tauri::command]
 pub async fn import_existing_rules(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ImportExistingRulesResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -79,15 +79,11 @@ pub async fn import_existing_rules(
 #[tauri::command]
 pub async fn check_drift(
     host_id: String,
-    pool: State<'_, PoolState>,
-    drift_state: State<'_, DriftState>,
+    state: State<'_, AppState>,
 ) -> Result<DriftCheckResult, IpcError> {
     let cmd = build_command("sudo", &["iptables-save"]);
-    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: format!("failed to run iptables-save: {}", e),
-        }
+    let output = state.pool.execute(&host_id, &cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to run iptables-save: {}", e))
     })?;
 
     if output.exit_code != 0 {
@@ -106,8 +102,8 @@ pub async fn check_drift(
         format!("{:016x}", hasher.finish())
     };
 
-    let previous = drift_state.get(&host_id).map(|v| v.clone());
-    drift_state.insert(host_id.clone(), new_hash.clone());
+    let previous = state.drift.get(&host_id).map(|v| v.clone());
+    state.drift.insert(host_id.clone(), new_hash.clone());
 
     match previous {
         None => {
@@ -157,15 +153,11 @@ pub async fn check_drift(
 #[tauri::command]
 pub async fn reset_drift(
     host_id: String,
-    pool: State<'_, PoolState>,
-    drift_state: State<'_, DriftState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let cmd = build_command("sudo", &["iptables-save"]);
-    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: format!("failed to run iptables-save: {}", e),
-        }
+    let output = state.pool.execute(&host_id, &cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to run iptables-save: {}", e))
     })?;
 
     if output.exit_code != 0 {
@@ -184,7 +176,7 @@ pub async fn reset_drift(
         format!("{:016x}", hasher.finish())
     };
 
-    drift_state.insert(host_id, new_hash);
+    state.drift.insert(host_id, new_hash);
     Ok(())
 }
 
@@ -246,4 +238,142 @@ fn find_chain_diffs(raw_a: &str, raw_b: &str) -> Vec<String> {
     }
 
     diffs
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use dashmap::DashMap;
+
+    /// Simulate drift detection for two hosts concurrently, verifying that
+    /// per-host hash tracking in the DashMap doesn't cause cross-host
+    /// interference.
+    #[tokio::test]
+    async fn test_drift_concurrent_hosts() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let drift: Arc<DashMap<String, String>> = Arc::new(DashMap::new());
+
+        // Simulate iptables-save output for two hosts
+        let rules_a_v1 = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let rules_b_v1 = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 80 -j ACCEPT\nCOMMIT\n";
+
+        // Helper to compute hash (mirrors check_drift logic)
+        let compute_hash = |input: &str| -> String {
+            let filtered = crate::snapshot::manager::filter_tr_chains(input);
+            let mut hasher = DefaultHasher::new();
+            filtered.hash(&mut hasher);
+            format!("{:016x}", hasher.finish())
+        };
+
+        // First call: baseline for both hosts (no drift expected)
+        let drift_a = drift.clone();
+        let drift_b = drift.clone();
+
+        let hash_a_v1 = compute_hash(rules_a_v1);
+        let hash_b_v1 = compute_hash(rules_b_v1);
+
+        // Run baseline insertion concurrently
+        let handle_a = tokio::spawn({
+            let drift = drift_a;
+            let hash = hash_a_v1.clone();
+            async move {
+                let prev = drift.get("host-a").map(|v| v.clone());
+                drift.insert("host-a".to_string(), hash);
+                prev
+            }
+        });
+        let handle_b = tokio::spawn({
+            let drift = drift_b;
+            let hash = hash_b_v1.clone();
+            async move {
+                let prev = drift.get("host-b").map(|v| v.clone());
+                drift.insert("host-b".to_string(), hash);
+                prev
+            }
+        });
+
+        let prev_a = handle_a.await.unwrap();
+        let prev_b = handle_b.await.unwrap();
+        assert!(prev_a.is_none(), "host-a should have no previous hash");
+        assert!(prev_b.is_none(), "host-b should have no previous hash");
+
+        // Second call: same rules => no drift
+        let prev_a2 = drift.get("host-a").map(|v| v.clone());
+        drift.insert("host-a".to_string(), hash_a_v1.clone());
+        assert_eq!(
+            prev_a2.as_deref(),
+            Some(hash_a_v1.as_str()),
+            "hash should match — no drift for host-a"
+        );
+
+        let prev_b2 = drift.get("host-b").map(|v| v.clone());
+        drift.insert("host-b".to_string(), hash_b_v1.clone());
+        assert_eq!(
+            prev_b2.as_deref(),
+            Some(hash_b_v1.as_str()),
+            "hash should match — no drift for host-b"
+        );
+
+        // Third call: host-a rules change, host-b stays the same
+        let rules_a_v2 = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 443 -j ACCEPT\nCOMMIT\n";
+        let hash_a_v2 = compute_hash(rules_a_v2);
+
+        // Run both concurrently
+        let drift_clone = drift.clone();
+        let hash_a_v2_clone = hash_a_v2.clone();
+        let hash_b_v1_clone = hash_b_v1.clone();
+
+        let handle_a = tokio::spawn({
+            let drift = drift_clone.clone();
+            async move {
+                let prev = drift.get("host-a").map(|v| v.clone());
+                drift.insert("host-a".to_string(), hash_a_v2_clone);
+                prev
+            }
+        });
+        let handle_b = tokio::spawn({
+            let drift = drift_clone;
+            async move {
+                let prev = drift.get("host-b").map(|v| v.clone());
+                drift.insert("host-b".to_string(), hash_b_v1_clone.clone());
+                prev
+            }
+        });
+
+        let prev_a3 = handle_a.await.unwrap();
+        let prev_b3 = handle_b.await.unwrap();
+
+        // host-a should detect drift (hash changed)
+        assert!(prev_a3.is_some(), "host-a should have a previous hash");
+        assert_ne!(
+            prev_a3.unwrap(),
+            hash_a_v2,
+            "host-a hash should differ — drift detected"
+        );
+
+        // host-b should NOT detect drift (hash unchanged)
+        assert_eq!(
+            prev_b3.as_deref(),
+            Some(hash_b_v1.as_str()),
+            "host-b hash should match — no drift, not affected by host-a changes"
+        );
+
+        // Verify final state: each host has its own independent hash
+        assert_eq!(
+            drift.get("host-a").map(|v| v.clone()),
+            Some(hash_a_v2),
+            "host-a should have updated hash"
+        );
+        assert_eq!(
+            drift.get("host-b").map(|v| v.clone()),
+            Some(hash_b_v1),
+            "host-b should retain its own hash"
+        );
+    }
 }

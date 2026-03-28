@@ -13,19 +13,20 @@ pub mod sysctl;
 use std::sync::Arc;
 use dashmap::DashMap;
 use ssh::pool::{ConnectionPool, OpensshTransport};
-use ipc::commands::{PoolState, DriftState};
+use ipc::commands::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Create the connection pool with real SSH transport
-    let pool: PoolState = Arc::new(ConnectionPool::new(Box::new(OpensshTransport)));
+    let pool = Arc::new(ConnectionPool::new(Box::new(OpensshTransport)));
 
     // Create drift detection state (in-memory hash store per host)
-    let drift_state: DriftState = Arc::new(DashMap::new());
+    let drift = Arc::new(DashMap::new());
+
+    let app_state = AppState { pool, drift };
 
     tauri::Builder::default()
-        .manage(pool)
-        .manage(drift_state)
+        .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             // Host connection commands
             ipc::commands::host_connect,

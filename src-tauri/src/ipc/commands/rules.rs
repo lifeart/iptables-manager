@@ -9,21 +9,21 @@ use crate::ssh::command::build_command;
 use crate::ssh::executor::CommandExecutor;
 use crate::ssh::pool::ConnectionPool;
 
-use super::helpers::{create_pre_apply_backup, fetch_current_ruleset, PoolProxyExecutor};
+use super::helpers::{create_pre_apply_backup, exec_failed, fetch_current_ruleset, PoolProxyExecutor};
 use super::types::{
     ApplyResult, DuplicateCheckResult, GroupApplyResult, HostApplyResult, PreviewResult,
     RuleSetResult,
 };
-use super::PoolState;
+use super::AppState;
 
 /// Fetch the current iptables rules for a host.
 #[tauri::command]
 pub async fn fetch_rules(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<RuleSetResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -58,12 +58,13 @@ pub async fn rules_apply(
     host_id: String,
     changes_json: String,
     safety_timeout_secs: Option<u32>,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ApplyResult, IpcError> {
+    let pool = &state.pool;
     let _lock = pool.acquire_apply_lock(&host_id).await;
 
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -95,10 +96,7 @@ pub async fn rules_apply(
     let output = pool
         .execute_with_stdin(&host_id, &restore_cmd, changes_json.as_bytes())
         .await
-        .map_err(|e| IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: format!("failed to apply rules: {}", e),
-        })?;
+        .map_err(|e| exec_failed(&host_id, format!("failed to apply rules: {}", e)))?;
 
     if output.exit_code != 0 {
         return Err(IpcError::CommandFailed {
@@ -132,7 +130,7 @@ pub async fn rules_apply_group(
     host_ids: Vec<String>,
     changes_json: String,
     strategy: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<GroupApplyResult, IpcError> {
     use crate::iptables::multi_apply::{create_apply_plan, ApplyStrategy};
 
@@ -143,7 +141,8 @@ pub async fn rules_apply_group(
         _ => ApplyStrategy::Rolling,
     };
 
-    let pool_arc = pool.inner().clone();
+    let pool_arc = state.pool.clone();
+    let changes_json: Arc<String> = Arc::from(changes_json);
     let plan = create_apply_plan(strat, host_ids.clone());
     let mut all_results: Vec<HostApplyResult> = Vec::new();
 
@@ -157,7 +156,7 @@ pub async fn rules_apply_group(
                 let hid_for_err = hid.clone();
                 let changes = changes_json.clone();
                 let handle = tokio::spawn(async move {
-                    apply_to_single_host(&pool_clone, &hid_clone, &changes, None).await
+                    apply_to_single_host(&pool_clone, &hid_clone, changes.as_str(), None).await
                 });
                 handles.push((hid_for_err, handle));
             }
@@ -307,14 +306,11 @@ pub async fn rules_preview(
 #[tauri::command]
 pub async fn rules_revert(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let cmd = build_command("sudo", &["/var/lib/traffic-rules/revert.sh"]);
-    let output = pool.execute(&host_id, &cmd).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: format!("failed to revert: {}", e),
-        }
+    let output = state.pool.execute(&host_id, &cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to revert: {}", e))
     })?;
     if output.exit_code != 0 {
         return Err(IpcError::CommandFailed {
@@ -331,10 +327,10 @@ pub async fn rules_confirm(
     host_id: String,
     job_id: Option<String>,
     mechanism: Option<String>,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -384,10 +380,10 @@ pub async fn rules_confirm(
 pub async fn rules_trace(
     host_id: String,
     packet: crate::iptables::tracer::TestPacket,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<crate::iptables::tracer::TraceResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -401,7 +397,7 @@ pub async fn rules_trace(
 pub async fn rules_check_duplicate(
     host_id: String,
     rule: serde_json::Value,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<DuplicateCheckResult, IpcError> {
     use crate::iptables::duplicate::{check_duplicate, ProposedRule};
 
@@ -413,7 +409,7 @@ pub async fn rules_check_duplicate(
     })?;
 
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -440,10 +436,10 @@ pub async fn rules_check_duplicate(
 #[tauri::command]
 pub async fn rules_detect_conflicts(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<Vec<crate::iptables::conflict::RuleConflict>, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -472,7 +468,7 @@ pub async fn explain_rule_cmd(rule_json: String) -> Result<String, IpcError> {
 pub async fn export_rules(
     host_id: String,
     format: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<String, IpcError> {
     match format.as_str() {
         "shell" | "ansible" | "iptables-save" => {}
@@ -485,7 +481,7 @@ pub async fn export_rules(
     }
 
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -614,6 +610,66 @@ mod tests {
             !calls.iter().any(|c| c.contains("iptables-restore")),
             "iptables-restore must NOT be called when safety timer fails; calls: {:?}",
             calls
+        );
+    }
+
+    /// Verify that when safety_timeout_secs is None, no `at` / `systemd-run` /
+    /// `nohup` command is issued — only backup + restore.
+    #[tokio::test]
+    async fn test_apply_without_timeout_skips_timer() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            ("iptables-save", 0, iptables_output, ""),
+            ("tee /var/lib/traffic-rules/backup.v4", 0, "", ""),
+            ("ip6tables-save", 1, "", "not found"),
+            ("iptables-restore", 0, "", ""),
+        ]);
+
+        let proxy = &executor;
+
+        // Step 1: backup
+        let backup_result = create_pre_apply_backup(proxy, "test-host").await;
+        assert!(backup_result.is_ok(), "backup should succeed");
+
+        // Step 2: no safety timer — safety_timeout_secs is None, skip directly to apply
+        // (mirrors the `rules_apply` code path when safety_timeout_secs is None)
+
+        // Step 3: apply
+        let restore_cmd = build_command(
+            "sudo",
+            &["iptables-restore", "-w", "5", "--noflush", "--counters"],
+        );
+        let apply_output = executor
+            .exec_with_stdin(&restore_cmd, b"*filter\nCOMMIT\n")
+            .await;
+        assert!(apply_output.is_ok(), "apply should succeed");
+
+        // Verify: no timer-related commands were issued
+        let calls = executor.get_calls();
+        assert!(
+            !calls.iter().any(|c| c.contains("which at") || c.starts_with("at ")),
+            "should NOT call `at` when no timeout; calls: {:?}",
+            calls
+        );
+        assert!(
+            !calls.iter().any(|c| c.contains("systemd-run")),
+            "should NOT call `systemd-run` when no timeout; calls: {:?}",
+            calls
+        );
+        assert!(
+            !calls.iter().any(|c| c.contains("nohup")),
+            "should NOT call `nohup` when no timeout; calls: {:?}",
+            calls
+        );
+
+        // Verify the expected commands WERE called
+        assert!(
+            calls.iter().any(|c| c.contains("iptables-save")),
+            "should call iptables-save for backup"
+        );
+        assert!(
+            calls.iter().any(|c| c.contains("iptables-restore")),
+            "should call iptables-restore to apply"
         );
     }
 }

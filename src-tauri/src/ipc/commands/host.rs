@@ -7,12 +7,12 @@ use crate::ipc::errors::IpcError;
 use crate::ssh::command::build_command;
 use crate::ssh::pool::ConnectionConfig;
 
-use super::helpers::{uuid_v4, PoolProxyExecutor};
+use super::helpers::{exec_failed, uuid_v4, PoolProxyExecutor};
 use super::types::{
     ConnectionResult, DetectionResult, ProvisionResult, TestConnectionParams,
     TestConnectionResult,
 };
-use super::PoolState;
+use super::AppState;
 
 /// Connect to a remote host via SSH.
 #[tauri::command]
@@ -23,7 +23,7 @@ pub async fn host_connect(
     username: String,
     auth_method: String,
     key_path: Option<String>,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ConnectionResult, IpcError> {
     let start = Instant::now();
 
@@ -35,11 +35,8 @@ pub async fn host_connect(
         jump_host: None,
     };
 
-    pool.connect(&host_id, config).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: e.to_string(),
-        }
+    state.pool.connect(&host_id, config).await.map_err(|e| {
+        exec_failed(&host_id, e)
     })?;
 
     let latency = start.elapsed().as_millis() as u64;
@@ -55,13 +52,10 @@ pub async fn host_connect(
 #[tauri::command]
 pub async fn host_disconnect(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
-    pool.disconnect(&host_id).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: e.to_string(),
-        }
+    state.pool.disconnect(&host_id).await.map_err(|e| {
+        exec_failed(&host_id, e)
     })?;
     Ok(())
 }
@@ -70,8 +64,9 @@ pub async fn host_disconnect(
 #[tauri::command]
 pub async fn host_test(
     params: TestConnectionParams,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<TestConnectionResult, IpcError> {
+    let pool = &state.pool;
     let start = Instant::now();
     let temp_id = format!("__test_{}", uuid_v4());
 
@@ -148,18 +143,15 @@ pub async fn host_test(
 #[tauri::command]
 pub async fn host_detect(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<DetectionResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
     let capabilities = detect_capabilities(&proxy).await.map_err(|e| {
-        IpcError::ConnectionFailed {
-            host_id: host_id.clone(),
-            reason: format!("detection failed: {}", e),
-        }
+        exec_failed(&host_id, format!("detection failed: {}", e))
     })?;
 
     let caps_json = serde_json::to_value(&capabilities).unwrap_or(serde_json::Value::Null);
@@ -175,9 +167,9 @@ pub async fn host_detect(
 pub async fn host_delete(
     host_id: String,
     _remove_remote_data: bool,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
-    let _ = pool.disconnect(&host_id).await;
+    let _ = state.pool.disconnect(&host_id).await;
     Ok(())
 }
 
@@ -185,10 +177,10 @@ pub async fn host_delete(
 #[tauri::command]
 pub async fn host_provision(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ProvisionResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 

@@ -5,17 +5,17 @@ use crate::ssh::command::build_command;
 
 use super::helpers::PoolProxyExecutor;
 use super::types::ApplyResult;
-use super::PoolState;
+use super::AppState;
 
 /// Create a snapshot of the current iptables rules on the remote host.
 #[tauri::command]
 pub async fn snapshot_create(
     host_id: String,
     _description: Option<String>,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<crate::snapshot::manager::SnapshotMeta, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     let data = crate::snapshot::manager::create_snapshot(&proxy, &host_id)
@@ -39,10 +39,10 @@ pub async fn snapshot_create(
 #[tauri::command]
 pub async fn snapshot_list(
     host_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<Vec<crate::snapshot::manager::SnapshotMeta>, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
     crate::snapshot::manager::list_remote_snapshots(&proxy)
@@ -58,10 +58,10 @@ pub async fn snapshot_list(
 pub async fn snapshot_restore(
     host_id: String,
     snapshot_id: String,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<ApplyResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -83,7 +83,7 @@ pub async fn snapshot_restore(
     // Read the snapshot file from the remote host
     let remote_path = format!("/var/lib/traffic-rules/snapshots/{}.v4", meta.id);
     let cat_cmd = build_command("sudo", &["cat", &remote_path]);
-    let cat_output = pool.execute(&host_id, &cat_cmd).await.map_err(|e| {
+    let cat_output = state.pool.execute(&host_id, &cat_cmd).await.map_err(|e| {
         IpcError::ConnectionFailed {
             host_id: host_id.clone(),
             reason: format!("failed to read snapshot: {}", e),

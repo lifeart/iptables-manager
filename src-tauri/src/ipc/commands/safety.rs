@@ -4,17 +4,17 @@ use crate::ipc::errors::IpcError;
 
 use super::helpers::PoolProxyExecutor;
 use super::types::SafetyTimerResult;
-use super::PoolState;
+use super::AppState;
 
 /// Schedule a safety revert timer on the remote host.
 #[tauri::command]
 pub async fn set_safety_timer(
     host_id: String,
     timeout_secs: u32,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<SafetyTimerResult, IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
@@ -42,10 +42,10 @@ pub async fn clear_safety_timer(
     host_id: String,
     job_id: String,
     mechanism: Option<String>,
-    pool: State<'_, PoolState>,
+    state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
     let proxy = PoolProxyExecutor {
-        pool: pool.inner().clone(),
+        pool: state.pool.clone(),
         host_id: host_id.clone(),
     };
 
