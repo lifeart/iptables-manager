@@ -19,6 +19,7 @@ import type {
   ChainTraversal,
   CompareHostsResult,
   ConnectionResult,
+  ConvertToIpsetResult,
   ConntrackEntry,
   DetectionResult,
   DriftCheckResult,
@@ -27,6 +28,7 @@ import type {
   GroupApplyResult,
   HostApplyResult,
   ImportExistingRulesResult,
+  IpsetSuggestion,
   PreviewResult,
   ProvisionResult,
   RuleConflict,
@@ -45,6 +47,7 @@ export type {
   ChainTraversal,
   CompareHostsResult,
   ConnectionResult,
+  ConvertToIpsetResult,
   ConntrackEntry,
   DetectionResult,
   DriftCheckResult,
@@ -53,6 +56,7 @@ export type {
   GroupApplyResult,
   HostApplyResult,
   ImportExistingRulesResult,
+  IpsetSuggestion,
   PreviewResult,
   ProvisionResult,
   RuleConflict,
@@ -225,9 +229,13 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
     case 'activity:fetch':
       return { hitCounters: [], conntrackCurrent: 0, conntrackMax: 0 } as T;
     case 'drift:check':
-      return { drifted: false, addedRules: 0, removedRules: 0, modifiedRules: 0 } as T;
+      return { drifted: false, addedRules: 0, removedRules: 0, modifiedRules: 0, changes: [] } as T;
     case 'drift:reset':
       return undefined as T;
+    case 'ipset:analyze':
+      return [] as T;
+    case 'ipset:convert':
+      return { ipsetCreated: true, ipsetName: 'TR-mock-blocklist', entriesAdded: 0, rulesReplaced: 0 } as T;
     case 'hosts:compare':
       return { onlyInA: [], onlyInB: [], different: [], identical: 0 } as T;
     case 'rules:import-existing':
@@ -278,6 +286,8 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'drift:reset': 'reset_drift',
   'hosts:compare': 'compare_hosts',
   'rules:import-existing': 'import_existing_rules',
+  'ipset:analyze': 'analyze_ipset_opportunities',
+  'ipset:convert': 'convert_to_ipset',
 };
 
 function mapCommandName(cmd: string): string {
@@ -460,6 +470,13 @@ export const compareHosts = (hostIdA: string, hostIdB: string) =>
 // Import existing (non-TR) rules as baseline
 export const importExistingRules = (hostId: string) =>
   ipcCall<ImportExistingRulesResult>('rules:import-existing', { hostId });
+
+// Ipset optimization
+export const analyzeIpsetOpportunities = (hostId: string) =>
+  ipcCall<IpsetSuggestion[]>('ipset:analyze', { hostId });
+
+export const convertToIpset = (hostId: string, suggestion: string) =>
+  ipcCall<ConvertToIpsetResult>('ipset:convert', { hostId, suggestionJson: suggestion });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

@@ -5,10 +5,11 @@ use tracing::{debug, warn};
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
+use crate::iptables::ipset_suggest::{self, IpsetSuggestion};
 use crate::ssh::command::build_command;
 
 use super::helpers::{exec_failed, fetch_current_ruleset, PoolProxyExecutor};
-use super::types::{CompareHostsResult, DriftCheckResult, ImportExistingRulesResult};
+use super::types::{CompareHostsResult, ConvertToIpsetResult, DriftCheckResult, ImportExistingRulesResult};
 use super::AppState;
 
 /// Compare iptables rules between two connected hosts.
@@ -76,6 +77,105 @@ pub async fn import_existing_rules(
     })
 }
 
+/// Analyze a host's iptables rules for ipset optimization opportunities.
+#[tauri::command]
+pub async fn analyze_ipset_opportunities(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<IpsetSuggestion>, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    let (_raw, ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
+    Ok(ipset_suggest::analyze_ipset_opportunities(&ruleset, 50))
+}
+
+/// Create an ipset from an optimization suggestion.
+///
+/// Creates the ipset and syncs entries. The actual rule replacement
+/// (removing N rules, adding 1 ipset rule) must be done manually by the user.
+#[tauri::command]
+pub async fn convert_to_ipset(
+    host_id: String,
+    suggestion_json: String,
+    state: State<'_, AppState>,
+) -> Result<ConvertToIpsetResult, IpcError> {
+    let suggestion: IpsetSuggestion = serde_json::from_str(&suggestion_json).map_err(|e| {
+        IpcError::CommandFailed {
+            stderr: format!("invalid suggestion JSON: {}", e),
+            exit_code: 1,
+        }
+    })?;
+
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Fetch current ruleset to extract all matching IPs
+    let (_raw, ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
+
+    let mut ips = Vec::new();
+    if let Some(table) = ruleset.tables.get(&suggestion.table) {
+        if let Some(chain) = table.chains.get(&suggestion.chain) {
+            for rule in &chain.rules {
+                if let Some(spec) = &rule.parsed {
+                    if let Some(source) = &spec.source {
+                        if !source.negated {
+                            // Check target matches the suggestion pattern
+                            let is_terminal = matches!(
+                                &spec.target,
+                                Some(crate::iptables::types::Target::Drop)
+                                    | Some(crate::iptables::types::Target::Reject)
+                                    | Some(crate::iptables::types::Target::Accept)
+                            );
+                            if is_terminal {
+                                ips.push(source.addr.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let entries_count = ips.len();
+
+    // Create the ipset
+    crate::ipset::manager::create_ipset(
+        &proxy,
+        &suggestion.suggested_name,
+        &crate::iptables::types::AddressFamily::V4,
+    )
+    .await
+    .map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to create ipset: {}", e),
+        exit_code: 1,
+    })?;
+
+    // Sync entries
+    crate::ipset::manager::sync_ipset(
+        &proxy,
+        &suggestion.suggested_name,
+        &ips,
+        &crate::iptables::types::AddressFamily::V4,
+    )
+    .await
+    .map_err(|e| IpcError::CommandFailed {
+        stderr: format!("failed to sync ipset entries: {}", e),
+        exit_code: 1,
+    })?;
+
+    Ok(ConvertToIpsetResult {
+        ipset_created: true,
+        ipset_name: suggestion.suggested_name,
+        entries_added: entries_count,
+        rules_replaced: 0, // Manual step — user must update rules to reference the ipset
+    })
+}
+
 /// Check if remote iptables rules have changed outside of Traffic Rules.
 #[tauri::command]
 pub async fn check_drift(
@@ -104,6 +204,10 @@ pub async fn check_drift(
     };
 
     let previous = state.drift.get(&host_id).map(|v| v.clone());
+    let previous_raw = state.drift_rulesets.get(&host_id).map(|v| v.clone());
+
+    // Always store the current raw output for future diff computation
+    state.drift_rulesets.insert(host_id.clone(), filtered.clone());
     state.drift.insert(host_id.clone(), new_hash.clone());
 
     match previous {
@@ -113,6 +217,7 @@ pub async fn check_drift(
                 added_rules: 0,
                 removed_rules: 0,
                 modified_rules: 0,
+                changes: Vec::new(),
             })
         }
         Some(prev_hash) if prev_hash == new_hash => {
@@ -121,32 +226,71 @@ pub async fn check_drift(
                 added_rules: 0,
                 removed_rules: 0,
                 modified_rules: 0,
+                changes: Vec::new(),
             })
         }
         Some(_) => {
-            let ruleset = parse_iptables_save(&filtered).map_err(|e| {
-                IpcError::CommandFailed {
-                    stderr: format!("failed to parse filtered rules: {}", e),
-                    exit_code: 1,
-                }
-            })?;
-
-            let mut total_rules: usize = 0;
-            for table in ruleset.tables.values() {
-                for (chain_name, chain_state) in &table.chains {
-                    if chain_name.starts_with("TR-") {
-                        total_rules += chain_state.rules.len();
+            // Compute actual diff if we have previous raw output
+            let changes = if let Some(prev_raw) = previous_raw {
+                let prev_parsed = parse_iptables_save(&prev_raw).ok();
+                if let Some(prev) = prev_parsed {
+                    match crate::iptables::diff::compute_diff(&prev, &filtered) {
+                        Ok(diff) => diff.changes,
+                        Err(e) => {
+                            warn!("Failed to compute drift diff: {}", e);
+                            Vec::new()
+                        }
                     }
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            };
+
+            let mut added = 0usize;
+            let mut removed = 0usize;
+            let mut modified = 0usize;
+
+            for change in &changes {
+                match change {
+                    crate::iptables::diff::DiffEntry::Added { .. }
+                    | crate::iptables::diff::DiffEntry::ChainAdded { .. } => added += 1,
+                    crate::iptables::diff::DiffEntry::Removed { .. }
+                    | crate::iptables::diff::DiffEntry::ChainRemoved { .. } => removed += 1,
+                    crate::iptables::diff::DiffEntry::Modified { .. }
+                    | crate::iptables::diff::DiffEntry::PolicyChanged { .. } => modified += 1,
                 }
             }
 
-            warn!("Drift detected on {}: +0 -0 ~{}", host_id, total_rules);
+            // Fall back to total rule count if no diff was computed
+            if changes.is_empty() {
+                let ruleset = parse_iptables_save(&filtered).map_err(|e| {
+                    IpcError::CommandFailed {
+                        stderr: format!("failed to parse filtered rules: {}", e),
+                        exit_code: 1,
+                    }
+                })?;
+
+                let mut total_rules: usize = 0;
+                for table in ruleset.tables.values() {
+                    for (chain_name, chain_state) in &table.chains {
+                        if chain_name.starts_with("TR-") {
+                            total_rules += chain_state.rules.len();
+                        }
+                    }
+                }
+                modified = total_rules;
+            }
+
+            warn!("Drift detected on {}: +{} -{} ~{}", host_id, added, removed, modified);
 
             Ok(DriftCheckResult {
                 drifted: true,
-                added_rules: 0,
-                removed_rules: 0,
-                modified_rules: total_rules,
+                added_rules: added,
+                removed_rules: removed,
+                modified_rules: modified,
+                changes,
             })
         }
     }
@@ -180,6 +324,7 @@ pub async fn reset_drift(
     };
 
     debug!("Drift baseline reset for {}", host_id);
+    state.drift_rulesets.insert(host_id.clone(), filtered);
     state.drift.insert(host_id, new_hash);
     Ok(())
 }

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::iptables::parser::parse_iptables_save;
 use crate::iptables::types::*;
@@ -10,7 +11,9 @@ use crate::iptables::types::*;
 // ---------------------------------------------------------------------------
 
 /// The result of comparing two rulesets.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
 pub struct RulesetDiff {
     /// Individual change entries.
     pub changes: Vec<DiffEntry>,
@@ -20,7 +23,9 @@ pub struct RulesetDiff {
 }
 
 /// A single change between two rulesets.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum DiffEntry {
     Added {
         chain: String,

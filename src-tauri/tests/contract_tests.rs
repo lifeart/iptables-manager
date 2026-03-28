@@ -551,6 +551,7 @@ fn test_drift_check_result_serialization() {
         added_rules: 3,
         removed_rules: 1,
         modified_rules: 2,
+        changes: Vec::new(),
     };
     let json = serde_json::to_value(&result).unwrap();
 
@@ -626,6 +627,7 @@ fn test_drift_first_call_no_drift() {
         added_rules: 0,
         removed_rules: 0,
         modified_rules: 0,
+        changes: Vec::new(),
     };
     let json = serde_json::to_value(&result).unwrap();
 
@@ -646,12 +648,14 @@ fn test_drift_second_call_same_rules_no_drift() {
         added_rules: 0,
         removed_rules: 0,
         modified_rules: 0,
+        changes: Vec::new(),
     };
     let second = DriftCheckResult {
         drifted: false,
         added_rules: 0,
         removed_rules: 0,
         modified_rules: 0,
+        changes: Vec::new(),
     };
 
     let json1 = serde_json::to_value(&first).unwrap();

@@ -2,8 +2,8 @@
 // Fields annotated @persisted are synced to IndexedDB.
 // Fields annotated @ephemeral are in-memory only.
 
-import type { RuleConflict } from '../bindings';
-export type { RuleConflict };
+import type { RuleConflict, DiffEntry } from '../bindings';
+export type { RuleConflict, DiffEntry };
 
 // ─── Domain Types ───────────────────────────────────────────────
 
@@ -287,6 +287,7 @@ export interface DriftInfo {
   removedRules: number;
   modifiedRules: number;
   detectedAt: number;
+  changes: DiffEntry[];
 }
 
 export interface OperationState {

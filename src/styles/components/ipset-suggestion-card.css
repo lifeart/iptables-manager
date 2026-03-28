@@ -1,0 +1,93 @@
+/* ─── Ipset Suggestion Card ──────────────────────────────────── */
+
+.ipset-suggestion-card {
+  margin: var(--space-default, 12px) var(--space-spacious, 24px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-compact, 8px);
+}
+
+.ipset-suggestion-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-compact, 8px);
+  padding: var(--space-default, 12px) var(--space-spacious, 24px);
+  background: color-mix(in srgb, var(--color-info, #007AFF) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info, #007AFF) 25%, transparent);
+  border-radius: var(--radius-md, 6px);
+}
+
+.ipset-suggestion-card__icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.ipset-suggestion-card__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ipset-suggestion-card__text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-info, #007AFF);
+  line-height: 1.4;
+}
+
+.ipset-suggestion-card__preview {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+/* ─── Action Button ──────────────────────────────────────────── */
+
+.ipset-suggestion-card__btn {
+  border: 1px solid color-mix(in srgb, var(--color-info, #007AFF) 40%, transparent);
+  background: color-mix(in srgb, var(--color-info, #007AFF) 12%, transparent);
+  color: var(--color-info, #007AFF);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--space-tight, 4px) var(--space-comfortable, 12px);
+  border-radius: var(--radius-md, 6px);
+  font-family: var(--font-family);
+  transition: background var(--transition-fast, 0.15s), border-color var(--transition-fast, 0.15s);
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.ipset-suggestion-card__btn:hover {
+  background: color-mix(in srgb, var(--color-info, #007AFF) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-info, #007AFF) 60%, transparent);
+}
+
+.ipset-suggestion-card__btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ipset-suggestion-card__btn--success {
+  background: color-mix(in srgb, var(--color-allow, #30D158) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-allow, #30D158) 40%, transparent);
+  color: var(--color-allow, #30D158);
+}
+
+.ipset-suggestion-card__btn--error {
+  background: color-mix(in srgb, var(--color-block, #FF3B30) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-block, #FF3B30) 40%, transparent);
+  color: var(--color-block, #FF3B30);
+}
+
+/* ─── Dark Theme ─────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .ipset-suggestion-card__item {
+    background: color-mix(in srgb, var(--color-info, #007AFF) 10%, transparent);
+  }
+}

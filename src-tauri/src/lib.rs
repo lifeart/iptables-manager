@@ -33,8 +33,9 @@ pub fn run() {
 
     // Create drift detection state (in-memory hash store per host)
     let drift = Arc::new(DashMap::new());
+    let drift_rulesets = Arc::new(DashMap::new());
 
-    let app_state = AppState { pool, drift };
+    let app_state = AppState { pool, drift, drift_rulesets };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -86,6 +87,9 @@ pub fn run() {
             // Drift detection commands
             ipc::commands::check_drift,
             ipc::commands::reset_drift,
+            // Ipset optimization commands
+            ipc::commands::analyze_ipset_opportunities,
+            ipc::commands::convert_to_ipset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

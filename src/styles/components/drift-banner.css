@@ -82,6 +82,66 @@
   color: #FFFFFF;
 }
 
+/* ─── Changes Section ─────────────────────────────────────────── */
+
+.drift-banner__changes-section {
+  padding-top: var(--space-compact, 8px);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin-top: var(--space-compact, 8px);
+}
+
+.drift-banner__changes-toggle {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition-fast);
+}
+
+.drift-banner__changes-toggle:hover {
+  color: #FFFFFF;
+}
+
+.drift-banner__changes {
+  margin-top: var(--space-tight, 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.drift-banner__change-item {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  padding: 2px var(--space-tight, 4px);
+  border-radius: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drift-banner__change--added {
+  color: #30D158;
+  background: rgba(48, 209, 88, 0.1);
+}
+
+.drift-banner__change--removed {
+  color: #FF453A;
+  background: rgba(255, 69, 58, 0.1);
+}
+
+.drift-banner__change--modified {
+  color: #FFD60A;
+  background: rgba(255, 214, 10, 0.1);
+}
+
 /* ─── Dark Theme ──────────────────────────────────────────────── */
 
 @media (prefers-color-scheme: dark) {

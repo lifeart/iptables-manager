@@ -126,6 +126,17 @@ pub struct DriftCheckResult {
     pub added_rules: usize,
     pub removed_rules: usize,
     pub modified_rules: usize,
+    pub changes: Vec<crate::iptables::diff::DiffEntry>,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertToIpsetResult {
+    pub ipset_created: bool,
+    pub ipset_name: String,
+    pub entries_added: usize,
+    pub rules_replaced: usize,
 }
 
 #[derive(Debug, Deserialize, TS)]

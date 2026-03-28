@@ -23,6 +23,7 @@ import { RuleTableHeader } from './rule-table-header';
 import { RuleTableTabs } from './rule-table-tabs';
 import { ConflictBanner } from './conflict-banner';
 import { ImportBanner } from './import-banner';
+import { IpsetSuggestionCard } from './ipset-suggestion-card';
 import { TerminalTab } from './terminal-tab';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
@@ -53,6 +54,7 @@ export class RuleTable extends Component {
   private tabsComponent!: RuleTableTabs;
   private conflictBanner!: ConflictBanner;
   private importBannerComponent!: ImportBanner;
+  private ipsetSuggestionCard!: IpsetSuggestionCard;
 
   // Tab content panels
   private activityPanel: HTMLElement | null = null;
@@ -123,11 +125,13 @@ export class RuleTable extends Component {
     });
     this.el.appendChild(this.sectionsContainer);
 
-    // Conflict and import banners (delegated to sub-components)
+    // Conflict, import, and ipset suggestion banners (delegated to sub-components)
     this.conflictBanner = new ConflictBanner(this.el, this.store, this.sectionsContainer);
     this.addChild(this.conflictBanner);
     this.importBannerComponent = new ImportBanner(this.el, this.store, this.sectionsContainer);
     this.addChild(this.importBannerComponent);
+    this.ipsetSuggestionCard = new IpsetSuggestionCard(this.el, this.store, this.sectionsContainer);
+    this.addChild(this.ipsetSuggestionCard);
 
     // Activity tab panel (hidden by default)
     this.activityPanel = h('div', {
@@ -707,6 +711,7 @@ export class RuleTable extends Component {
     this.sectionsContainer.innerHTML = '';
     this.conflictBanner.clearBanner();
     this.importBannerComponent.clearBanner();
+    this.ipsetSuggestionCard.clearCard();
 
     const activeHost = this.store.select(selectActiveHost);
     if (activeHost && activeHost.status === 'unreachable') {
@@ -752,6 +757,7 @@ export class RuleTable extends Component {
     this.sectionsContainer.innerHTML = '';
     this.conflictBanner.clearBanner();
     this.importBannerComponent.clearBanner();
+    this.ipsetSuggestionCard.clearCard();
     this.filterBarContainer.style.display = 'none';
     this.addRuleBtnContainer.style.display = 'none';
     this.tabsEl.style.display = 'none';

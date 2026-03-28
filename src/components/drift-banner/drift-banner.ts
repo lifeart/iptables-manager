@@ -12,7 +12,7 @@
 
 import { Component } from '../base';
 import type { Store } from '../../store/index';
-import type { DriftInfo } from '../../store/types';
+import type { DriftInfo, DiffEntry } from '../../store/types';
 import { h, clearChildren } from '../../utils/dom';
 
 const DRIFT_POLL_INTERVAL_MS = 60_000;
@@ -22,6 +22,7 @@ export class DriftBanner extends Component {
   private contentEl: HTMLElement;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private currentHostId: string | null = null;
+  private changesExpanded = false;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -119,6 +120,7 @@ export class DriftBanner extends Component {
             removedRules: result.removedRules,
             modifiedRules: result.modifiedRules,
             detectedAt: Date.now(),
+            changes: result.changes ?? [],
           },
         });
       }
@@ -186,6 +188,73 @@ export class DriftBanner extends Component {
     this.contentEl.appendChild(textEl);
     this.contentEl.appendChild(refreshBtn);
     this.contentEl.appendChild(dismissBtn);
+
+    // Expandable changes section
+    if (drift.changes && drift.changes.length > 0) {
+      const changesSection = h('div', { className: 'drift-banner__changes-section' });
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'drift-banner__changes-toggle';
+      toggleBtn.type = 'button';
+      toggleBtn.textContent = this.changesExpanded
+        ? `Hide ${drift.changes.length} changes`
+        : `View ${drift.changes.length} changes`;
+      toggleBtn.setAttribute('aria-expanded', String(this.changesExpanded));
+      this.listen(toggleBtn, 'click', () => {
+        this.changesExpanded = !this.changesExpanded;
+        this.showDrift(drift);
+      });
+
+      changesSection.appendChild(toggleBtn);
+
+      if (this.changesExpanded) {
+        const changesList = h('div', { className: 'drift-banner__changes' });
+        for (const change of drift.changes) {
+          const item = this.renderChangeItem(change);
+          changesList.appendChild(item);
+        }
+        changesSection.appendChild(changesList);
+      }
+
+      this.bannerEl.appendChild(changesSection);
+    }
+  }
+
+  private renderChangeItem(change: DiffEntry): HTMLElement {
+    const type = change.type;
+    let className = 'drift-banner__change-item';
+    let text = '';
+
+    switch (type) {
+      case 'added':
+        className += ' drift-banner__change--added';
+        text = `+ ${change.chain}: ${change.rule_raw}`;
+        break;
+      case 'removed':
+        className += ' drift-banner__change--removed';
+        text = `- ${change.chain}: ${change.rule_raw}`;
+        break;
+      case 'modified':
+        className += ' drift-banner__change--modified';
+        text = `~ ${change.chain}: ${change.old_raw} -> ${change.new_raw}`;
+        break;
+      case 'policyChanged':
+        className += ' drift-banner__change--modified';
+        text = `~ ${change.chain} policy: ${change.old_policy} -> ${change.new_policy}`;
+        break;
+      case 'chainAdded':
+        className += ' drift-banner__change--added';
+        text = `+ Chain added: ${change.name}`;
+        break;
+      case 'chainRemoved':
+        className += ' drift-banner__change--removed';
+        text = `- Chain removed: ${change.name}`;
+        break;
+      default:
+        text = `? Unknown change`;
+    }
+
+    return h('div', { className }, text);
   }
 
   private hide(): void {

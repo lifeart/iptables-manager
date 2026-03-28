@@ -21,6 +21,8 @@ pub type DriftState = Arc<DashMap<String, String>>;
 pub struct AppState {
     pub pool: Arc<ConnectionPool>,
     pub drift: Arc<DashMap<String, String>>,
+    /// Stores the raw filtered iptables-save output per host for drift diff computation.
+    pub drift_rulesets: Arc<DashMap<String, String>>,
 }
 
 // ---------------------------------------------------------------------------
