@@ -330,7 +330,7 @@ export interface AppState {
   // Navigation
   activeHostId: string | null;
   activeTab: 'rules' | 'activity' | 'terminal';
-  activeTerminalSubTab: 'raw' | 'tracer' | 'sshlog';
+  activeTerminalSubTab: 'raw' | 'tracer' | 'sshlog' | 'livetrace';
   sidePanelOpen: boolean;
   sidePanelContent: SidePanelContent | null;
   splitPanelOpen: boolean;

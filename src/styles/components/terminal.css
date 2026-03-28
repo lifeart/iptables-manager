@@ -160,6 +160,73 @@
   color: var(--color-text-secondary);
 }
 
+/* Live Trace */
+.terminal__live-trace-method {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-compact);
+}
+
+.terminal__live-trace-status {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-default);
+}
+
+.terminal__live-trace-empty {
+  padding: var(--space-comfortable);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.terminal__live-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.terminal__live-trace-table thead {
+  background: var(--color-elevated);
+}
+
+.terminal__live-trace-table th {
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.terminal__live-trace-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--color-separator);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.terminal__live-trace-table td:last-child {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.terminal__live-trace-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.terminal__live-trace-table tbody tr:hover {
+  background: var(--color-hover);
+}
+
 /* SSH Log */
 .terminal__ssh-log {
   font-family: var(--font-mono);
