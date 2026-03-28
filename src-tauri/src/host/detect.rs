@@ -97,6 +97,7 @@ pub enum DetectError {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HostCapabilities {
     pub iptables_variant: IptablesVariant,
     pub iptables_version: String,
@@ -166,6 +167,7 @@ impl DistroFamily {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NetworkInterface {
     pub name: String,
     pub iface_type: InterfaceType,
@@ -185,6 +187,7 @@ pub enum InterfaceType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DetectedService {
     pub name: String,
     pub ports: Vec<u16>,
@@ -192,6 +195,7 @@ pub struct DetectedService {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DetectedTool {
     pub tool_type: String,
     pub chains: Vec<String>,
