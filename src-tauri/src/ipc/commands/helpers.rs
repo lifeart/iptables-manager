@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::{debug, warn};
+
 use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
 use crate::iptables::types::ParsedRuleset;
@@ -101,6 +103,7 @@ pub(crate) async fn create_pre_apply_backup(
     executor: &dyn CommandExecutor,
     host_id: &str,
 ) -> Result<(), IpcError> {
+    debug!("Creating pre-apply backup for {}", host_id);
     // Fetch current IPv4 rules
     let save_cmd = build_command("sudo", &["iptables-save", "-w", "5"]);
     let save_output = executor.exec(&save_cmd).await.map_err(|e| {
@@ -139,9 +142,12 @@ pub(crate) async fn create_pre_apply_backup(
             if !filtered_v6.is_empty() {
                 let write_v6_cmd =
                     build_command("sudo", &["tee", "/var/lib/traffic-rules/backup.v6"]);
-                let _ = executor
+                if let Err(e) = executor
                     .exec_with_stdin(&write_v6_cmd, filtered_v6.as_bytes())
-                    .await;
+                    .await
+                {
+                    warn!("Failed to write backup.v6 (non-fatal): {}", e);
+                }
             }
         }
     }
@@ -158,9 +164,12 @@ pub(crate) async fn create_pre_apply_backup(
         let hmac_hex = crate::safety::hmac::compute_hmac(&secret, filtered_v4.as_bytes());
         let hmac_cmd =
             build_command("sudo", &["tee", "/var/lib/traffic-rules/backup.v4.hmac"]);
-        let _ = executor
+        if let Err(e) = executor
             .exec_with_stdin(&hmac_cmd, hmac_hex.as_bytes())
-            .await;
+            .await
+        {
+            warn!("Failed to write HMAC file (non-fatal): {}", e);
+        }
     }
 
     Ok(())

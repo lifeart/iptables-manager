@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use tauri::State;
+use tracing::{debug, warn};
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::explain::explain_rule;
@@ -70,6 +71,7 @@ pub async fn rules_apply(
 
     // Step 1: Save backup of current rules
     create_pre_apply_backup(&proxy, &host_id).await?;
+    debug!("Created pre-apply backup for {}", host_id);
 
     // Step 2: Arm safety timer BEFORE applying rules
     let timer_result = if let Some(timeout) = safety_timeout_secs {
@@ -370,7 +372,9 @@ pub async fn rules_confirm(
         ],
     );
     // Best-effort cleanup
-    let _ = proxy.exec(&cleanup_cmd).await;
+    if let Err(e) = proxy.exec(&cleanup_cmd).await {
+        warn!("Cleanup command failed (non-fatal): {}", e);
+    }
 
     Ok(())
 }

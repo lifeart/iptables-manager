@@ -8,6 +8,8 @@ use thiserror::Error;
 use tokio::sync::{Mutex, RwLock, Semaphore, OwnedSemaphorePermit};
 use tokio_util::sync::CancellationToken;
 
+use tracing::{debug, info, warn};
+
 use crate::ssh::executor::{CommandExecutor, CommandOutput, ExecError};
 
 // ---------------------------------------------------------------------------
@@ -240,6 +242,8 @@ impl ConnectionPool {
         sessions.insert(host_id.to_string(), session.clone());
         drop(sessions);
 
+        info!("SSH connected to {}", host_id);
+
         // Spawn keepalive heartbeat task
         {
             let session_arc = session.clone();
@@ -255,6 +259,7 @@ impl ConnectionPool {
                                 Ok(output) if output.exit_code == 0 => continue,
                                 _ => {
                                     // Connection is dead
+                                    warn!("SSH keepalive failed for {}, removing session", host_id_clone);
                                     session_arc.connected.store(false, std::sync::atomic::Ordering::Relaxed);
                                     session_arc.cancel.cancel();
                                     let mut sessions = pool_sessions.write().await;
@@ -286,6 +291,8 @@ impl ConnectionPool {
             .connected
             .store(false, std::sync::atomic::Ordering::Relaxed);
         session.cancel.cancel();
+
+        info!("SSH disconnected from {}", host_id);
 
         Ok(())
     }
@@ -369,6 +376,7 @@ impl ConnectionPool {
             .or_insert_with(|| Mutex::new(RateLimiter::new(10)));
         let mut rl = limiter.lock().await;
         if let Some(d) = rl.record() {
+            debug!("Rate limited {} — delaying {:?}", host_id, d);
             drop(rl);
             tokio::time::sleep(d).await;
         }
@@ -515,9 +523,12 @@ impl SshTransport for OpensshTransport {
             builder.connect(&config.hostname),
         )
         .await
-        .map_err(|_| ConnectError::Transport(format!(
-            "SSH connection to {} timed out after 10 seconds", config.hostname
-        )))?
+        .map_err(|_| {
+            warn!("SSH connect timeout for {}", config.hostname);
+            ConnectError::Transport(format!(
+                "SSH connection to {} timed out after 10 seconds", config.hostname
+            ))
+        })?
         .map_err(|e| ConnectError::Transport(format!("SSH connection failed: {}", e)))?;
 
         Ok(Box::new(OpensshExecutor {

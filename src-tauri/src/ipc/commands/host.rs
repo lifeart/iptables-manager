@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use tauri::State;
+use tracing::warn;
 
 use crate::host::detect::detect_capabilities;
 use crate::ipc::errors::IpcError;
@@ -125,7 +126,9 @@ pub async fn host_test(
     let fail2ban_detected = matches!(f2b_result, Ok(ref o) if o.exit_code == 0);
 
     // Clean up test connection
-    let _ = pool.disconnect(&temp_id).await;
+    if let Err(e) = pool.disconnect(&temp_id).await {
+        warn!("Failed to disconnect test session {} (non-fatal): {}", temp_id, e);
+    }
 
     Ok(TestConnectionResult {
         success: true,
@@ -169,7 +172,9 @@ pub async fn host_delete(
     _remove_remote_data: bool,
     state: State<'_, AppState>,
 ) -> Result<(), IpcError> {
-    let _ = state.pool.disconnect(&host_id).await;
+    if let Err(e) = state.pool.disconnect(&host_id).await {
+        warn!("Failed to disconnect host {} during delete (non-fatal): {}", host_id, e);
+    }
     Ok(())
 }
 

@@ -1,4 +1,5 @@
 use tauri::State;
+use tracing::debug;
 
 use crate::ipc::errors::IpcError;
 
@@ -9,6 +10,7 @@ use super::AppState;
 /// Subscribe to activity polling for a host (no-op; frontend polls via fetch_* calls).
 #[tauri::command]
 pub async fn activity_subscribe(host_id: String) -> Result<String, IpcError> {
+    debug!("Activity stream started for {}", host_id);
     Ok(format!("stream-{}", host_id))
 }
 

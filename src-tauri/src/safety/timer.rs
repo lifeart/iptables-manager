@@ -1,3 +1,4 @@
+use tracing::info;
 use thiserror::Error;
 
 use crate::ssh::command::build_command;
@@ -115,6 +116,7 @@ pub async fn schedule_revert(
     backup_path: &str,
     timeout_secs: u32,
 ) -> Result<RevertJobId, SafetyError> {
+    info!("Safety timer armed for {} via {:?}, timeout {}s", backup_path, mechanism, timeout_secs);
     match mechanism {
         SafetyMechanism::IptablesApply => {
             schedule_iptables_apply(executor, backup_path, timeout_secs).await
@@ -139,6 +141,7 @@ pub async fn cancel_revert(
     executor: &dyn CommandExecutor,
     job_id: &RevertJobId,
 ) -> Result<(), SafetyError> {
+    info!("Safety timer cancelled for job {}", job_id.id);
     match &job_id.mechanism {
         SafetyMechanism::IptablesApply => {
             // iptables-apply is no longer used by detect_mechanism, but this

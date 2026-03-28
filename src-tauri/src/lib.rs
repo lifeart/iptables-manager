@@ -14,9 +14,20 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use ssh::pool::{ConnectionPool, OpensshTransport};
 use ipc::commands::AppState;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing subscriber: DEBUG+ for our crate, respects RUST_LOG overrides
+    fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("traffic_rules_lib=debug".parse().unwrap()),
+        )
+        .with_target(false)
+        .compact()
+        .init();
+
     // Create the connection pool with real SSH transport
     let pool = Arc::new(ConnectionPool::new(Box::new(OpensshTransport)));
 

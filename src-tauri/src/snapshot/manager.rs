@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::warn;
 use ts_rs::TS;
 
 use crate::ssh::command::build_command;
@@ -120,15 +121,21 @@ pub async fn create_snapshot(
 
     // Restrict permissions
     let chmod_cmd = build_command("sudo", &["chmod", "0600", &remote_path_v4]);
-    let _ = executor.exec(&chmod_cmd).await;
+    if let Err(e) = executor.exec(&chmod_cmd).await {
+        warn!("Failed to chmod snapshot {} (non-fatal): {}", remote_path_v4, e);
+    }
 
     let mut remote_path_v6_opt = None;
     if let Some(ref v6_data) = filtered_v6 {
         let path = format!("{}/{}.v6", SNAPSHOT_DIR, snapshot_id);
         let cmd = build_command("sudo", &["tee", &path]);
-        let _ = executor.exec_with_stdin(&cmd, v6_data.as_bytes()).await;
+        if let Err(e) = executor.exec_with_stdin(&cmd, v6_data.as_bytes()).await {
+            warn!("Failed to write v6 snapshot {} (non-fatal): {}", path, e);
+        }
         let chmod = build_command("sudo", &["chmod", "0600", &path]);
-        let _ = executor.exec(&chmod).await;
+        if let Err(e) = executor.exec(&chmod).await {
+            warn!("Failed to chmod v6 snapshot {} (non-fatal): {}", path, e);
+        }
         remote_path_v6_opt = Some(path);
     }
 

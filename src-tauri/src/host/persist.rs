@@ -1,3 +1,4 @@
+use tracing::warn;
 use thiserror::Error;
 
 use crate::ssh::command::build_command;
@@ -129,7 +130,9 @@ async fn save_to_file(
         shell_words::quote(v6_path)
     );
     // Ignore errors for IPv6 — host may not have ip6tables
-    let _ = executor.exec(&v6_cmd).await;
+    if let Err(e) = executor.exec(&v6_cmd).await {
+        warn!("Failed to save IPv6 rules (non-fatal): {}", e);
+    }
 
     Ok(())
 }

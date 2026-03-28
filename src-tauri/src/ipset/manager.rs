@@ -1,3 +1,4 @@
+use tracing::warn;
 use thiserror::Error;
 
 use crate::iptables::types::AddressFamily;
@@ -87,7 +88,9 @@ pub async fn delete_ipset(
 
     // Try deleting v6 companion (best-effort, may not exist)
     let v6_name = format!("{}-v6", name);
-    let _ = delete_single_ipset(executor, &v6_name).await;
+    if let Err(e) = delete_single_ipset(executor, &v6_name).await {
+        warn!("Failed to delete v6 companion ipset {} (non-fatal): {}", v6_name, e);
+    }
 
     Ok(())
 }
@@ -139,7 +142,9 @@ async fn sync_single_ipset(
 
     // Flush the temp set in case it already existed with stale entries
     let flush_cmd = build_command("sudo", &["ipset", "flush", &tmp_name]);
-    let _ = executor.exec(&flush_cmd).await;
+    if let Err(e) = executor.exec(&flush_cmd).await {
+        warn!("Failed to flush temp ipset {} (non-fatal): {}", tmp_name, e);
+    }
 
     // 2. Bulk-add entries via ipset restore (stdin)
     if !entries.is_empty() {
@@ -156,7 +161,9 @@ async fn sync_single_ipset(
         if output.exit_code != 0 {
             // Clean up temp set
             let destroy_cmd = build_command("sudo", &["ipset", "destroy", &tmp_name]);
-            let _ = executor.exec(&destroy_cmd).await;
+            if let Err(e) = executor.exec(&destroy_cmd).await {
+                warn!("Failed to destroy temp ipset {} after bulk add failure (non-fatal): {}", tmp_name, e);
+            }
             return Err(IpsetError::OperationFailed(format!(
                 "bulk add to temp set failed: {}",
                 output.stderr.trim()
@@ -170,7 +177,9 @@ async fn sync_single_ipset(
     if output.exit_code != 0 {
         // Clean up temp set
         let destroy_cmd = build_command("sudo", &["ipset", "destroy", &tmp_name]);
-        let _ = executor.exec(&destroy_cmd).await;
+        if let Err(e) = executor.exec(&destroy_cmd).await {
+            warn!("Failed to destroy temp ipset {} after swap failure (non-fatal): {}", tmp_name, e);
+        }
         return Err(IpsetError::OperationFailed(format!(
             "swap failed: {}",
             output.stderr.trim()
@@ -194,7 +203,9 @@ async fn delete_single_ipset(
 ) -> Result<(), IpsetError> {
     // Flush first to remove all entries (required before destroy if set is in use)
     let flush_cmd = build_command("sudo", &["ipset", "flush", name]);
-    let _ = executor.exec(&flush_cmd).await;
+    if let Err(e) = executor.exec(&flush_cmd).await {
+        warn!("Failed to flush ipset {} before destroy (non-fatal): {}", name, e);
+    }
 
     let cmd = build_command("sudo", &["ipset", "destroy", name]);
     let output = executor.exec(&cmd).await?;

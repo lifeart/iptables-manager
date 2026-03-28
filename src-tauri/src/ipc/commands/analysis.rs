@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use tauri::State;
+use tracing::{debug, warn};
 
 use crate::ipc::errors::IpcError;
 use crate::iptables::parser::parse_iptables_save;
@@ -139,6 +140,8 @@ pub async fn check_drift(
                 }
             }
 
+            warn!("Drift detected on {}: +0 -0 ~{}", host_id, total_rules);
+
             Ok(DriftCheckResult {
                 drifted: true,
                 added_rules: 0,
@@ -176,6 +179,7 @@ pub async fn reset_drift(
         format!("{:016x}", hasher.finish())
     };
 
+    debug!("Drift baseline reset for {}", host_id);
     state.drift.insert(host_id, new_hash);
     Ok(())
 }
