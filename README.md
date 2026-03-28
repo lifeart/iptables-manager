@@ -221,10 +221,10 @@ Real-time hit counters with sparklines, blocked traffic log, and connection trac
 Test how a packet would be processed: enter source IP, destination, port, protocol — see which rule matches and why.
 
 ### Live traffic trace
-Insert kernel TRACE rules on a remote host via SSH to trace real packets through the firewall. The app collects output via `xtables-monitor` (nft) or `dmesg` (legacy), auto-removes TRACE rules after a configurable timeout, and displays the packet path in the same format as the packet tracer.
+Insert kernel TRACE rules on a remote host via SSH to trace real packets through the firewall. The app collects output via `xtables-monitor` (nft) or `dmesg` (legacy), auto-removes TRACE rules after a configurable timeout, and displays the packet path in the same format as the packet tracer. A background `at` job is scheduled as a safety net to clean up TRACE rules even if the SSH connection drops.
 
 ### Mixed-backend detection
-Detects when a host has both legacy iptables and nf_tables rules populated — a common source of "table is incompatible" errors. Shows a warning banner and blocks apply until resolved.
+Detects when a host has both legacy iptables and nf_tables rules populated — a common source of "table is incompatible" errors. Shows a warning banner and blocks apply until resolved. Enforced for both single-host and group apply paths.
 
 ### xtables lock handling
 When another process (Docker, fail2ban, ufw) holds the iptables lock, the app retries with exponential backoff (1s/2s/4s) and identifies the lock holder by PID and process name. Shows context-aware tips ("fail2ban is updating bans, try again shortly").
@@ -242,7 +242,7 @@ Enable dual-stack mode per host to manage IPv4 and IPv6 rules from a single poli
 Automatically detects which iptables chains are owned by Docker, Kubernetes, fail2ban, UFW, firewalld, and CSF. External chains are displayed in a collapsible read-only section — greyed out and non-editable. A pre-apply warning fires when staged changes would affect chains managed by other tools.
 
 ### Persistence assistant
-Detects whether iptables rule persistence is configured (package installed, service enabled, last save time). Shows an "NP" badge in the sidebar for hosts without persistence. One-click setup installs `iptables-persistent` (Debian) or `iptables-services` (RHEL) and enables the service.
+Detects whether iptables rule persistence is configured (package installed, service enabled, last save time). Shows an "NP" badge in the sidebar for hosts without persistence. One-click setup installs `iptables-persistent` (Debian) or `iptables-services` (RHEL) and enables the service. Reports partial failures if enable or save steps fail.
 
 ### Data integrity
 HMAC-signed backups detect tampering. 20+ serialization contract tests prevent frontend/backend data mismatches. Credentials are stored on connect and deleted on host removal.

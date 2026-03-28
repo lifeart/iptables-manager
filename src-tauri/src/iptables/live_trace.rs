@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use tracing::debug;
+
 use crate::host::detect::IptablesVariant;
 use crate::ssh::command::{build_command, build_iptables_command};
 use crate::ssh::executor::{CommandExecutor, ExecError};
@@ -205,11 +207,14 @@ pub async fn run_live_trace(
         filter_str, filter_str
     );
     let cleanup_delay = timeout_secs + 30;
-    // Best-effort: at may not be available
-    let _ = executor.exec(&format!(
+    // Best-effort: at may not be available on all hosts
+    match executor.exec(&format!(
         "echo '{}' | at now + {} seconds 2>/dev/null || true",
         cleanup_script, cleanup_delay
-    )).await;
+    )).await {
+        Ok(o) if o.exit_code == 0 => debug!("Scheduled TRACE cleanup via at in {}s", cleanup_delay),
+        _ => debug!("at not available for TRACE cleanup — relying on in-session cleanup"),
+    }
 
     // ── Step 1: Insert TRACE rules ──────────────────────────────
 
@@ -792,6 +797,35 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
         let events = parse_xtables_monitor_trace(output);
         // Only the last line has proper table:chain:verdict:num format
         assert!(events.len() <= 1, "malformed lines should be skipped, got {} events", events.len());
+    }
+
+    #[tokio::test]
+    async fn test_trace_proceeds_when_at_unavailable() {
+        // at command fails — trace should still proceed normally
+        let executor = MockExecutor::new(vec![
+            ("| at now", 1, "", "at: command not found"),
+            ("-I PREROUTING", 0, "", ""),
+            ("-I OUTPUT", 0, "", ""),
+            ("xtables-monitor", 0, "", ""),
+            ("-D PREROUTING", 0, "", ""),
+            ("-D OUTPUT", 0, "", ""),
+        ]);
+
+        let req = LiveTraceRequest {
+            source_ip: None,
+            dest_ip: None,
+            protocol: Some("tcp".to_string()),
+            dest_port: Some(22),
+            interface_in: None,
+            timeout_secs: 5,
+        };
+
+        let result = run_live_trace(&executor, &IptablesVariant::Nft, &req).await;
+        assert!(result.is_ok(), "trace should succeed even when at is unavailable");
+
+        let r = result.unwrap();
+        assert!(r.trace_rule_inserted, "TRACE rules should still be inserted");
+        assert!(r.trace_rule_removed, "TRACE rules should still be cleaned up in-session");
     }
 
     #[test]

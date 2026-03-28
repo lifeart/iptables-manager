@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.0.1] - 2026-03-28
+
+### Fixed
+- Group apply now checks for mixed iptables backend (was only checked in single-host apply)
+- `enable_persistence` reports partial failures instead of silently succeeding when systemctl enable or save commands fail
+- `enable_persistence` accepts optional distro_family parameter to avoid redundant SSH detection roundtrips
+- Live trace schedules background `at` cleanup job as safety net for TRACE rule removal on SSH disconnect
+- Drift banner no longer uses unsafe type cast (`as unknown as Rule[]`), uses proper type conversion
+- Drift banner changes section no longer accumulates on repeated renders (DOM leak)
+- Mixed backend "Learn More" uses Tauri shell open with window.open fallback
+- Removed dead `scheduleSafetyTimer` method from pending bar
+- Terminal sub-tabs now have proper ARIA attributes (role="tablist", role="tab", aria-selected)
+
 ## [3.0.0] - 2026-03-28
 
 ### Added
