@@ -192,6 +192,7 @@ export class PendingBar extends Component {
       const undoBtn = h('button', {
         className: 'rule-table__pending-bar-undo-btn',
         type: 'button',
+        'aria-label': 'Undo change',
       }, 'undo');
       const changeIndex = i;
       this.listen(undoBtn, 'click', () => {
@@ -394,12 +395,18 @@ export class PendingBar extends Component {
     const backdrop = h('div', { className: 'preview-modal__backdrop' });
 
     // Modal
-    const modal = h('div', { className: 'preview-modal' });
+    const titleId = 'preview-modal-title';
+    const modal = h('div', {
+      className: 'preview-modal',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': titleId,
+    });
 
     // Header
     const header = h('div', { className: 'preview-modal__header' });
-    header.appendChild(h('h3', { className: 'preview-modal__title' }, 'Preview: iptables-restore'));
-    const closeBtn = h('button', { className: 'preview-modal__close', type: 'button' }, '\u00D7');
+    header.appendChild(h('h3', { className: 'preview-modal__title', id: titleId }, 'Preview: iptables-restore'));
+    const closeBtn = h('button', { className: 'preview-modal__close', type: 'button', 'aria-label': 'Close' }, '\u00D7');
     header.appendChild(closeBtn);
     modal.appendChild(header);
 

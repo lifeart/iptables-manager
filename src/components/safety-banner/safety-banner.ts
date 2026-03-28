@@ -92,6 +92,7 @@ export class SafetyBanner extends Component {
       this.compactRevertBtn.className = 'safety-banner__revert-btn safety-banner__revert-btn--compact';
       this.compactRevertBtn.type = 'button';
       this.compactRevertBtn.textContent = 'Revert';
+      this.compactRevertBtn.setAttribute('aria-label', 'Revert changes');
       this.listen(this.compactRevertBtn, 'click', () => {
         if (this.currentHostId) this.revertChanges(this.currentHostId);
       });
@@ -105,6 +106,7 @@ export class SafetyBanner extends Component {
       this.revertBtn.className = 'safety-banner__revert-btn';
       this.revertBtn.type = 'button';
       this.revertBtn.textContent = 'Revert Changes';
+      this.revertBtn.setAttribute('aria-label', 'Revert changes');
       this.listen(this.revertBtn, 'click', () => {
         if (this.currentHostId) this.revertChanges(this.currentHostId);
       });

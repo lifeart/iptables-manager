@@ -114,6 +114,7 @@ export class Sidebar extends Component {
     this.statusFilterPill = h('button', {
       className: 'sidebar__status-filter-pill',
       type: 'button',
+      'aria-label': 'Filter hosts with issues',
       style: { display: 'none' },
     });
     this.el.appendChild(this.statusFilterPill);

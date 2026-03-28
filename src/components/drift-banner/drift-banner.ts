@@ -170,6 +170,7 @@ export class DriftBanner extends Component {
     refreshBtn.className = 'drift-banner__refresh-btn';
     refreshBtn.type = 'button';
     refreshBtn.textContent = 'Refresh';
+    refreshBtn.setAttribute('aria-label', 'Refresh rules');
     this.listen(refreshBtn, 'click', () => this.handleRefresh(drift.hostId));
 
     // Dismiss button
@@ -178,6 +179,7 @@ export class DriftBanner extends Component {
     dismissBtn.type = 'button';
     dismissBtn.textContent = '\u00D7';
     dismissBtn.title = 'Dismiss';
+    dismissBtn.setAttribute('aria-label', 'Dismiss');
     this.listen(dismissBtn, 'click', () => this.handleDismiss(drift.hostId));
 
     this.contentEl.appendChild(icon);

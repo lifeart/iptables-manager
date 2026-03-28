@@ -1,4 +1,9 @@
 export { RuleTable } from './rule-table';
+export { RuleTableHeader } from './rule-table-header';
+export { RuleTableTabs } from './rule-table-tabs';
+export { ConflictBanner } from './conflict-banner';
+export { ImportBanner } from './import-banner';
+export { TerminalTab } from './terminal-tab';
 export { createRuleRow, updateRuleRow } from './rule-row';
 export { createSectionHeader, updateSectionHeader } from './section-header';
 export { FilterBar } from './filter-bar';
