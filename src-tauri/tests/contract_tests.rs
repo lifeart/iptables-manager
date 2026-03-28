@@ -336,6 +336,7 @@ fn test_apply_result_serialization() {
         safety_timer_active: true,
         safety_timer_expiry: Some(1700003600),
         remote_job_id: Some("job-abc".into()),
+        safety_timer_mechanism: Some("At".into()),
     };
     let json = serde_json::to_value(&result).unwrap();
 
@@ -343,11 +344,13 @@ fn test_apply_result_serialization() {
     assert_eq!(json["safetyTimerActive"], true);
     assert_eq!(json["safetyTimerExpiry"], 1700003600u64);
     assert_eq!(json["remoteJobId"], "job-abc");
+    assert_eq!(json["safetyTimerMechanism"], "At");
 
     // Must NOT have snake_case
     assert_no_key(&json, "safety_timer_active");
     assert_no_key(&json, "safety_timer_expiry");
     assert_no_key(&json, "remote_job_id");
+    assert_no_key(&json, "safety_timer_mechanism");
 }
 
 #[test]
@@ -357,6 +360,7 @@ fn test_apply_result_optional_fields_null() {
         safety_timer_active: false,
         safety_timer_expiry: None,
         remote_job_id: None,
+        safety_timer_mechanism: None,
     };
     let json = serde_json::to_value(&result).unwrap();
 
@@ -364,6 +368,7 @@ fn test_apply_result_optional_fields_null() {
     assert_eq!(json["safetyTimerActive"], false);
     assert!(json["safetyTimerExpiry"].is_null());
     assert!(json["remoteJobId"].is_null());
+    assert!(json["safetyTimerMechanism"].is_null());
 }
 
 // ── 10. SafetyTimerResult ──────────────────────────────────────────────

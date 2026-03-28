@@ -76,6 +76,7 @@ export interface ApplyResult {
   safetyTimerActive: boolean;
   safetyTimerExpiry?: number;
   remoteJobId?: string;
+  safetyTimerMechanism?: string;
 }
 
 export interface HostApplyResult {
@@ -445,8 +446,8 @@ export const deleteHost = (hostId: string, removeRemoteData: boolean) =>
 export const fetchRules = (hostId: string) =>
   ipcCall<RuleSet>('rules:fetch', { hostId: hostId });
 
-export const applyChanges = (hostId: string, changes: StagedChange[]) =>
-  ipcCall<ApplyResult>('rules:apply', { hostId, changesJson: JSON.stringify(changes) });
+export const applyChanges = (hostId: string, changes: StagedChange[], safetyTimeoutSecs?: number) =>
+  ipcCall<ApplyResult>('rules:apply', { hostId, changesJson: JSON.stringify(changes), safetyTimeoutSecs: safetyTimeoutSecs ?? null });
 
 export const applyToGroup = (
   hostIds: string[],

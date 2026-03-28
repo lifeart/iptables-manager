@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -153,36 +154,56 @@ struct ManagedSession {
 // ---------------------------------------------------------------------------
 
 pub struct ConnectionPool {
-    sessions: RwLock<HashMap<String, Arc<ManagedSession>>>,
+    sessions: Arc<RwLock<HashMap<String, Arc<ManagedSession>>>>,
     apply_locks: DashMap<String, Arc<Mutex<()>>>,
     rate_limiters: DashMap<String, Mutex<RateLimiter>>,
     max_concurrent_per_host: usize,
     transport: Box<dyn SshTransport>,
     is_shutdown: std::sync::atomic::AtomicBool,
+    keepalive_interval: Duration,
 }
 
 impl ConnectionPool {
     /// Create a new connection pool with the given transport.
     pub fn new(transport: Box<dyn SshTransport>) -> Self {
         Self {
-            sessions: RwLock::new(HashMap::new()),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
             apply_locks: DashMap::new(),
             rate_limiters: DashMap::new(),
             max_concurrent_per_host: 3,
             transport,
             is_shutdown: std::sync::atomic::AtomicBool::new(false),
+            keepalive_interval: Duration::from_secs(30),
         }
     }
 
     /// Create a pool with a custom concurrency limit per host.
     pub fn with_concurrency(transport: Box<dyn SshTransport>, max_concurrent: usize) -> Self {
         Self {
-            sessions: RwLock::new(HashMap::new()),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
             apply_locks: DashMap::new(),
             rate_limiters: DashMap::new(),
             max_concurrent_per_host: max_concurrent,
             transport,
             is_shutdown: std::sync::atomic::AtomicBool::new(false),
+            keepalive_interval: Duration::from_secs(30),
+        }
+    }
+
+    /// Create a pool with a custom keepalive interval (useful for testing).
+    #[cfg(test)]
+    pub fn with_keepalive_interval(
+        transport: Box<dyn SshTransport>,
+        keepalive_interval: Duration,
+    ) -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            apply_locks: DashMap::new(),
+            rate_limiters: DashMap::new(),
+            max_concurrent_per_host: 3,
+            transport,
+            is_shutdown: std::sync::atomic::AtomicBool::new(false),
+            keepalive_interval,
         }
     }
 
@@ -216,7 +237,40 @@ impl ConnectionPool {
         });
 
         let mut sessions = self.sessions.write().await;
-        sessions.insert(host_id.to_string(), session);
+        sessions.insert(host_id.to_string(), session.clone());
+        drop(sessions);
+
+        // Spawn keepalive heartbeat task
+        {
+            let session_arc = session.clone();
+            let host_id_clone = host_id.to_string();
+            let pool_sessions = self.sessions.clone();
+            let interval = self.keepalive_interval;
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(interval) => {
+                            let cmd = "echo ok";
+                            match session_arc.executor.exec(cmd).await {
+                                Ok(output) if output.exit_code == 0 => continue,
+                                _ => {
+                                    // Connection is dead
+                                    session_arc.connected.store(false, std::sync::atomic::Ordering::Relaxed);
+                                    session_arc.cancel.cancel();
+                                    let mut sessions = pool_sessions.write().await;
+                                    sessions.remove(&host_id_clone);
+                                    break;
+                                }
+                            }
+                        }
+                        _ = session_arc.cancel.cancelled() => {
+                            // Session was disconnected normally
+                            break;
+                        }
+                    }
+                }
+            });
+        }
 
         Ok(())
     }
@@ -739,5 +793,96 @@ mod tests {
         // Should be able to reconnect
         pool.connect("host-1", test_config()).await.unwrap();
         assert_eq!(pool.get_status("host-1"), ConnectionStatus::Connected);
+    }
+
+    // -- Keepalive tests --
+
+    /// A mock executor that succeeds for the first N calls, then fails.
+    struct CountdownExecutor {
+        remaining: std::sync::atomic::AtomicI32,
+    }
+
+    #[async_trait]
+    impl CommandExecutor for CountdownExecutor {
+        async fn exec(&self, _command: &str) -> Result<CommandOutput, ExecError> {
+            let prev = self
+                .remaining
+                .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+            if prev > 0 {
+                Ok(CommandOutput {
+                    stdout: "ok\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                })
+            } else {
+                Err(ExecError::ConnectionLost("mock connection dead".to_string()))
+            }
+        }
+
+        async fn exec_with_stdin(
+            &self,
+            _command: &str,
+            _stdin: &[u8],
+        ) -> Result<CommandOutput, ExecError> {
+            self.exec(_command).await
+        }
+    }
+
+    /// Transport that creates CountdownExecutors.
+    struct CountdownTransport {
+        success_count: i32,
+    }
+
+    #[async_trait]
+    impl SshTransport for CountdownTransport {
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<Box<dyn CommandExecutor>, ConnectError> {
+            Ok(Box::new(CountdownExecutor {
+                remaining: std::sync::atomic::AtomicI32::new(self.success_count),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_keepalive_detects_dead_connection() {
+        // The executor succeeds twice then fails on the third call.
+        // With a 50ms keepalive interval, the keepalive task should detect
+        // the failure and mark the session as disconnected.
+        let pool = ConnectionPool::with_keepalive_interval(
+            Box::new(CountdownTransport { success_count: 2 }),
+            Duration::from_millis(50),
+        );
+        pool.connect("host-1", test_config()).await.unwrap();
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Connected);
+
+        // Wait long enough for 3 keepalive ticks (3 * 50ms = 150ms, add margin)
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Disconnected);
+
+        // Session should also have been removed from the map
+        let result = pool.execute("host-1", "echo hi").await;
+        assert!(matches!(result, Err(ExecError::ConnectionLost(_))));
+    }
+
+    #[tokio::test]
+    async fn test_keepalive_stops_on_disconnect() {
+        // Ensure that disconnecting a session stops its keepalive task
+        // (the cancel token fires, and the task exits cleanly).
+        let pool = ConnectionPool::with_keepalive_interval(
+            Box::new(MockTransport::new()),
+            Duration::from_millis(50),
+        );
+        pool.connect("host-1", test_config()).await.unwrap();
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Connected);
+
+        // Disconnect immediately — keepalive should not panic or error
+        pool.disconnect("host-1").await.unwrap();
+        assert_eq!(pool.get_status("host-1"), ConnectionStatus::Disconnected);
+
+        // Wait a bit to confirm no panics from the keepalive task
+        tokio::time::sleep(Duration::from_millis(150)).await;
     }
 }

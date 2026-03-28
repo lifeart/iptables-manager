@@ -297,15 +297,25 @@ export class PendingBar extends Component {
       this.applyBtn.disabled = true;
       this.applyBtn.textContent = 'Applying...';
 
-      await ipc.applyChanges(hostId, changeset.changes);
+      const timeoutSec = isRealHost ? (state.settings.defaultSafetyTimeout || 60) : undefined;
+      const applyResult = await ipc.applyChanges(hostId, changeset.changes, timeoutSec);
       const changeCount = changeset.changes.length;
       this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
       addAuditEntry(hostId, host?.name ?? hostId, 'apply', changeCount, `Applied ${changeCount} change${changeCount !== 1 ? 's' : ''}`);
 
-      // Set safety timer for real connected hosts
-      if (isRealHost) {
-        const timeoutSec = state.settings.defaultSafetyTimeout || 60;
-        await this.scheduleSafetyTimer(hostId, timeoutSec);
+      // Dispatch safety timer state from the apply result (timer was armed server-side before rules were applied)
+      if (applyResult.safetyTimerActive && applyResult.remoteJobId) {
+        const now = Date.now();
+        this.store.dispatch({
+          type: 'SET_SAFETY_TIMER',
+          timer: {
+            hostId,
+            expiresAt: applyResult.safetyTimerExpiry ?? (now + (timeoutSec ?? 60) * 1000),
+            remoteJobId: applyResult.remoteJobId,
+            mechanism: applyResult.safetyTimerMechanism ?? 'At',
+            startedAt: now,
+          },
+        });
       }
     } catch (err) {
       if (err instanceof IpcError && err.kind === 'LockoutDetected') {
@@ -317,22 +327,25 @@ export class PendingBar extends Component {
         );
         if (proceed) {
           try {
-            await ipc.applyChanges(hostId, changeset.changes);
+            const forceTimeoutSec = isRealHost ? (state.settings.defaultSafetyTimeout || 60) : undefined;
+            const forceResult = await ipc.applyChanges(hostId, changeset.changes, forceTimeoutSec);
             const forceChangeCount = changeset.changes.length;
             this.store.dispatch({ type: 'CLEAR_STAGED_CHANGES', hostId });
             addAuditEntry(hostId, host?.name ?? hostId, 'apply', forceChangeCount, `Force-applied ${forceChangeCount} change${forceChangeCount !== 1 ? 's' : ''} (lockout warning overridden)`);
 
-            // Schedule safety timer for force-applied changes too
-            if (isRealHost) {
-              const timeoutSec = state.settings.defaultSafetyTimeout || 60;
-              try {
-                await this.scheduleSafetyTimer(hostId, timeoutSec);
-              } catch {
-                // User force-applied — don't auto-revert, just warn
-                this.showError(
-                  'Safety timer could not be scheduled. Your rules are applied but have NO automatic rollback protection.'
-                );
-              }
+            // Dispatch safety timer state from the force-apply result
+            if (forceResult.safetyTimerActive && forceResult.remoteJobId) {
+              const now = Date.now();
+              this.store.dispatch({
+                type: 'SET_SAFETY_TIMER',
+                timer: {
+                  hostId,
+                  expiresAt: forceResult.safetyTimerExpiry ?? (now + (forceTimeoutSec ?? 60) * 1000),
+                  remoteJobId: forceResult.remoteJobId,
+                  mechanism: forceResult.safetyTimerMechanism ?? 'At',
+                  startedAt: now,
+                },
+              });
             }
           } catch (forceErr) {
             const forceMsg = forceErr instanceof Error ? forceErr.message : 'Apply failed';

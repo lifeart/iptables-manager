@@ -79,6 +79,7 @@ pub struct ApplyResult {
     pub safety_timer_active: bool,
     pub safety_timer_expiry: Option<u64>,
     pub remote_job_id: Option<String>,
+    pub safety_timer_mechanism: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -369,6 +370,7 @@ pub async fn fetch_rules(
 pub async fn rules_apply(
     host_id: String,
     changes_json: String,
+    safety_timeout_secs: Option<u32>,
     pool: State<'_, PoolState>,
 ) -> Result<ApplyResult, IpcError> {
     let _lock = pool.acquire_apply_lock(&host_id).await;
@@ -381,7 +383,26 @@ pub async fn rules_apply(
     // ── Step 1: Save backup of current rules ────────────────────
     create_pre_apply_backup(&proxy, &host_id).await?;
 
-    // ── Step 2: Apply the new rules ─────────────────────────────
+    // ── Step 2: Arm safety timer BEFORE applying rules ──────────
+    // If SSH drops between apply and timer setup, the timer is already
+    // armed and will revert the rules automatically.
+    let timer_result = if let Some(timeout) = safety_timeout_secs {
+        let mechanism = crate::safety::timer::detect_mechanism(&proxy).await;
+        let backup_path = "/var/lib/traffic-rules/backup.v4";
+        let job = crate::safety::timer::schedule_revert(
+            &proxy, mechanism, backup_path, timeout,
+        )
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: format!("safety timer failed (rules NOT applied): {}", e),
+            exit_code: 1,
+        })?;
+        Some(job)
+    } else {
+        None
+    };
+
+    // ── Step 3: Apply the new rules ─────────────────────────────
     let restore_cmd = build_command(
         "sudo",
         &["iptables-restore", "-w", "5", "--noflush", "--counters"],
@@ -403,9 +424,16 @@ pub async fn rules_apply(
 
     Ok(ApplyResult {
         success: true,
-        safety_timer_active: false,
-        safety_timer_expiry: None,
-        remote_job_id: None,
+        safety_timer_active: timer_result.is_some(),
+        safety_timer_expiry: safety_timeout_secs.map(|t| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
+                + (t as u64) * 1000
+        }),
+        remote_job_id: timer_result.as_ref().map(|j| j.id.clone()),
+        safety_timer_mechanism: timer_result.as_ref().map(|j| format!("{:?}", j.mechanism)),
     })
 }
 
@@ -466,7 +494,7 @@ pub async fn rules_apply_group(
                 let hid_for_err = hid.clone();
                 let changes = changes_json.clone();
                 let handle = tokio::spawn(async move {
-                    apply_to_single_host(&pool_clone, &hid_clone, &changes).await
+                    apply_to_single_host(&pool_clone, &hid_clone, &changes, None).await
                 });
                 handles.push((hid_for_err, handle));
             }
@@ -483,7 +511,7 @@ pub async fn rules_apply_group(
         } else {
             // Sequential execution
             for hid in &step.host_ids {
-                let result = apply_to_single_host(&pool_arc, hid, &changes_json).await;
+                let result = apply_to_single_host(&pool_arc, hid, &changes_json, None).await;
                 let failed = !result.success;
                 all_results.push(result);
 
@@ -531,10 +559,14 @@ pub async fn rules_apply_group(
 }
 
 /// Apply changes to a single host, returning a HostApplyResult.
+///
+/// If `safety_timeout_secs` is provided, the safety timer is armed BEFORE
+/// applying rules so that a dropped connection still has rollback protection.
 async fn apply_to_single_host(
     pool: &Arc<ConnectionPool>,
     host_id: &str,
     changes_json: &str,
+    safety_timeout_secs: Option<u32>,
 ) -> HostApplyResult {
     let _lock = pool.acquire_apply_lock(host_id).await;
 
@@ -550,6 +582,21 @@ async fn apply_to_single_host(
             success: false,
             error: Some(format!("backup failed: {}", e)),
         };
+    }
+
+    // Arm safety timer BEFORE applying rules
+    if let Some(timeout) = safety_timeout_secs {
+        let mechanism = crate::safety::timer::detect_mechanism(&proxy).await;
+        let backup_path = "/var/lib/traffic-rules/backup.v4";
+        if let Err(e) = crate::safety::timer::schedule_revert(
+            &proxy, mechanism, backup_path, timeout,
+        ).await {
+            return HostApplyResult {
+                host_id: host_id.to_string(),
+                success: false,
+                error: Some(format!("safety timer failed (rules NOT applied): {}", e)),
+            };
+        }
     }
 
     // Apply
@@ -1546,6 +1593,7 @@ pub async fn snapshot_restore(
         safety_timer_active: false,
         safety_timer_expiry: None,
         remote_job_id: None,
+        safety_timer_mechanism: None,
     })
 }
 
@@ -2234,6 +2282,133 @@ COMMIT
             "atrm (idx {}) must come before atq verification (idx {})",
             atrm_idx,
             atq_idx
+        );
+    }
+
+    // ── Test: rules_apply arms timer BEFORE iptables-restore ──────
+
+    /// Verify that when safety_timeout_secs is provided, the call order is:
+    /// iptables-save (backup) → schedule_revert (at/systemd/nohup) → iptables-restore
+    #[tokio::test]
+    async fn test_apply_arms_timer_before_restore() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            // backup: iptables-save
+            ("iptables-save", 0, iptables_output, ""),
+            // backup: write backup.v4
+            ("tee /var/lib/traffic-rules/backup.v4", 0, "", ""),
+            // backup: ip6tables-save (optional, fails)
+            ("ip6tables-save", 1, "", "not found"),
+            // safety timer: detect mechanism — `at` available
+            ("which at", 0, "/usr/bin/at", ""),
+            ("is-active", 0, "active", ""),
+            // safety timer: schedule via `at`
+            ("at ", 0, "", "job 42 at Thu Mar 22 10:00:00 2026\n"),
+            // apply: iptables-restore
+            ("iptables-restore", 0, "", ""),
+        ]);
+
+        let proxy = &executor;
+
+        // Step 1: backup
+        let backup_result = create_pre_apply_backup(proxy, "test-host").await;
+        assert!(backup_result.is_ok(), "backup should succeed");
+
+        // Step 2: arm safety timer
+        let mechanism = crate::safety::timer::detect_mechanism(proxy).await;
+        let job = crate::safety::timer::schedule_revert(
+            proxy,
+            mechanism,
+            "/var/lib/traffic-rules/backup.v4",
+            60,
+        )
+        .await;
+        assert!(job.is_ok(), "safety timer should succeed");
+
+        // Step 3: apply (simulated via exec_with_stdin)
+        let restore_cmd = build_command(
+            "sudo",
+            &["iptables-restore", "-w", "5", "--noflush", "--counters"],
+        );
+        let apply_output = executor
+            .exec_with_stdin(&restore_cmd, b"*filter\nCOMMIT\n")
+            .await;
+        assert!(apply_output.is_ok(), "apply should succeed");
+
+        // Verify call order: iptables-save < at < iptables-restore
+        let calls = executor.get_calls();
+        let save_idx = calls
+            .iter()
+            .position(|c| c.contains("iptables-save"))
+            .expect("should call iptables-save");
+        let at_idx = calls
+            .iter()
+            .position(|c| c.starts_with("at "))
+            .expect("should call at for timer");
+        let restore_idx = calls
+            .iter()
+            .position(|c| c.contains("iptables-restore"))
+            .expect("should call iptables-restore");
+
+        assert!(
+            save_idx < at_idx,
+            "iptables-save (idx {}) must come before at timer (idx {})",
+            save_idx,
+            at_idx
+        );
+        assert!(
+            at_idx < restore_idx,
+            "at timer (idx {}) must come before iptables-restore (idx {})",
+            at_idx,
+            restore_idx
+        );
+    }
+
+    /// Verify that if the safety timer fails to schedule, iptables-restore
+    /// is NOT called — rules are never applied without rollback protection.
+    #[tokio::test]
+    async fn test_apply_aborts_if_timer_fails() {
+        let iptables_output = "*filter\n:TR-INPUT - [0:0]\n-A TR-INPUT -p tcp --dport 22 -j ACCEPT\nCOMMIT\n";
+        let executor = MockExecutor::new(vec![
+            // backup: iptables-save
+            ("iptables-save", 0, iptables_output, ""),
+            // backup: write backup.v4
+            ("tee /var/lib/traffic-rules/backup.v4", 0, "", ""),
+            // backup: ip6tables-save (optional, fails)
+            ("ip6tables-save", 1, "", "not found"),
+            // safety timer: detect mechanism — `at` available
+            ("which at", 0, "/usr/bin/at", ""),
+            ("is-active", 0, "active", ""),
+            // safety timer: schedule via `at` — FAILS
+            ("at ", 1, "", "at: cannot open input: No such file or directory"),
+            // iptables-restore should NOT be called
+            ("iptables-restore", 0, "", ""),
+        ]);
+
+        let proxy = &executor;
+
+        // Step 1: backup
+        let backup_result = create_pre_apply_backup(proxy, "test-host").await;
+        assert!(backup_result.is_ok(), "backup should succeed");
+
+        // Step 2: arm safety timer — should fail
+        let mechanism = crate::safety::timer::detect_mechanism(proxy).await;
+        let job = crate::safety::timer::schedule_revert(
+            proxy,
+            mechanism,
+            "/var/lib/traffic-rules/backup.v4",
+            60,
+        )
+        .await;
+        assert!(job.is_err(), "safety timer should fail");
+
+        // Because the timer failed, we must NOT proceed to iptables-restore.
+        // Verify iptables-restore was never called.
+        let calls = executor.get_calls();
+        assert!(
+            !calls.iter().any(|c| c.contains("iptables-restore")),
+            "iptables-restore must NOT be called when safety timer fails; calls: {:?}",
+            calls
         );
     }
 }
