@@ -196,6 +196,99 @@ pub fn rule_spec_to_args(spec: &RuleSpec) -> Vec<String> {
     args
 }
 
+/// Check whether a RuleSpec contains IPv4-only addresses (e.g. dotted-quad CIDR).
+pub fn is_ipv4_only(spec: &RuleSpec) -> bool {
+    let check_addr = |addr: &str| -> bool {
+        // An address is IPv4-specific if it contains a dot (dotted-quad) and no colon
+        addr.contains('.') && !addr.contains(':')
+    };
+
+    let src_v4 = spec.source.as_ref().map_or(false, |s| check_addr(&s.addr));
+    let dst_v4 = spec.destination.as_ref().map_or(false, |d| check_addr(&d.addr));
+
+    // Also check the address_family field
+    if spec.address_family == AddressFamily::V4 {
+        return true;
+    }
+
+    // If protocol is ICMP (not ICMPv6), it's v4-only
+    if spec.protocol.as_ref() == Some(&Protocol::Icmp) {
+        return true;
+    }
+
+    src_v4 || dst_v4
+}
+
+/// Check whether a RuleSpec contains IPv6-only addresses (e.g. `::` or hex-colon notation).
+pub fn is_ipv6_only(spec: &RuleSpec) -> bool {
+    let check_addr = |addr: &str| -> bool {
+        // An address is IPv6-specific if it contains a colon (hex groups)
+        addr.contains(':')
+    };
+
+    let src_v6 = spec.source.as_ref().map_or(false, |s| check_addr(&s.addr));
+    let dst_v6 = spec.destination.as_ref().map_or(false, |d| check_addr(&d.addr));
+
+    // Also check the address_family field
+    if spec.address_family == AddressFamily::V6 {
+        return true;
+    }
+
+    // If protocol is ICMPv6, it's v6-only
+    if spec.protocol.as_ref() == Some(&Protocol::Icmpv6) {
+        return true;
+    }
+
+    src_v6 || dst_v6
+}
+
+/// Generate dual-stack (IPv4 + IPv6) iptables-restore content from a set of rules.
+///
+/// Returns `(ipv4_restore, ipv6_restore)` where:
+/// - IPv4 output includes rules that are IPv4-only or address-family-neutral
+/// - IPv6 output includes rules that are IPv6-only or address-family-neutral
+/// - Rules with IPv4 addresses are excluded from the v6 output and vice versa
+pub fn generate_restore_dual_stack(
+    rules: &[(&str, &RuleSpec)],
+    chains: &[String],
+    table: &str,
+) -> (String, String) {
+    let mut v4_chain_rules: HashMap<String, Vec<String>> = HashMap::new();
+    let mut v6_chain_rules: HashMap<String, Vec<String>> = HashMap::new();
+
+    // Ensure all chains exist in both maps
+    for chain in chains {
+        v4_chain_rules.entry(chain.clone()).or_default();
+        v6_chain_rules.entry(chain.clone()).or_default();
+    }
+
+    for &(chain_name, spec) in rules {
+        let args = rule_spec_to_args(spec);
+        let rule_line = args.join(" ");
+
+        let v4_only = is_ipv4_only(spec);
+        let v6_only = is_ipv6_only(spec);
+
+        if !v6_only {
+            v4_chain_rules
+                .entry(chain_name.to_string())
+                .or_default()
+                .push(rule_line.clone());
+        }
+        if !v4_only {
+            v6_chain_rules
+                .entry(chain_name.to_string())
+                .or_default()
+                .push(rule_line);
+        }
+    }
+
+    let v4_output = generate_restore_from_lines(&v4_chain_rules, table);
+    let v6_output = generate_restore_from_lines(&v6_chain_rules, table);
+
+    (v4_output, v6_output)
+}
+
 /// Format a single `PortSpec` as a string suitable for iptables arguments.
 pub fn port_spec_to_string(port: &PortSpec) -> String {
     match port {
@@ -424,5 +517,143 @@ mod tests {
         assert_eq!(port_spec_to_string(&PortSpec::Single(22)), "22");
         assert_eq!(port_spec_to_string(&PortSpec::Multi(vec![80, 443])), "80,443");
         assert_eq!(port_spec_to_string(&PortSpec::Range(1024, 65535)), "1024:65535");
+    }
+
+    // ─── Dual-stack tests ───────────────────────────────────────
+
+    fn make_spec(
+        source: Option<&str>,
+        dest: Option<&str>,
+        protocol: Option<Protocol>,
+        family: AddressFamily,
+    ) -> RuleSpec {
+        RuleSpec {
+            protocol,
+            protocol_negated: false,
+            source: source.map(|s| AddressSpec {
+                addr: s.to_string(),
+                negated: false,
+            }),
+            destination: dest.map(|d| AddressSpec {
+                addr: d.to_string(),
+                negated: false,
+            }),
+            in_iface: None,
+            out_iface: None,
+            matches: vec![],
+            target: Some(Target::Accept),
+            target_args: vec![],
+            comment: None,
+            counters: None,
+            fragment: None,
+            source_port: None,
+            dest_port: Some(PortSpec::Single(22)),
+            address_family: family,
+        }
+    }
+
+    #[test]
+    fn test_dual_stack_basic() {
+        // Rules without IPs should appear in both outputs
+        let spec = make_spec(None, None, Some(Protocol::Tcp), AddressFamily::Both);
+        let rules: Vec<(&str, &RuleSpec)> = vec![("TR-INPUT", &spec)];
+        let chains = vec!["TR-INPUT".to_string()];
+
+        let (v4, v6) = generate_restore_dual_stack(&rules, &chains, "filter");
+
+        assert!(v4.contains("-A TR-INPUT"), "v4 should contain the rule");
+        assert!(v6.contains("-A TR-INPUT"), "v6 should contain the rule");
+        assert!(v4.starts_with("*filter\n"));
+        assert!(v6.starts_with("*filter\n"));
+        assert!(v4.ends_with("COMMIT\n"));
+        assert!(v6.ends_with("COMMIT\n"));
+    }
+
+    #[test]
+    fn test_dual_stack_ipv4_only_rule() {
+        // Rule with IPv4 source should only be in v4 output
+        let spec = make_spec(
+            Some("10.0.0.0/8"),
+            None,
+            Some(Protocol::Tcp),
+            AddressFamily::Both,
+        );
+        let rules: Vec<(&str, &RuleSpec)> = vec![("TR-INPUT", &spec)];
+        let chains = vec!["TR-INPUT".to_string()];
+
+        let (v4, v6) = generate_restore_dual_stack(&rules, &chains, "filter");
+
+        assert!(
+            v4.contains("-s 10.0.0.0/8"),
+            "v4 should contain the IPv4 rule"
+        );
+        assert!(
+            !v6.contains("-s 10.0.0.0/8"),
+            "v6 should NOT contain the IPv4 rule"
+        );
+    }
+
+    #[test]
+    fn test_dual_stack_ipv6_only_rule() {
+        // Rule with IPv6 dest should only be in v6 output
+        let spec = make_spec(
+            None,
+            Some("::1/128"),
+            Some(Protocol::Tcp),
+            AddressFamily::Both,
+        );
+        let rules: Vec<(&str, &RuleSpec)> = vec![("TR-INPUT", &spec)];
+        let chains = vec!["TR-INPUT".to_string()];
+
+        let (v4, v6) = generate_restore_dual_stack(&rules, &chains, "filter");
+
+        assert!(
+            !v4.contains("-d ::1/128"),
+            "v4 should NOT contain the IPv6 rule"
+        );
+        assert!(
+            v6.contains("-d ::1/128"),
+            "v6 should contain the IPv6 rule"
+        );
+    }
+
+    #[test]
+    fn test_dual_stack_mixed() {
+        // Mix of v4-only, v6-only, and both rules
+        let v4_spec = make_spec(
+            Some("192.168.1.0/24"),
+            None,
+            Some(Protocol::Tcp),
+            AddressFamily::Both,
+        );
+        let v6_spec = make_spec(
+            Some("fd00::1/64"),
+            None,
+            Some(Protocol::Tcp),
+            AddressFamily::Both,
+        );
+        let both_spec = make_spec(None, None, Some(Protocol::Tcp), AddressFamily::Both);
+
+        let rules: Vec<(&str, &RuleSpec)> = vec![
+            ("TR-INPUT", &v4_spec),
+            ("TR-INPUT", &v6_spec),
+            ("TR-INPUT", &both_spec),
+        ];
+        let chains = vec!["TR-INPUT".to_string()];
+
+        let (v4, v6) = generate_restore_dual_stack(&rules, &chains, "filter");
+
+        // v4 output: should have v4_spec and both_spec, NOT v6_spec
+        assert!(v4.contains("-s 192.168.1.0/24"), "v4 should contain IPv4 rule");
+        assert!(!v4.contains("fd00::1/64"), "v4 should NOT contain IPv6 rule");
+        // Count -A TR-INPUT lines in v4
+        let v4_rule_count = v4.lines().filter(|l| l.starts_with("-A TR-INPUT")).count();
+        assert_eq!(v4_rule_count, 2, "v4 should have 2 rules (v4-only + both)");
+
+        // v6 output: should have v6_spec and both_spec, NOT v4_spec
+        assert!(!v6.contains("192.168.1.0/24"), "v6 should NOT contain IPv4 rule");
+        assert!(v6.contains("-s fd00::1/64"), "v6 should contain IPv6 rule");
+        let v6_rule_count = v6.lines().filter(|l| l.starts_with("-A TR-INPUT")).count();
+        assert_eq!(v6_rule_count, 2, "v6 should have 2 rules (v6-only + both)");
     }
 }

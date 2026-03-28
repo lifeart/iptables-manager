@@ -19,6 +19,7 @@ import { RuleEdit } from './rule-edit';
 import { SnapshotHistory } from './snapshot-history';
 import { PortForwardBuilder, SourceNatBuilder } from './nat-builder';
 import { Settings as SettingsPanel } from '../settings/settings';
+import { HostSettings } from '../settings/host-settings';
 import { GroupEdit } from './group-edit';
 import { IpListEdit } from './iplist-edit';
 
@@ -159,9 +160,7 @@ export class SidePanel extends Component {
         break;
       }
       case 'host-settings': {
-        // Host settings reuses the Settings panel (host-specific settings
-        // are not yet distinct from global settings)
-        const hostSettingsComp = new SettingsPanel(this.contentEl, this.store);
+        const hostSettingsComp = new HostSettings(this.contentEl, this.store);
         this.currentContent = hostSettingsComp;
         this.addChild(hostSettingsComp);
         break;

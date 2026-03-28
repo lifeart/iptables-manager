@@ -126,6 +126,12 @@ export interface SetHostStatusAction {
   status: HostStatus;
 }
 
+export interface SetHostDualStackAction {
+  type: 'SET_HOST_DUAL_STACK';
+  hostId: string;
+  enabled: boolean;
+}
+
 // ─── Group Management ─────────────────────────────────────────
 
 export interface AddGroupAction {
@@ -339,6 +345,7 @@ export type Action =
   | UpdateHostAction
   | RemoveHostAction
   | SetHostStatusAction
+  | SetHostDualStackAction
   | AddGroupAction
   | UpdateGroupAction
   | RemoveGroupAction

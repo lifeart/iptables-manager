@@ -92,6 +92,8 @@ pub fn run() {
             // Ipset optimization commands
             ipc::commands::analyze_ipset_opportunities,
             ipc::commands::convert_to_ipset,
+            // Dual-stack divergence
+            ipc::commands::check_v4_v6_divergence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

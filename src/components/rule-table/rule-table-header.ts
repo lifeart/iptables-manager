@@ -27,6 +27,8 @@ export class RuleTableHeader extends Component {
   public onNoActiveHost: (() => void) | null = null;
   /** Fired when a host becomes active (parent may need to show tabs). */
   public onActiveHost: (() => void) | null = null;
+  /** Fired when the "Compare v4/v6" button is clicked. */
+  public onCompareV4V6: (() => void) | null = null;
 
   constructor(container: HTMLElement, store: Store) {
     super(container, store);
@@ -134,6 +136,24 @@ export class RuleTableHeader extends Component {
       this.store.dispatch({ type: 'TOGGLE_SIDE_PANEL', open: true });
     });
     headerBtns.appendChild(historyBtn);
+
+    // "Compare v4/v6" button — only visible when dual-stack is enabled
+    if (host.dualStackEnabled) {
+      const compareBtn = h(
+        'button',
+        {
+          className: 'dual-stack-compare-btn',
+          type: 'button',
+          title: 'Compare IPv4 and IPv6 rules side by side',
+        },
+        'Compare v4/v6',
+      );
+      this.listen(compareBtn, 'click', () => {
+        this.onCompareV4V6?.();
+      });
+      headerBtns.appendChild(compareBtn);
+    }
+
     this.el.appendChild(headerBtns);
   }
 

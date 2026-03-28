@@ -25,6 +25,7 @@ import { ConflictBanner } from './conflict-banner';
 import { ImportBanner } from './import-banner';
 import { IpsetSuggestionCard } from './ipset-suggestion-card';
 import { TerminalTab } from './terminal-tab';
+import { DualStackCompare } from './dual-stack-compare';
 import { h } from '../../utils/dom';
 import { Activity } from '../activity/activity';
 import { generateFromTemplate } from '../../services/templates';
@@ -62,6 +63,10 @@ export class RuleTable extends Component {
   private activityComponent: Activity | null = null;
   private terminalTabComponent: TerminalTab | null = null;
 
+  // Dual-stack comparison overlay
+  private dualStackCompareComponent: DualStackCompare | null = null;
+  private dualStackComparePanel: HTMLElement | null = null;
+
   // Split view
   private splitContainer: HTMLElement | null = null;
   private splitDivider: HTMLElement | null = null;
@@ -89,6 +94,7 @@ export class RuleTable extends Component {
     this.headerComponent.onActiveHost = () => {
       this.tabsEl.style.display = '';
     };
+    this.headerComponent.onCompareV4V6 = () => this.showDualStackCompare();
     this.addChild(this.headerComponent);
 
     // Tabs: Rules | Activity | Terminal (delegated to sub-component)
@@ -751,6 +757,45 @@ export class RuleTable extends Component {
 
     empty.appendChild(actions);
     this.sectionsContainer.appendChild(empty);
+  }
+
+  private showDualStackCompare(): void {
+    // If already showing, close it
+    if (this.dualStackComparePanel) {
+      this.closeDualStackCompare();
+      return;
+    }
+
+    this.dualStackComparePanel = h('div', {
+      className: 'dual-stack-compare',
+      style: 'position: absolute; inset: 0; z-index: 10; background: var(--bg-primary, #fff);',
+    });
+
+    this.dualStackCompareComponent = new DualStackCompare(
+      this.dualStackComparePanel,
+      this.store,
+    );
+    this.addChild(this.dualStackCompareComponent);
+
+    // Add close button behavior
+    const closeBtn = this.dualStackComparePanel.querySelector('.dual-stack-compare__close-btn');
+    if (closeBtn) {
+      this.listen(closeBtn, 'click', () => this.closeDualStackCompare());
+    }
+
+    this.el.style.position = 'relative';
+    this.el.appendChild(this.dualStackComparePanel);
+  }
+
+  private closeDualStackCompare(): void {
+    if (this.dualStackCompareComponent) {
+      this.removeChild(this.dualStackCompareComponent);
+      this.dualStackCompareComponent = null;
+    }
+    if (this.dualStackComparePanel) {
+      this.dualStackComparePanel.remove();
+      this.dualStackComparePanel = null;
+    }
   }
 
   private renderWelcomeScreen(): void {

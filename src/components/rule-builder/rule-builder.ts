@@ -37,6 +37,7 @@ export interface RuleFormData {
   blockType?: 'drop' | 'reject';
   customConditions?: CustomCondition[];
   rateLimit?: { rate: number; per: string; perSource: boolean; burst: number };
+  addressFamily?: 'v4' | 'v6' | 'both';
 }
 
 type ActionChoice = 'allow' | 'block' | 'log' | 'log-block';
@@ -120,6 +121,10 @@ export class RuleBuilder extends Component {
   // Custom conditions
   private customConditions: CustomCondition[] = [];
   private conditionsContainer: HTMLElement | null = null;
+
+  // Address family (dual-stack)
+  private selectedAddressFamily: 'v4' | 'v6' | 'both' = 'v4';
+  private addressFamilyGroup: HTMLElement | null = null;
 
   // Cached "More options" display elements
   private protocolDisplay: HTMLElement | null = null;
@@ -222,6 +227,23 @@ export class RuleBuilder extends Component {
     commentGroup.appendChild(this.commentInput);
     this.formEl.appendChild(commentGroup);
 
+    // --- Address Family (dual-stack) ---
+    this.addressFamilyGroup = this.createFieldGroup('Apply to');
+    this.addressFamilyGroup.style.display = 'none'; // hidden until dual-stack enabled
+    const addressFamilySelect = document.createElement('select');
+    addressFamilySelect.className = 'rule-builder__select';
+    addressFamilySelect.appendChild(this.createOption('both', 'Both (dual-stack)'));
+    addressFamilySelect.appendChild(this.createOption('v4', 'IPv4 only'));
+    addressFamilySelect.appendChild(this.createOption('v6', 'IPv6 only'));
+    addressFamilySelect.value = this.selectedAddressFamily;
+    this.listen(addressFamilySelect, 'change', () => {
+      this.selectedAddressFamily = addressFamilySelect.value as 'v4' | 'v6' | 'both';
+      this.updatePreview();
+    });
+    this.addressFamilyGroup.appendChild(addressFamilySelect);
+    this.formEl.appendChild(this.addressFamilyGroup);
+    this.updateAddressFamilyVisibility();
+
     // --- More Options ---
     const moreOptionsLink = h('button', {
       className: 'rule-builder__more-options-link',
@@ -251,6 +273,7 @@ export class RuleBuilder extends Component {
       comment: this.commentValue,
       interfaceIn: this.selectedInterface === 'any' ? undefined : this.selectedInterface,
       duration: this.selectedDuration,
+      addressFamily: this.selectedAddressFamily,
     };
 
     if (this.selectedAction === 'block' || this.selectedAction === 'log-block') {
@@ -271,6 +294,26 @@ export class RuleBuilder extends Component {
     }
 
     return data;
+  }
+
+  /**
+   * Show/hide the address family selector based on whether the active host
+   * has dual-stack mode enabled.
+   */
+  private updateAddressFamilyVisibility(): void {
+    const host = this.store.select(selectActiveHost);
+    const dualStack = host?.dualStackEnabled ?? false;
+
+    if (this.addressFamilyGroup) {
+      this.addressFamilyGroup.style.display = dualStack ? '' : 'none';
+    }
+
+    // Default to 'both' when dual-stack is enabled, 'v4' otherwise
+    if (dualStack && this.selectedAddressFamily === 'v4') {
+      this.selectedAddressFamily = 'both';
+    } else if (!dualStack) {
+      this.selectedAddressFamily = 'v4';
+    }
   }
 
   /**

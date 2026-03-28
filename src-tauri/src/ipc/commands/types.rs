@@ -139,6 +139,17 @@ pub struct ConvertToIpsetResult {
     pub rules_replaced: usize,
 }
 
+#[derive(Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+#[serde(rename_all = "camelCase")]
+pub struct DualStackDivergence {
+    pub diverged: bool,
+    pub v4_only_chains: Vec<String>,
+    pub v6_only_chains: Vec<String>,
+    pub rule_count_v4: usize,
+    pub rule_count_v6: usize,
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]

@@ -8,8 +8,10 @@ use crate::iptables::parser::parse_iptables_save;
 use crate::iptables::ipset_suggest::{self, IpsetSuggestion};
 use crate::ssh::command::build_command;
 
+use crate::ssh::executor::CommandExecutor;
+
 use super::helpers::{exec_failed, fetch_current_ruleset, PoolProxyExecutor};
-use super::types::{CompareHostsResult, ConvertToIpsetResult, DriftCheckResult, ImportExistingRulesResult};
+use super::types::{CompareHostsResult, ConvertToIpsetResult, DriftCheckResult, DualStackDivergence, ImportExistingRulesResult};
 use super::AppState;
 
 /// Compare iptables rules between two connected hosts.
@@ -333,6 +335,97 @@ pub async fn reset_drift(
     state.drift_rulesets.insert(host_id.clone(), filtered);
     state.drift.insert(host_id, new_hash);
     Ok(())
+}
+
+/// Check for divergence between IPv4 and IPv6 iptables rules on a host.
+///
+/// Fetches both `iptables-save` and `ip6tables-save`, parses them, and
+/// compares TR-* chains to detect differences.
+#[tauri::command]
+pub async fn check_v4_v6_divergence(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<DualStackDivergence, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Fetch IPv4 rules
+    let v4_cmd = build_command("sudo", &["iptables-save"]);
+    let v4_output = proxy.exec(&v4_cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to run iptables-save: {}", e))
+    })?;
+    if v4_output.exit_code != 0 {
+        return Err(IpcError::CommandFailed {
+            stderr: v4_output.stderr,
+            exit_code: v4_output.exit_code,
+            explanation: None,
+        });
+    }
+
+    // Fetch IPv6 rules
+    let v6_cmd = build_command("sudo", &["ip6tables-save"]);
+    let v6_output = proxy.exec(&v6_cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to run ip6tables-save: {}", e))
+    })?;
+
+    // ip6tables-save may not be available — treat as empty
+    let v6_raw = if v6_output.exit_code == 0 {
+        v6_output.stdout
+    } else {
+        String::new()
+    };
+
+    // Extract TR-* chains from each
+    let v4_chains = extract_tr_chains(&v4_output.stdout);
+    let v6_chains = extract_tr_chains(&v6_raw);
+
+    let v4_chain_set: std::collections::HashSet<&str> = v4_chains.keys().map(|s| s.as_str()).collect();
+    let v6_chain_set: std::collections::HashSet<&str> = v6_chains.keys().map(|s| s.as_str()).collect();
+
+    let v4_only_chains: Vec<String> = v4_chain_set.difference(&v6_chain_set).map(|s| s.to_string()).collect();
+    let v6_only_chains: Vec<String> = v6_chain_set.difference(&v4_chain_set).map(|s| s.to_string()).collect();
+
+    let rule_count_v4: usize = v4_chains.values().map(|v| v.len()).sum();
+    let rule_count_v6: usize = v6_chains.values().map(|v| v.len()).sum();
+
+    let diverged = !v4_only_chains.is_empty()
+        || !v6_only_chains.is_empty()
+        || rule_count_v4 != rule_count_v6;
+
+    Ok(DualStackDivergence {
+        diverged,
+        v4_only_chains,
+        v6_only_chains,
+        rule_count_v4,
+        rule_count_v6,
+    })
+}
+
+/// Extract TR-* chain names and their rules from raw iptables-save output.
+fn extract_tr_chains(raw: &str) -> HashMap<String, Vec<String>> {
+    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("-A ") {
+            let rest = &trimmed[3..];
+            if let Some(space_idx) = rest.find(' ') {
+                let chain = &rest[..space_idx];
+                if chain.starts_with("TR-") {
+                    let spec = rest[space_idx + 1..].to_string();
+                    result.entry(chain.to_string()).or_default().push(spec);
+                }
+            }
+        } else if trimmed.starts_with(":TR-") {
+            // Chain declaration line like :TR-INPUT - [0:0]
+            let parts: Vec<&str> = trimmed[1..].splitn(2, ' ').collect();
+            if let Some(chain_name) = parts.first() {
+                result.entry(chain_name.to_string()).or_default();
+            }
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------

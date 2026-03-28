@@ -15,6 +15,7 @@ export type { DetectionResult } from './DetectionResult';
 export type { DiffEntry } from './DiffEntry';
 export type { Direction } from './Direction';
 export type { DriftCheckResult } from './DriftCheckResult';
+export type { DualStackDivergence } from './DualStackDivergence';
 export type { ErrorExplanation } from './ErrorExplanation';
 export type { DuplicateCheckResult } from './DuplicateCheckResult';
 export type { Fail2banBan } from './Fail2banBan';

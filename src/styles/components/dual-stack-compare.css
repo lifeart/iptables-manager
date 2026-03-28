@@ -1,0 +1,149 @@
+/* ─── Dual-stack Compare ─────────────────────────────────────── */
+
+.dual-stack-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 12px);
+  padding: var(--spacing-md, 12px);
+  height: 100%;
+  overflow: auto;
+}
+
+.dual-stack-compare__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--spacing-sm, 8px);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.dual-stack-compare__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.dual-stack-compare__close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.dual-stack-compare__close-btn:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.dual-stack-compare__summary {
+  display: flex;
+  gap: var(--spacing-lg, 16px);
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+  background: var(--bg-surface, #f8f8f8);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.dual-stack-compare__summary-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+}
+
+.dual-stack-compare__summary-value {
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.dual-stack-compare__summary--diverged {
+  background: var(--bg-warning, #fff3cd);
+  color: var(--text-warning, #856404);
+}
+
+.dual-stack-compare__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md, 12px);
+  min-height: 0;
+  flex: 1;
+}
+
+.dual-stack-compare__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+  min-height: 0;
+  overflow: auto;
+}
+
+.dual-stack-compare__column-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: var(--bg-surface, #f8f8f8);
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dual-stack-compare__rule {
+  font-size: 12px;
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.dual-stack-compare__rule:nth-child(even) {
+  background: var(--bg-surface, #f8f8f8);
+}
+
+.dual-stack-compare__rule--only-here {
+  background: var(--bg-success-subtle, #d4edda);
+  color: var(--text-success, #155724);
+}
+
+.dual-stack-compare__rule--missing {
+  background: var(--bg-danger-subtle, #f8d7da);
+  color: var(--text-danger, #721c24);
+  font-style: italic;
+}
+
+.dual-stack-compare__empty {
+  font-size: 13px;
+  color: var(--text-tertiary, #999);
+  text-align: center;
+  padding: var(--spacing-lg, 16px);
+}
+
+/* ─── Compare Button (in toolbar) ────────────────────────────── */
+
+.dual-stack-compare-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  background: var(--bg-surface, #f0f0f0);
+  border: 1px solid var(--border-color, #d0d0d0);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dual-stack-compare-btn:hover {
+  background: var(--bg-hover, #e8e8e8);
+  color: var(--text-primary, #1a1a1a);
+}

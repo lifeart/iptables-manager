@@ -471,6 +471,7 @@ export class AddHostDialog extends Component {
       groupIds: [],
       groupOrder: [],
       provisioned: false,
+      dualStackEnabled: false,
       createdAt: now,
       updatedAt: now,
     };
