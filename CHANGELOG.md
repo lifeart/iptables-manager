@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.0] - 2026-03-27
+
+### Added
+- ts-rs integration: 26 Rust structs auto-generate TypeScript bindings on `cargo test`
+- 29 generated `.ts` files in `src/bindings/` replace manual type definitions
+- Barrel export `src/bindings/index.ts` for clean imports
+
+### Changed
+- `bridge.ts` imports from generated `src/bindings/` instead of manual interfaces
+- `store/types.ts` imports `RuleConflict`, `HitCounter` from bindings
+- Edge cases handled: `u64→number`, `serde_json::Value→unknown`, `Option<T>→T|null`
+
+### Removed
+- 20+ manually maintained TypeScript interfaces (replaced by auto-generated)
+
 ## [2.0.0] - 2026-03-27
 
 ### Architecture Overhaul
