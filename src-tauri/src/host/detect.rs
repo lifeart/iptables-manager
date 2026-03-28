@@ -6,6 +6,76 @@ use crate::ssh::command::build_command;
 use crate::ssh::executor::{CommandExecutor, ExecError};
 
 // ---------------------------------------------------------------------------
+// Mixed backend detection
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum MixedBackendStatus {
+    Clean,
+    Mixed {
+        legacy_rule_count: usize,
+        nft_rule_count: usize,
+    },
+    Unknown,
+}
+
+/// Detect whether the host has both legacy iptables and nf_tables rules populated.
+///
+/// Runs `iptables-legacy-save` and `iptables-nft-save` and counts lines starting
+/// with `-A` (appended rules). If both commands fail (neither binary exists),
+/// returns `Unknown`. If both return >0 rule counts, returns `Mixed`.
+/// Otherwise returns `Clean`.
+pub async fn detect_mixed_backend(
+    executor: &dyn CommandExecutor,
+) -> Result<MixedBackendStatus, DetectError> {
+    let legacy_cmd = build_command(
+        "bash",
+        &["-c", "iptables-legacy-save 2>/dev/null | grep -c '^-A'"],
+    );
+    let nft_cmd = build_command(
+        "bash",
+        &["-c", "iptables-nft-save 2>/dev/null | grep -c '^-A'"],
+    );
+
+    let legacy_result = executor.exec(&legacy_cmd).await;
+    let nft_result = executor.exec(&nft_cmd).await;
+
+    let legacy_count = match &legacy_result {
+        Ok(output) if output.exit_code == 0 => {
+            output.stdout.trim().parse::<usize>().unwrap_or(0)
+        }
+        _ => 0,
+    };
+
+    let nft_count = match &nft_result {
+        Ok(output) if output.exit_code == 0 => {
+            output.stdout.trim().parse::<usize>().unwrap_or(0)
+        }
+        _ => 0,
+    };
+
+    // If both commands failed (neither binary exists), return Unknown
+    let legacy_failed = matches!(&legacy_result, Err(_))
+        || matches!(&legacy_result, Ok(o) if o.exit_code != 0 && o.stdout.trim().is_empty());
+    let nft_failed = matches!(&nft_result, Err(_))
+        || matches!(&nft_result, Ok(o) if o.exit_code != 0 && o.stdout.trim().is_empty());
+
+    if legacy_failed && nft_failed {
+        return Ok(MixedBackendStatus::Unknown);
+    }
+
+    if legacy_count > 0 && nft_count > 0 {
+        return Ok(MixedBackendStatus::Mixed {
+            legacy_rule_count: legacy_count,
+            nft_rule_count: nft_count,
+        });
+    }
+
+    Ok(MixedBackendStatus::Clean)
+}
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
@@ -40,6 +110,7 @@ pub struct HostCapabilities {
     pub persistence_method: PersistenceMethod,
     pub management_interface: Option<String>,
     pub management_is_vpn: bool,
+    pub mixed_backend: MixedBackendStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,6 +258,11 @@ pub async fn detect_capabilities(
     let (management_interface, management_is_vpn) =
         detect_management_interface(executor).await;
 
+    // 12. Detect mixed backend state
+    let mixed_backend = detect_mixed_backend(executor)
+        .await
+        .unwrap_or(MixedBackendStatus::Unknown);
+
     Ok(HostCapabilities {
         iptables_variant: variant,
         iptables_version: version,
@@ -201,6 +277,7 @@ pub async fn detect_capabilities(
         persistence_method,
         management_interface,
         management_is_vpn,
+        mixed_backend,
     })
 }
 
@@ -883,6 +960,136 @@ LISTEN   0       511     0.0.0.0:443         0.0.0.0:*          users:(("nginx",
             Some("wg0".to_string())
         );
         assert_eq!(extract_dev_from_route("nothing here"), None);
+    }
+
+    // ─── Mixed Backend Detection Tests ──────────────────────────
+
+    use crate::ssh::executor::{CommandOutput, ExecError};
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    struct MixedMockExecutor {
+        responses: Vec<(String, Result<CommandOutput, ExecError>)>,
+    }
+
+    impl MixedMockExecutor {
+        fn new(responses: Vec<(&str, Result<CommandOutput, ExecError>)>) -> Self {
+            Self {
+                responses: responses
+                    .into_iter()
+                    .map(|(p, r)| (p.to_string(), r))
+                    .collect(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CommandExecutor for MixedMockExecutor {
+        async fn exec(&self, command: &str) -> Result<CommandOutput, ExecError> {
+            for (pattern, response) in &self.responses {
+                if command.contains(pattern) {
+                    return match response {
+                        Ok(o) => Ok(o.clone()),
+                        Err(e) => Err(ExecError::Transport(e.to_string())),
+                    };
+                }
+            }
+            Ok(CommandOutput {
+                stdout: String::new(),
+                stderr: "not found".to_string(),
+                exit_code: 127,
+            })
+        }
+
+        async fn exec_with_stdin(
+            &self,
+            command: &str,
+            _stdin: &[u8],
+        ) -> Result<CommandOutput, ExecError> {
+            self.exec(command).await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_mixed_both_populated() {
+        let executor = MixedMockExecutor::new(vec![
+            (
+                "iptables-legacy-save",
+                Ok(CommandOutput {
+                    stdout: "5\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }),
+            ),
+            (
+                "iptables-nft-save",
+                Ok(CommandOutput {
+                    stdout: "3\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }),
+            ),
+        ]);
+
+        let result = detect_mixed_backend(&executor).await.unwrap();
+        match result {
+            MixedBackendStatus::Mixed {
+                legacy_rule_count,
+                nft_rule_count,
+            } => {
+                assert_eq!(legacy_rule_count, 5);
+                assert_eq!(nft_rule_count, 3);
+            }
+            other => panic!("expected Mixed, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_mixed_only_nft() {
+        let executor = MixedMockExecutor::new(vec![
+            (
+                "iptables-legacy-save",
+                Ok(CommandOutput {
+                    stdout: "0\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }),
+            ),
+            (
+                "iptables-nft-save",
+                Ok(CommandOutput {
+                    stdout: "10\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }),
+            ),
+        ]);
+
+        let result = detect_mixed_backend(&executor).await.unwrap();
+        match result {
+            MixedBackendStatus::Clean => {}
+            other => panic!("expected Clean, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_detect_mixed_unknown() {
+        let executor = MixedMockExecutor::new(vec![
+            (
+                "iptables-legacy-save",
+                Err(ExecError::Transport("not found".to_string())),
+            ),
+            (
+                "iptables-nft-save",
+                Err(ExecError::Transport("not found".to_string())),
+            ),
+        ]);
+
+        let result = detect_mixed_backend(&executor).await.unwrap();
+        match result {
+            MixedBackendStatus::Unknown => {}
+            other => panic!("expected Unknown, got {:?}", other),
+        }
     }
 
     #[test]

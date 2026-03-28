@@ -281,6 +281,13 @@ export type DialogType =
   | 'compare-hosts'
   | null;
 
+export interface MixedBackendInfo {
+  hostId: string;
+  legacyRuleCount: number;
+  nftRuleCount: number;
+  detectedAt: number;
+}
+
 export interface DriftInfo {
   hostId: string;
   addedRules: number;
@@ -370,6 +377,9 @@ export interface AppState {
   // @ephemeral — drift detection alerts per host
   driftAlerts: Map<string, DriftInfo>;
 
+  // @ephemeral — mixed backend alerts per host
+  mixedBackendAlerts: Map<string, MixedBackendInfo>;
+
   // Storage
   storageQuotaExceeded: boolean;
 }
@@ -409,6 +419,7 @@ export function createInitialState(): AppState {
     hostStates: new Map(),
     operations: new Map(),
     driftAlerts: new Map(),
+    mixedBackendAlerts: new Map(),
     storageQuotaExceeded: false,
   };
 }

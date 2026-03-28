@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tauri::State;
 use tracing::{debug, warn};
 
+use crate::host::detect::{detect_mixed_backend, MixedBackendStatus};
 use crate::ipc::errors::IpcError;
 use crate::iptables::explain::explain_rule;
 use crate::iptables::types::RuleSpec;
@@ -68,6 +69,18 @@ pub async fn rules_apply(
         pool: pool.clone(),
         host_id: host_id.clone(),
     };
+
+    // Step 0: Check for mixed backend — block apply if both legacy and nft rules exist
+    if let Ok(MixedBackendStatus::Mixed {
+        legacy_rule_count,
+        nft_rule_count,
+    }) = detect_mixed_backend(&proxy).await
+    {
+        return Err(IpcError::MixedBackend {
+            legacy_count: legacy_rule_count,
+            nft_count: nft_rule_count,
+        });
+    }
 
     // Step 1: Save backup of current rules
     create_pre_apply_backup(&proxy, &host_id).await?;

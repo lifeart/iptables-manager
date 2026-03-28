@@ -21,6 +21,7 @@ import { RuleTable } from './components/rule-table/rule-table';
 import { SidePanel } from './components/side-panel/side-panel';
 import { SafetyBanner } from './components/safety-banner/safety-banner';
 import { DriftBanner } from './components/drift-banner/drift-banner';
+import { MixedBackendBanner } from './components/mixed-backend-banner/mixed-backend-banner';
 import { CommandPalette } from './components/command-palette/command-palette';
 import { DialogManager } from './components/dialogs/dialog-manager';
 import { ShortcutService } from './services/shortcut';
@@ -69,6 +70,10 @@ function mountApp(container: HTMLElement): void {
   const driftBannerEl = h('div', { id: 'drift-banner' });
   container.appendChild(driftBannerEl);
 
+  // Mixed backend banner (top-level, renders when mixed backend detected)
+  const mixedBackendBannerEl = h('div', { id: 'mixed-backend-banner' });
+  container.appendChild(mixedBackendBannerEl);
+
   // Command palette (top-level overlay)
   const paletteEl = h('div', { id: 'command-palette' });
   container.appendChild(paletteEl);
@@ -87,6 +92,7 @@ function mountApp(container: HTMLElement): void {
   new SidePanel(sidePanelEl, store);
   new SafetyBanner(bannerEl, store);
   new DriftBanner(driftBannerEl, store);
+  new MixedBackendBanner(mixedBackendBannerEl, store);
   new CommandPalette(paletteEl, store);
   new DialogManager(dialogEl, store);
 

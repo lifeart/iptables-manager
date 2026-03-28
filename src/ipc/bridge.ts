@@ -29,6 +29,7 @@ import type {
   HostApplyResult,
   ImportExistingRulesResult,
   IpsetSuggestion,
+  MixedBackendCheckResult,
   PreviewResult,
   ProvisionResult,
   RuleConflict,
@@ -57,6 +58,7 @@ export type {
   HostApplyResult,
   ImportExistingRulesResult,
   IpsetSuggestion,
+  MixedBackendCheckResult,
   PreviewResult,
   ProvisionResult,
   RuleConflict,
@@ -228,6 +230,8 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return { current: 0, max: 0 } as T;
     case 'activity:fetch':
       return { hitCounters: [], conntrackCurrent: 0, conntrackMax: 0 } as T;
+    case 'mixed-backend:check':
+      return { isMixed: false, legacyRuleCount: 0, nftRuleCount: 0, remediation: '' } as T;
     case 'drift:check':
       return { drifted: false, addedRules: 0, removedRules: 0, modifiedRules: 0, changes: [] } as T;
     case 'drift:reset':
@@ -282,6 +286,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'activity:fetch': 'fetch_activity',
   'safety:set-timer': 'set_safety_timer',
   'safety:clear-timer': 'clear_safety_timer',
+  'mixed-backend:check': 'check_mixed_backend',
   'drift:check': 'check_drift',
   'drift:reset': 'reset_drift',
   'hosts:compare': 'compare_hosts',
@@ -455,6 +460,10 @@ export const fetchConntrack = (hostId: string) =>
 
 export const fetchActivity = (hostId: string) =>
   ipcCall<ActivityData>('activity:fetch', { hostId });
+
+// Mixed Backend Detection
+export const checkMixedBackend = (hostId: string) =>
+  ipcCall<MixedBackendCheckResult>('mixed-backend:check', { hostId });
 
 // Drift Detection
 export const checkDrift = (hostId: string) =>

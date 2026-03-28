@@ -3,15 +3,15 @@ use std::time::Instant;
 use tauri::State;
 use tracing::warn;
 
-use crate::host::detect::detect_capabilities;
+use crate::host::detect::{detect_capabilities, detect_mixed_backend, MixedBackendStatus};
 use crate::ipc::errors::IpcError;
 use crate::ssh::command::build_command;
 use crate::ssh::pool::ConnectionConfig;
 
 use super::helpers::{exec_failed, uuid_v4, PoolProxyExecutor};
 use super::types::{
-    ConnectionResult, DetectionResult, ProvisionResult, TestConnectionParams,
-    TestConnectionResult,
+    ConnectionResult, DetectionResult, MixedBackendCheckResult, ProvisionResult,
+    TestConnectionParams, TestConnectionResult,
 };
 use super::AppState;
 
@@ -210,4 +210,47 @@ pub async fn host_provision(
         revert_script_installed: true,
         sudo_verified: true,
     })
+}
+
+/// Check for mixed iptables backend (legacy + nft rules both populated).
+#[tauri::command]
+pub async fn check_mixed_backend(
+    host_id: String,
+    state: State<'_, AppState>,
+) -> Result<MixedBackendCheckResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    let status = detect_mixed_backend(&proxy).await.map_err(|e| {
+        exec_failed(&host_id, format!("mixed backend detection failed: {}", e))
+    })?;
+
+    match status {
+        MixedBackendStatus::Mixed {
+            legacy_rule_count,
+            nft_rule_count,
+        } => Ok(MixedBackendCheckResult {
+            is_mixed: true,
+            legacy_rule_count,
+            nft_rule_count,
+            remediation: format!(
+                "Run 'iptables-legacy -F' to flush {} legacy rules, or migrate all rules to nft.",
+                legacy_rule_count
+            ),
+        }),
+        MixedBackendStatus::Clean => Ok(MixedBackendCheckResult {
+            is_mixed: false,
+            legacy_rule_count: 0,
+            nft_rule_count: 0,
+            remediation: String::new(),
+        }),
+        MixedBackendStatus::Unknown => Ok(MixedBackendCheckResult {
+            is_mixed: false,
+            legacy_rule_count: 0,
+            nft_rule_count: 0,
+            remediation: String::new(),
+        }),
+    }
 }

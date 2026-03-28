@@ -18,6 +18,7 @@ import type {
   RuleConflict,
   AuditEntry,
   DriftInfo,
+  MixedBackendInfo,
 } from './types';
 
 // ─── Hydration ─────────────────────────────────────────────────
@@ -305,6 +306,18 @@ export interface ClearDriftAction {
   hostId: string;
 }
 
+// ─── Mixed Backend ────────────────────────────────────────────
+
+export interface SetMixedBackendAction {
+  type: 'SET_MIXED_BACKEND';
+  info: MixedBackendInfo;
+}
+
+export interface ClearMixedBackendAction {
+  type: 'CLEAR_MIXED_BACKEND';
+  hostId: string;
+}
+
 // ─── Discriminated Union ──────────────────────────────────────
 
 export type Action =
@@ -354,4 +367,6 @@ export type Action =
   | SetIpListEntriesAction
   | AddAuditEntryAction
   | SetDriftDetectedAction
-  | ClearDriftAction;
+  | ClearDriftAction
+  | SetMixedBackendAction
+  | ClearMixedBackendAction;
