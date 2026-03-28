@@ -283,6 +283,73 @@ export class PendingBar extends Component {
     setTimeout(() => errorEl.remove(), 5000);
   }
 
+  private showLockError(detailJson: string): void {
+    // Remove any existing lock error banner
+    this.el.querySelector('.rule-table__lock-error')?.remove();
+
+    let detail: { holder_process?: string; holder_pid?: number; attempts?: number };
+    try {
+      detail = JSON.parse(detailJson);
+    } catch {
+      detail = {};
+    }
+
+    const banner = h('div', { className: 'rule-table__lock-error' });
+
+    // Build message
+    const process = detail.holder_process;
+    const pid = detail.holder_pid;
+    const attempts = detail.attempts ?? 0;
+
+    let mainMsg: string;
+    if (process) {
+      mainMsg = `iptables lock held by ${process} (PID ${pid}). Retried ${attempts} time${attempts !== 1 ? 's' : ''}.`;
+    } else {
+      mainMsg = `iptables lock is held by another process. Retried ${attempts} time${attempts !== 1 ? 's' : ''}.`;
+    }
+
+    const msgEl = h('span', { className: 'rule-table__lock-error-msg' }, mainMsg);
+    banner.appendChild(msgEl);
+
+    // Context-aware tip
+    let tip: string;
+    const processLower = (process ?? '').toLowerCase();
+    if (processLower === 'fail2ban-server' || processLower === 'fail2ban') {
+      tip = 'fail2ban is updating bans. This usually completes within a few seconds. Try again shortly.';
+    } else if (processLower === 'ufw') {
+      tip = 'UFW is applying firewall rules. Wait for it to complete.';
+    } else if (processLower === 'docker' || processLower === 'dockerd') {
+      tip = 'Docker is configuring container networking. Try again in a moment.';
+    } else {
+      tip = 'Another process is holding the iptables lock. Wait for it to release.';
+    }
+
+    const tipEl = h('span', { className: 'rule-table__lock-error-tip' }, tip);
+    banner.appendChild(tipEl);
+
+    // Retry button
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'rule-table__lock-error-retry';
+    retryBtn.type = 'button';
+    retryBtn.textContent = 'Retry';
+    this.listen(retryBtn, 'click', () => {
+      banner.remove();
+      this.applyChanges();
+    });
+    banner.appendChild(retryBtn);
+
+    // Dismiss button
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'rule-table__lock-error-dismiss';
+    dismissBtn.type = 'button';
+    dismissBtn.textContent = '\u00D7';
+    dismissBtn.setAttribute('aria-label', 'Dismiss');
+    this.listen(dismissBtn, 'click', () => banner.remove());
+    banner.appendChild(dismissBtn);
+
+    this.el.appendChild(banner);
+  }
+
   private async applyChanges(): Promise<void> {
     const state = this.store.getState();
     const hostId = state.activeHostId;
@@ -319,7 +386,10 @@ export class PendingBar extends Component {
         });
       }
     } catch (err) {
-      if (err instanceof IpcError && err.kind === 'LockoutDetected') {
+      if (err instanceof IpcError && err.kind === 'IptablesLocked') {
+        this.showLockError(err.detail);
+        return;
+      } else if (err instanceof IpcError && err.kind === 'LockoutDetected') {
         const proceed = window.confirm(
           'WARNING: These changes may lock you out!\n\n' +
           err.detail + '\n\n' +

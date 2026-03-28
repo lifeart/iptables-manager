@@ -21,7 +21,12 @@ pub enum IpcError {
     },
 
     #[error("iptables lock held, retry after {retry_after_ms}ms")]
-    IptablesLocked { retry_after_ms: u64 },
+    IptablesLocked {
+        retry_after_ms: u64,
+        holder_process: Option<String>,
+        holder_pid: Option<u32>,
+        attempts: u32,
+    },
 
     #[error("operation {operation} timed out")]
     Timeout { operation: String },
