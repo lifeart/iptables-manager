@@ -103,15 +103,38 @@ pub async fn rules_apply(
         None
     };
 
-    // Step 3: Apply the new rules
+    // Step 3: Apply the new rules (with xtables lock retry)
     let restore_cmd = build_command(
         "sudo",
         &["iptables-restore", "-w", "5", "--noflush", "--counters"],
     );
-    let output = pool
-        .execute_with_stdin(&host_id, &restore_cmd, changes_json.as_bytes())
-        .await
-        .map_err(|e| exec_failed(&host_id, format!("failed to apply rules: {}", e)))?;
+
+    use crate::iptables::lock::{execute_with_lock_retry, LockError};
+
+    let output = match execute_with_lock_retry(
+        &proxy,
+        &restore_cmd,
+        Some(changes_json.as_bytes()),
+        3,
+    )
+    .await
+    {
+        Ok(output) => output,
+        Err(LockError::Exhausted { holder, attempts }) => {
+            return Err(IpcError::IptablesLocked {
+                retry_after_ms: 5000,
+                holder_process: holder.as_ref().map(|h| h.process_name.clone()),
+                holder_pid: holder.as_ref().map(|h| h.pid),
+                attempts,
+            });
+        }
+        Err(LockError::Exec(e)) => {
+            return Err(exec_failed(
+                &host_id,
+                format!("failed to apply rules: {}", e),
+            ));
+        }
+    };
 
     if output.exit_code != 0 {
         return Err(IpcError::CommandFailed {

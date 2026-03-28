@@ -173,6 +173,62 @@
   margin-left: var(--space-compact);
 }
 
+/* ── Lock Error Banner ──────────────────────────────────── */
+
+.rule-table__lock-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-compact);
+  padding: var(--space-compact) var(--space-spacious);
+  background: color-mix(in srgb, var(--color-block) 10%, var(--color-elevated));
+  border-top: 1px solid var(--color-block);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  flex-wrap: wrap;
+}
+
+.rule-table__lock-error-msg {
+  font-weight: 600;
+  color: var(--color-block);
+}
+
+.rule-table__lock-error-tip {
+  color: var(--color-text-secondary);
+}
+
+.rule-table__lock-error-retry {
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+  padding: 3px 12px;
+  border-radius: var(--radius-md);
+  margin-left: auto;
+  transition: opacity var(--transition-fast);
+}
+
+.rule-table__lock-error-retry:hover {
+  opacity: 0.9;
+}
+
+.rule-table__lock-error-dismiss {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color var(--transition-fast);
+}
+
+.rule-table__lock-error-dismiss:hover {
+  color: var(--color-text-primary);
+}
+
 .rule-table__pending-bar-tooltip {
   position: absolute;
   bottom: 100%;
