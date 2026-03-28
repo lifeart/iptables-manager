@@ -8,6 +8,7 @@ pub mod explain;
 pub mod jump_rules;
 pub mod multi_apply;
 pub mod duplicate;
+pub mod live_trace;
 pub mod lock;
 pub mod types;
 pub mod ipset_suggest;

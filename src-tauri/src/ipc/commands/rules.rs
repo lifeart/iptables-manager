@@ -490,6 +490,41 @@ pub async fn rules_detect_conflicts(
     Ok(result.conflicts)
 }
 
+/// Run a live TRACE on the remote host's kernel.
+///
+/// Inserts TRACE rules into raw table, collects trace output via
+/// xtables-monitor (nft) or dmesg (legacy), then removes TRACE rules.
+#[tauri::command]
+pub async fn rules_live_trace(
+    host_id: String,
+    request: crate::iptables::live_trace::LiveTraceRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::iptables::live_trace::LiveTraceResult, IpcError> {
+    let proxy = PoolProxyExecutor {
+        pool: state.pool.clone(),
+        host_id: host_id.clone(),
+    };
+
+    // Detect iptables variant to choose collection method
+    let version_cmd = build_command("sudo", &["iptables", "--version"]);
+    let version_output = proxy.exec(&version_cmd).await.map_err(|e| {
+        exec_failed(&host_id, format!("failed to detect iptables variant: {}", e))
+    })?;
+
+    let variant = if version_output.stdout.contains("nf_tables") {
+        crate::host::detect::IptablesVariant::Nft
+    } else {
+        crate::host::detect::IptablesVariant::Legacy
+    };
+
+    crate::iptables::live_trace::run_live_trace(&proxy, &variant, &request)
+        .await
+        .map_err(|e| IpcError::CommandFailed {
+            stderr: e.to_string(),
+            exit_code: 1,
+        })
+}
+
 /// Produce a human-readable explanation of a rule.
 #[tauri::command]
 pub async fn explain_rule_cmd(rule_json: String) -> Result<String, IpcError> {

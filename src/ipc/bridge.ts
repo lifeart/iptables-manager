@@ -29,6 +29,8 @@ import type {
   HostApplyResult,
   ImportExistingRulesResult,
   IpsetSuggestion,
+  LiveTraceRequest,
+  LiveTraceResult,
   MixedBackendCheckResult,
   PreviewResult,
   ProvisionResult,
@@ -58,6 +60,8 @@ export type {
   HostApplyResult,
   ImportExistingRulesResult,
   IpsetSuggestion,
+  LiveTraceRequest,
+  LiveTraceResult,
   MixedBackendCheckResult,
   PreviewResult,
   ProvisionResult,
@@ -181,6 +185,17 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return undefined as T;
     case 'rules:trace':
       return { matched: false, chain: [], verdict: 'DROP', explanation: 'No matching rule (mock)' } as T;
+    case 'rules:live-trace':
+      await delay(2000);
+      return {
+        events: [
+          { timestamp: '[12345.678]', table: 'raw', chain: 'PREROUTING', ruleNum: 1, verdict: 'policy', packetInfo: 'IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 PROTO=TCP DPT=22' },
+          { timestamp: '[12345.679]', table: 'filter', chain: 'INPUT', ruleNum: 3, verdict: 'rule', packetInfo: 'IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 PROTO=TCP DPT=22' },
+        ],
+        traceRuleInserted: true,
+        traceRuleRemoved: true,
+        collectionMethod: 'xtables-monitor',
+      } as T;
     case 'rules:explain':
       return 'This rule allows traffic matching the specified criteria. (mock)' as T;
     case 'rules:export':
@@ -268,6 +283,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'rules:explain': 'explain_rule_cmd',
   'rules:export': 'export_rules',
   'rules:trace': 'rules_trace',
+  'rules:live-trace': 'rules_live_trace',
   'rules:check-duplicate': 'rules_check_duplicate',
   'rules:detect-conflicts': 'rules_detect_conflicts',
   'snapshot:create': 'snapshot_create',
@@ -397,6 +413,9 @@ export const confirmChanges = (hostId: string, jobId?: string, mechanism?: strin
 
 export const tracePacket = (hostId: string, packet: TestPacket) =>
   ipcCall<TraceResult>('rules:trace', { hostId, packet });
+
+export const liveTrace = (hostId: string, request: LiveTraceRequest) =>
+  ipcCall<LiveTraceResult>('rules:live-trace', { hostId, request });
 
 export const explainRule = (ruleSpec: string) =>
   ipcCall<string>('rules:explain', { ruleJson: ruleSpec });

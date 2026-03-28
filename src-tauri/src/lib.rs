@@ -57,6 +57,7 @@ pub fn run() {
             ipc::commands::rules_revert,
             ipc::commands::rules_confirm,
             ipc::commands::rules_trace,
+            ipc::commands::rules_live_trace,
             ipc::commands::rules_check_duplicate,
             ipc::commands::rules_detect_conflicts,
             ipc::commands::explain_rule_cmd,

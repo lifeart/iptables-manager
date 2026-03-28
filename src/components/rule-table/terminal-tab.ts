@@ -9,8 +9,8 @@ import { Component } from '../base';
 import type { Store } from '../../store/index';
 import type { AppState } from '../../store/types';
 import { h } from '../../utils/dom';
-import { fetchRules, tracePacket } from '../../ipc/bridge';
-import type { TestPacket } from '../../ipc/bridge';
+import { fetchRules, tracePacket, liveTrace } from '../../ipc/bridge';
+import type { TestPacket, LiveTraceRequest, LiveTraceResult } from '../../ipc/bridge';
 
 export class TerminalTab extends Component {
   constructor(container: HTMLElement, store: Store) {
@@ -30,6 +30,7 @@ export class TerminalTab extends Component {
     const subTabDefs: Array<{ id: AppState['activeTerminalSubTab']; label: string }> = [
       { id: 'raw', label: 'Raw Rules' },
       { id: 'tracer', label: 'Packet Tracer' },
+      { id: 'livetrace', label: 'Live Trace' },
       { id: 'sshlog', label: 'SSH Log' },
     ];
 
@@ -55,6 +56,9 @@ export class TerminalTab extends Component {
         break;
       case 'tracer':
         this.renderPacketTracerSubTab(contentEl);
+        break;
+      case 'livetrace':
+        this.renderLiveTraceSubTab(contentEl);
         break;
       case 'sshlog':
         this.renderSshLogSubTab(contentEl);
@@ -164,6 +168,162 @@ export class TerminalTab extends Component {
           result.explanation));
       }).catch((err) => {
         resultArea.textContent = `Trace failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      });
+    });
+
+    form.appendChild(traceBtn);
+    container.appendChild(form);
+    container.appendChild(resultArea);
+  }
+
+  private renderLiveTraceSubTab(container: HTMLElement): void {
+    const form = h('div', { className: 'terminal__tracer-form' });
+
+    const fields: Array<{ id: string; label: string; placeholder: string }> = [
+      { id: 'sourceIp', label: 'Source IP', placeholder: '10.0.0.1' },
+      { id: 'destIp', label: 'Destination IP', placeholder: '192.168.1.1' },
+      { id: 'destPort', label: 'Destination Port', placeholder: '22' },
+      { id: 'interfaceIn', label: 'Interface', placeholder: 'eth0' },
+    ];
+
+    const inputs: Record<string, HTMLInputElement> = {};
+    for (const f of fields) {
+      const field = h('div', { className: 'terminal__tracer-field' });
+      field.appendChild(h('label', { className: 'dialog-label', for: `lt-${f.id}` }, f.label));
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = `lt-${f.id}`;
+      input.className = 'dialog-input dialog-input--ip';
+      input.placeholder = f.placeholder;
+      inputs[f.id] = input;
+      field.appendChild(input);
+      form.appendChild(field);
+    }
+
+    // Protocol dropdown
+    const protoField = h('div', { className: 'terminal__tracer-field' });
+    protoField.appendChild(h('label', { className: 'dialog-label', for: 'lt-protocol' }, 'Protocol'));
+    const protoSelect = document.createElement('select');
+    protoSelect.id = 'lt-protocol';
+    protoSelect.className = 'dialog-select';
+    for (const proto of ['', 'tcp', 'udp', 'icmp']) {
+      const opt = document.createElement('option');
+      opt.value = proto;
+      opt.textContent = proto ? proto.toUpperCase() : 'Any';
+      protoSelect.appendChild(opt);
+    }
+    protoField.appendChild(protoSelect);
+    form.appendChild(protoField);
+
+    // Timeout field
+    const timeoutField = h('div', { className: 'terminal__tracer-field' });
+    timeoutField.appendChild(h('label', { className: 'dialog-label', for: 'lt-timeout' }, 'Timeout (s)'));
+    const timeoutInput = document.createElement('input');
+    timeoutInput.type = 'number';
+    timeoutInput.id = 'lt-timeout';
+    timeoutInput.className = 'dialog-input';
+    timeoutInput.value = '10';
+    timeoutInput.min = '1';
+    timeoutInput.max = '60';
+    timeoutField.appendChild(timeoutInput);
+    form.appendChild(timeoutField);
+
+    // Start Trace button
+    const traceBtn = h('button', {
+      className: 'dialog-btn dialog-btn--primary',
+      type: 'button',
+      style: { marginTop: '12px' },
+    }, 'Start Trace');
+
+    const resultArea = h('div', { className: 'terminal__tracer-result' });
+
+    this.listen(traceBtn, 'click', () => {
+      const traceState = this.store.getState();
+      const hostId = traceState.activeHostId;
+      if (!hostId) {
+        resultArea.textContent = 'No host selected.';
+        return;
+      }
+
+      const request: LiveTraceRequest = {
+        sourceIp: inputs['sourceIp'].value.trim() || null,
+        destIp: inputs['destIp'].value.trim() || null,
+        protocol: protoSelect.value || null,
+        destPort: inputs['destPort'].value.trim() ? parseInt(inputs['destPort'].value, 10) : null,
+        interfaceIn: inputs['interfaceIn'].value.trim() || null,
+        timeoutSecs: parseInt(timeoutInput.value, 10) || 10,
+      };
+
+      // Disable button and show countdown
+      traceBtn.setAttribute('disabled', 'true');
+      traceBtn.textContent = `Tracing (${request.timeoutSecs}s)...`;
+      resultArea.innerHTML = '';
+      resultArea.appendChild(h('div', { className: 'terminal__live-trace-status' },
+        'Inserting TRACE rules and collecting output...'));
+
+      let countdown = request.timeoutSecs;
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          traceBtn.textContent = `Tracing (${countdown}s)...`;
+        }
+      }, 1000);
+
+      liveTrace(hostId, request).then((result: LiveTraceResult) => {
+        clearInterval(countdownInterval);
+        traceBtn.removeAttribute('disabled');
+        traceBtn.textContent = 'Start Trace';
+        resultArea.innerHTML = '';
+
+        // Show collection method
+        resultArea.appendChild(h('div', { className: 'terminal__live-trace-method' },
+          `Collection method: ${result.collectionMethod}`));
+
+        // Show cleanup status
+        const statusParts: string[] = [];
+        if (result.traceRuleInserted) statusParts.push('TRACE rules inserted');
+        if (result.traceRuleRemoved) statusParts.push('TRACE rules removed');
+        if (!result.traceRuleRemoved) statusParts.push('WARNING: TRACE rules may not have been removed');
+        resultArea.appendChild(h('div', { className: 'terminal__live-trace-status' },
+          statusParts.join(' | ')));
+
+        if (result.events.length === 0) {
+          resultArea.appendChild(h('div', { className: 'terminal__live-trace-empty' },
+            'No events captured. Try broadening your filter or increasing the timeout.'));
+          return;
+        }
+
+        // Build results table
+        const table = document.createElement('table');
+        table.className = 'terminal__live-trace-table';
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        for (const col of ['Timestamp', 'Table', 'Chain', 'Rule #', 'Verdict', 'Packet Info']) {
+          const th = document.createElement('th');
+          th.textContent = col;
+          headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        for (const event of result.events) {
+          const row = document.createElement('tr');
+          for (const val of [event.timestamp, event.table, event.chain, String(event.ruleNum), event.verdict, event.packetInfo]) {
+            const td = document.createElement('td');
+            td.textContent = val;
+            row.appendChild(td);
+          }
+          tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        resultArea.appendChild(table);
+      }).catch((err) => {
+        clearInterval(countdownInterval);
+        traceBtn.removeAttribute('disabled');
+        traceBtn.textContent = 'Start Trace';
+        resultArea.textContent = `Live trace failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       });
     });
 
