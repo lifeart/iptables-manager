@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::host::detect::IptablesVariant;
-use crate::ssh::command::build_iptables_command;
+use crate::ssh::command::{build_command, build_iptables_command};
 use crate::ssh::executor::{CommandExecutor, ExecError};
 
 // ---------------------------------------------------------------------------
@@ -70,6 +70,50 @@ impl From<ExecError> for LiveTraceError {
 // Filter args builder
 // ---------------------------------------------------------------------------
 
+/// Validate a live trace request. Returns an error message if any field is invalid.
+fn validate_trace_request(req: &LiveTraceRequest) -> Result<(), String> {
+    // IP address: digits, dots, colons (IPv6), slashes (CIDR) only
+    fn is_valid_ip(s: &str) -> bool {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == ':' || c == '/' || c == 'a'
+                    || c == 'b' || c == 'c' || c == 'd' || c == 'e' || c == 'f'
+                    || c == 'A' || c == 'B' || c == 'C' || c == 'D' || c == 'E' || c == 'F')
+    }
+
+    // Protocol: alphanumeric only (tcp, udp, icmp, etc.)
+    fn is_valid_protocol(s: &str) -> bool {
+        !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
+    }
+
+    // Interface: alphanumeric, dots, dashes, underscores
+    fn is_valid_interface(s: &str) -> bool {
+        !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    }
+
+    if let Some(ref ip) = req.source_ip {
+        if !ip.is_empty() && !is_valid_ip(ip) {
+            return Err(format!("invalid source IP: {}", ip));
+        }
+    }
+    if let Some(ref ip) = req.dest_ip {
+        if !ip.is_empty() && !is_valid_ip(ip) {
+            return Err(format!("invalid destination IP: {}", ip));
+        }
+    }
+    if let Some(ref proto) = req.protocol {
+        if !proto.is_empty() && !is_valid_protocol(proto) {
+            return Err(format!("invalid protocol: {}", proto));
+        }
+    }
+    if let Some(ref iface) = req.interface_in {
+        if !iface.is_empty() && !is_valid_interface(iface) {
+            return Err(format!("invalid interface: {}", iface));
+        }
+    }
+    Ok(())
+}
+
 /// Build iptables match arguments from a LiveTraceRequest.
 pub fn build_trace_filter_args(req: &LiveTraceRequest) -> Vec<String> {
     let mut args = Vec::new();
@@ -131,11 +175,23 @@ pub fn build_trace_filter_args(req: &LiveTraceRequest) -> Vec<String> {
 /// Inserts TRACE rules into raw/PREROUTING and raw/OUTPUT, collects trace
 /// output via xtables-monitor (nft) or dmesg (legacy), then always removes
 /// the TRACE rules regardless of collection outcome.
+///
+/// **Limitation:** If the SSH connection drops during collection, cleanup
+/// commands will also fail and TRACE rules will remain in the kernel's raw
+/// table until manually removed or the host reboots. This is inherent to
+/// the SSH-based architecture — consider using the safety timer for long traces.
 pub async fn run_live_trace(
     executor: &dyn CommandExecutor,
     variant: &IptablesVariant,
     req: &LiveTraceRequest,
 ) -> Result<LiveTraceResult, LiveTraceError> {
+    // Validate inputs to prevent flag injection via crafted IPC calls
+    validate_trace_request(req)
+        .map_err(|msg| LiveTraceError::InsertFailed(msg))?;
+
+    // Clamp timeout to a safe maximum (120 seconds)
+    let timeout_secs = req.timeout_secs.min(120);
+
     let filter_args = build_trace_filter_args(req);
 
     // Build filter args as &str slices for build_iptables_command
@@ -186,21 +242,19 @@ pub async fn run_live_trace(
 
     // ── Step 2: Collect trace output ────────────────────────────
 
-    let timeout_str = req.timeout_secs.to_string();
+    let timeout_str = timeout_secs.to_string();
     let (collection_method, collect_result) = match variant {
         IptablesVariant::Nft => {
-            let cmd = format!(
-                "timeout {} xtables-monitor --trace 2>&1",
-                timeout_str
-            );
+            let cmd = build_command("timeout", &[&timeout_str, "xtables-monitor", "--trace"]);
             let result = executor.exec(&cmd).await;
             ("xtables-monitor".to_string(), result)
         }
         IptablesVariant::Legacy => {
-            let cmd = format!(
-                "timeout {} bash -c 'dmesg --follow 2>/dev/null || dmesg' | grep -i trace",
-                timeout_str
-            );
+            // dmesg --follow requires bash for the pipe and fallback
+            let cmd = build_command("timeout", &[
+                &timeout_str, "bash", "-c",
+                "dmesg --follow 2>/dev/null || dmesg | grep -i trace",
+            ]);
             let result = executor.exec(&cmd).await;
             ("dmesg".to_string(), result)
         }

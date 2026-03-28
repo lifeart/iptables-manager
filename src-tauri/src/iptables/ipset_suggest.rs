@@ -94,7 +94,7 @@ pub fn analyze_ipset_opportunities(
                     _ => "source-ip-group",
                 };
 
-                let suggested_name = build_suggested_name(&chain.name);
+                let suggested_name = build_suggested_name(&chain.name, target_str);
                 let sample_ips: Vec<String> = ips.iter().take(5).cloned().collect();
 
                 suggestions.push(IpsetSuggestion {
@@ -122,10 +122,16 @@ pub fn analyze_ipset_opportunities(
 
 /// Build a suggested ipset name from a chain name, respecting the
 /// 31-character limit imposed by the kernel ipset module.
-fn build_suggested_name(chain: &str) -> String {
-    let name = format!("TR-{}-blocklist", chain.to_lowercase());
+fn build_suggested_name(chain: &str, target: &str) -> String {
+    let suffix = if target.eq_ignore_ascii_case("ACCEPT") {
+        "allowlist"
+    } else {
+        "blocklist"
+    };
+    let name = format!("TR-{}-{}", chain.to_lowercase(), suffix);
     if name.len() > 31 {
-        name[..31].to_string()
+        // Use chars().take() to avoid panicking on multi-byte UTF-8 boundaries
+        name.chars().take(31).collect()
     } else {
         name
     }

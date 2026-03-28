@@ -116,9 +116,10 @@ pub fn explain_error(
         });
     }
 
-    // 6. xtables lock contention
-    if (stderr.contains("xtables lock") || stderr.contains("Resource temporarily unavailable"))
-        && exit_code == 4
+    // 6. xtables lock contention (exit code 4 alone is sufficient, or stderr text)
+    if exit_code == 4
+        || stderr.contains("xtables lock")
+        || stderr.contains("Resource temporarily unavailable")
     {
         let mut remediation = vec![
             "Wait a few seconds and retry".into(),
