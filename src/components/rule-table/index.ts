@@ -4,6 +4,7 @@ export { RuleTableTabs } from './rule-table-tabs';
 export { ConflictBanner } from './conflict-banner';
 export { ImportBanner } from './import-banner';
 export { TerminalTab } from './terminal-tab';
+export { DualStackCompare } from './dual-stack-compare';
 export { createRuleRow, updateRuleRow } from './rule-row';
 export { createSectionHeader, updateSectionHeader } from './section-header';
 export { FilterBar } from './filter-bar';

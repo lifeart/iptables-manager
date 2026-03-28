@@ -83,6 +83,7 @@ export interface Host {
   lastConnected?: number;
   lastSyncedRuleHash?: string;
   provisioned: boolean;
+  dualStackEnabled: boolean;
   createdAt: number;
   updatedAt: number;
 }

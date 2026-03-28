@@ -22,6 +22,7 @@ import type {
   ConntrackEntry,
   DetectionResult,
   DriftCheckResult,
+  DualStackDivergence,
   DuplicateCheckResult,
   Fail2banBan,
   GroupApplyResult,
@@ -48,6 +49,7 @@ export type {
   ConntrackEntry,
   DetectionResult,
   DriftCheckResult,
+  DualStackDivergence,
   DuplicateCheckResult,
   Fail2banBan,
   GroupApplyResult,
@@ -232,6 +234,14 @@ async function mockCall<T>(cmd: string, _args?: Record<string, unknown>): Promis
       return { onlyInA: [], onlyInB: [], different: [], identical: 0 } as T;
     case 'rules:import-existing':
       return { rules: { tables: {} }, rawIptablesSave: '', nonTrRuleCount: 0 } as T;
+    case 'dualstack:check-divergence':
+      return {
+        diverged: false,
+        v4OnlyChains: [],
+        v6OnlyChains: [],
+        ruleCountV4: 0,
+        ruleCountV6: 0,
+      } as T;
     default:
       return undefined as T;
   }
@@ -278,6 +288,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   'drift:reset': 'reset_drift',
   'hosts:compare': 'compare_hosts',
   'rules:import-existing': 'import_existing_rules',
+  'dualstack:check-divergence': 'check_v4_v6_divergence',
 };
 
 function mapCommandName(cmd: string): string {
@@ -460,6 +471,10 @@ export const compareHosts = (hostIdA: string, hostIdB: string) =>
 // Import existing (non-TR) rules as baseline
 export const importExistingRules = (hostId: string) =>
   ipcCall<ImportExistingRulesResult>('rules:import-existing', { hostId });
+
+// Dual-stack divergence check
+export const checkDualStackDivergence = (hostId: string) =>
+  ipcCall<DualStackDivergence>('dualstack:check-divergence', { hostId });
 
 // ─── Event Listeners ─────────────────────────────────────────
 

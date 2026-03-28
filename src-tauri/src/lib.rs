@@ -86,6 +86,8 @@ pub fn run() {
             // Drift detection commands
             ipc::commands::check_drift,
             ipc::commands::reset_drift,
+            // Dual-stack divergence
+            ipc::commands::check_v4_v6_divergence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

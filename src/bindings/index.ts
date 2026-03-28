@@ -13,6 +13,7 @@ export type { ConntrackUsage } from './ConntrackUsage';
 export type { DetectionResult } from './DetectionResult';
 export type { Direction } from './Direction';
 export type { DriftCheckResult } from './DriftCheckResult';
+export type { DualStackDivergence } from './DualStackDivergence';
 export type { DuplicateCheckResult } from './DuplicateCheckResult';
 export type { Fail2banBan } from './Fail2banBan';
 export type { GroupApplyResult } from './GroupApplyResult';

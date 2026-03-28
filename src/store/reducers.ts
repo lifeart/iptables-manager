@@ -198,6 +198,18 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, hosts };
     }
 
+    case 'SET_HOST_DUAL_STACK': {
+      const existing = state.hosts.get(action.hostId);
+      if (!existing) return state;
+      const hosts = cloneMap(state.hosts);
+      hosts.set(action.hostId, {
+        ...existing,
+        dualStackEnabled: action.enabled,
+        updatedAt: Date.now(),
+      });
+      return { ...state, hosts };
+    }
+
     // ─── Group Management ────────────────────────────────
     case 'ADD_GROUP': {
       const groups = cloneMap(state.groups);

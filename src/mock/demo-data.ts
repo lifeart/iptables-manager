@@ -80,6 +80,7 @@ const hosts: Host[] = [
     lastConnected: ts(5),
     lastSyncedRuleHash: 'abc123',
     provisioned: true,
+    dualStackEnabled: false,
     createdAt: ts(10080), // 7 days ago
     updatedAt: ts(5),
   },
@@ -114,6 +115,7 @@ const hosts: Host[] = [
     lastConnected: ts(3),
     lastSyncedRuleHash: 'def456',
     provisioned: true,
+    dualStackEnabled: false,
     createdAt: ts(10080),
     updatedAt: ts(3),
   },
@@ -127,6 +129,7 @@ const hosts: Host[] = [
     groupOrder: [],
     lastConnected: ts(4320), // 3 days ago
     provisioned: false,
+    dualStackEnabled: false,
     createdAt: ts(20160), // 14 days ago
     updatedAt: ts(4320),
   },
