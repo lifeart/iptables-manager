@@ -1,6 +1,8 @@
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::iptables::error_catalog::ErrorExplanation;
+
 /// Typed IPC errors sent to the frontend.
 ///
 /// Serialized as `{ kind: "VariantName", detail: { ... } }` via serde's
@@ -43,7 +45,11 @@ pub enum IpcError {
     ProvisionFailed { reason: String },
 
     #[error("command failed (exit {exit_code}): {stderr}")]
-    CommandFailed { stderr: String, exit_code: i32 },
+    CommandFailed {
+        stderr: String,
+        exit_code: i32,
+        explanation: Option<ErrorExplanation>,
+    },
 }
 
 // Tauri requires `Into<tauri::ipc::InvokeError>` or a manual `Serialize` impl

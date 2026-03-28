@@ -23,6 +23,7 @@ pub async fn snapshot_create(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })?;
     let rule_count = crate::snapshot::manager::count_rules(&data.iptables_save_v4)
         + data.iptables_save_v6.as_deref().map_or(0, crate::snapshot::manager::count_rules);
@@ -50,6 +51,7 @@ pub async fn snapshot_list(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }
 
@@ -71,12 +73,14 @@ pub async fn snapshot_restore(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })?;
 
     let meta = snapshots.iter().find(|s| s.id == snapshot_id).ok_or_else(|| {
         IpcError::CommandFailed {
             stderr: format!("snapshot not found: {}", snapshot_id),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -93,6 +97,7 @@ pub async fn snapshot_restore(
         return Err(IpcError::CommandFailed {
             stderr: cat_output.stderr,
             exit_code: cat_output.exit_code,
+            explanation: None,
         });
     }
 
@@ -112,6 +117,7 @@ pub async fn snapshot_restore(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })?;
 
     Ok(ApplyResult {

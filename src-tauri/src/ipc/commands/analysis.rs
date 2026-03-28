@@ -91,6 +91,7 @@ pub async fn check_drift(
         return Err(IpcError::CommandFailed {
             stderr: output.stderr,
             exit_code: output.exit_code,
+            explanation: None,
         });
     }
 
@@ -128,6 +129,7 @@ pub async fn check_drift(
                 IpcError::CommandFailed {
                     stderr: format!("failed to parse filtered rules: {}", e),
                     exit_code: 1,
+                    explanation: None,
                 }
             })?;
 
@@ -167,6 +169,7 @@ pub async fn reset_drift(
         return Err(IpcError::CommandFailed {
             stderr: output.stderr,
             exit_code: output.exit_code,
+            explanation: None,
         });
     }
 

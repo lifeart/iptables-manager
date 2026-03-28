@@ -28,6 +28,7 @@ pub async fn set_safety_timer(
         .map_err(|e| IpcError::CommandFailed {
             stderr: format!("safety timer: {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
 
     Ok(SafetyTimerResult {
@@ -68,6 +69,7 @@ pub async fn clear_safety_timer(
         .map_err(|e| IpcError::CommandFailed {
             stderr: format!("cancel safety timer: {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
 
     Ok(())

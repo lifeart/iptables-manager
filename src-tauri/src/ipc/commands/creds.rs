@@ -10,6 +10,7 @@ pub async fn cred_store(
         IpcError::CommandFailed {
             stderr: format!("credential store error: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -17,11 +18,13 @@ pub async fn cred_store(
         serde_json::from_value(credential).map_err(|e| IpcError::CommandFailed {
             stderr: format!("invalid credential payload: {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
 
     store.store(&host_id, &cred).map_err(|e| IpcError::CommandFailed {
         stderr: format!("failed to store credential: {}", e),
         exit_code: 1,
+        explanation: None,
     })?;
 
     Ok(())
@@ -36,6 +39,7 @@ pub async fn cred_delete(
         IpcError::CommandFailed {
             stderr: format!("credential store error: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -45,6 +49,7 @@ pub async fn cred_delete(
         Err(e) => Err(IpcError::CommandFailed {
             stderr: format!("failed to delete credential: {}", e),
             exit_code: 1,
+            explanation: None,
         }),
     }
 }

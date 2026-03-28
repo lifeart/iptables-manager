@@ -36,6 +36,7 @@ pub async fn activity_fetch_hit_counters(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }
 
@@ -54,6 +55,7 @@ pub async fn activity_fetch_conntrack_table(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }
 
@@ -72,6 +74,7 @@ pub async fn activity_fetch_bans(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }
 
@@ -91,6 +94,7 @@ pub async fn fetch_activity(
         .map_err(|e| IpcError::CommandFailed {
             stderr: format!("hit counters: {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
 
     let conntrack = crate::activity::monitor::fetch_conntrack_usage(&proxy).await;
@@ -122,5 +126,6 @@ pub async fn activity_fetch_conntrack(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }

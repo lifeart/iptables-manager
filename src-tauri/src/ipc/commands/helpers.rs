@@ -50,6 +50,41 @@ pub(crate) fn exec_failed(host_id: &str, reason: impl std::fmt::Display) -> IpcE
     }
 }
 
+/// Build an enriched `IpcError::CommandFailed` with an optional human-readable
+/// explanation derived from the stderr content and host capabilities.
+pub(crate) fn enrich_command_error(
+    stderr: &str,
+    exit_code: i32,
+    capabilities: Option<&crate::host::detect::HostCapabilities>,
+) -> IpcError {
+    use crate::iptables::error_catalog::{explain_error, ErrorContext};
+
+    let context = if let Some(caps) = capabilities {
+        ErrorContext {
+            iptables_variant: Some(caps.iptables_variant.clone()),
+            distro_family: Some(caps.distro.family.clone()),
+            has_docker: caps
+                .running_services
+                .iter()
+                .any(|s| s.name == "docker" || s.name == "dockerd"),
+            has_fail2ban: caps
+                .detected_tools
+                .iter()
+                .any(|t| t.tool_type == "fail2ban"),
+        }
+    } else {
+        ErrorContext::default()
+    };
+
+    let explanation = explain_error(stderr, exit_code, &context);
+
+    IpcError::CommandFailed {
+        stderr: stderr.to_string(),
+        exit_code,
+        explanation,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -80,16 +115,14 @@ pub(crate) async fn fetch_current_ruleset(
     })?;
 
     if output.exit_code != 0 {
-        return Err(IpcError::CommandFailed {
-            stderr: output.stderr,
-            exit_code: output.exit_code,
-        });
+        return Err(enrich_command_error(&output.stderr, output.exit_code, None));
     }
 
     let raw = output.stdout;
     let ruleset = parse_iptables_save(&raw).map_err(|e| IpcError::CommandFailed {
         stderr: format!("failed to parse iptables-save output: {}", e),
         exit_code: 1,
+        explanation: None,
     })?;
 
     Ok((raw, ruleset))
@@ -113,6 +146,7 @@ pub(crate) async fn create_pre_apply_backup(
         return Err(IpcError::CommandFailed {
             stderr: format!("iptables-save for backup failed: {}", save_output.stderr),
             exit_code: save_output.exit_code,
+            explanation: None,
         });
     }
 
@@ -126,11 +160,13 @@ pub(crate) async fn create_pre_apply_backup(
         .map_err(|e| IpcError::CommandFailed {
             stderr: format!("failed to write backup.v4: {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
     if write_output.exit_code != 0 {
         return Err(IpcError::CommandFailed {
             stderr: format!("failed to write backup.v4: {}", write_output.stderr),
             exit_code: write_output.exit_code,
+            explanation: None,
         });
     }
 
@@ -157,6 +193,7 @@ pub(crate) async fn create_pre_apply_backup(
         IpcError::CommandFailed {
             stderr: format!("credential store error: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -534,7 +571,7 @@ COMMIT
         assert!(result.is_err(), "should return error on exit code 1");
 
         match result.unwrap_err() {
-            IpcError::CommandFailed { stderr, exit_code } => {
+            IpcError::CommandFailed { stderr, exit_code, .. } => {
                 assert_eq!(exit_code, 1);
                 assert!(
                     stderr.contains("Permission denied"),
@@ -560,7 +597,7 @@ COMMIT
 
         let err = result.unwrap_err();
         match err {
-            IpcError::CommandFailed { stderr, exit_code } => {
+            IpcError::CommandFailed { stderr, exit_code, .. } => {
                 assert!(
                     stderr.contains("iptables-save"),
                     "error should mention iptables-save, got: {}",

@@ -27,6 +27,7 @@ pub async fn iplist_sync(
     .map_err(|e| IpcError::CommandFailed {
         stderr: e.to_string(),
         exit_code: 1,
+        explanation: None,
     })
 }
 
@@ -46,5 +47,6 @@ pub async fn iplist_delete(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }

@@ -84,6 +84,7 @@ pub async fn rules_apply(
         .map_err(|e| IpcError::CommandFailed {
             stderr: format!("safety timer failed (rules NOT applied): {}", e),
             exit_code: 1,
+            explanation: None,
         })?;
         Some(job)
     } else {
@@ -101,10 +102,11 @@ pub async fn rules_apply(
         .map_err(|e| exec_failed(&host_id, format!("failed to apply rules: {}", e)))?;
 
     if output.exit_code != 0 {
-        return Err(IpcError::CommandFailed {
-            stderr: output.stderr,
-            exit_code: output.exit_code,
-        });
+        return Err(super::helpers::enrich_command_error(
+            &output.stderr,
+            output.exit_code,
+            None,
+        ));
     }
 
     Ok(ApplyResult {
@@ -315,10 +317,11 @@ pub async fn rules_revert(
         exec_failed(&host_id, format!("failed to revert: {}", e))
     })?;
     if output.exit_code != 0 {
-        return Err(IpcError::CommandFailed {
-            stderr: output.stderr,
-            exit_code: output.exit_code,
-        });
+        return Err(super::helpers::enrich_command_error(
+            &output.stderr,
+            output.exit_code,
+            None,
+        ));
     }
     Ok(())
 }
@@ -357,6 +360,7 @@ pub async fn rules_confirm(
                 .map_err(|e| IpcError::CommandFailed {
                     stderr: format!("cancel safety timer: {}", e),
                     exit_code: 1,
+                    explanation: None,
                 })?;
         }
     }
@@ -409,6 +413,7 @@ pub async fn rules_check_duplicate(
         IpcError::CommandFailed {
             stderr: format!("invalid rule JSON: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -461,6 +466,7 @@ pub async fn explain_rule_cmd(rule_json: String) -> Result<String, IpcError> {
         IpcError::CommandFailed {
             stderr: format!("invalid rule JSON: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -480,6 +486,7 @@ pub async fn export_rules(
             return Err(IpcError::CommandFailed {
                 stderr: format!("unsupported export format: {}", format),
                 exit_code: 1,
+                explanation: None,
             });
         }
     }
