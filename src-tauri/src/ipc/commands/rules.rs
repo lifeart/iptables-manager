@@ -527,6 +527,7 @@ pub async fn rules_live_trace(
         .map_err(|e| IpcError::CommandFailed {
             stderr: e.to_string(),
             exit_code: 1,
+            explanation: None,
         })
 }
 

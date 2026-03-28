@@ -106,6 +106,7 @@ pub async fn convert_to_ipset(
         IpcError::CommandFailed {
             stderr: format!("invalid suggestion JSON: {}", e),
             exit_code: 1,
+            explanation: None,
         }
     })?;
 
@@ -153,6 +154,7 @@ pub async fn convert_to_ipset(
     .map_err(|e| IpcError::CommandFailed {
         stderr: format!("failed to create ipset: {}", e),
         exit_code: 1,
+        explanation: None,
     })?;
 
     // Sync entries
@@ -166,6 +168,7 @@ pub async fn convert_to_ipset(
     .map_err(|e| IpcError::CommandFailed {
         stderr: format!("failed to sync ipset entries: {}", e),
         exit_code: 1,
+        explanation: None,
     })?;
 
     Ok(ConvertToIpsetResult {
@@ -270,6 +273,7 @@ pub async fn check_drift(
                     IpcError::CommandFailed {
                         stderr: format!("failed to parse filtered rules: {}", e),
                         exit_code: 1,
+                        explanation: None,
                     }
                 })?;
 
