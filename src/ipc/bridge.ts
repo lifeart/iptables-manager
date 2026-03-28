@@ -8,12 +8,64 @@
 import type {
   Rule,
   StagedChange,
-  Host,
   HostStatus,
   HitCounter,
   BlockedEntry,
-  Snapshot,
 } from '../store/types';
+
+import type {
+  ActivityData,
+  ApplyResult,
+  ChainTraversal,
+  CompareHostsResult,
+  ConnectionResult,
+  ConntrackEntry,
+  DetectionResult,
+  DriftCheckResult,
+  DuplicateCheckResult,
+  Fail2banBan,
+  GroupApplyResult,
+  HostApplyResult,
+  ImportExistingRulesResult,
+  PreviewResult,
+  ProvisionResult,
+  RuleConflict,
+  RuleSetResult,
+  SafetyTimerResult,
+  SnapshotMeta,
+  TestConnectionResult,
+  TestPacket,
+  TraceResult,
+} from '../bindings';
+
+// Re-export generated types so existing consumers keep working.
+export type {
+  ActivityData,
+  ApplyResult,
+  ChainTraversal,
+  CompareHostsResult,
+  ConnectionResult,
+  ConntrackEntry,
+  DetectionResult,
+  DriftCheckResult,
+  DuplicateCheckResult,
+  Fail2banBan,
+  GroupApplyResult,
+  HostApplyResult,
+  ImportExistingRulesResult,
+  PreviewResult,
+  ProvisionResult,
+  RuleConflict,
+  RuleSetResult,
+  SafetyTimerResult,
+  SnapshotMeta,
+  TestPacket,
+  TraceResult,
+};
+
+// Aliases for names that differ between old bridge and generated bindings.
+export type TestResult = TestConnectionResult;
+export type RuleSet = RuleSetResult;
 
 // ─── Error Type ──────────────────────────────────────────────
 
@@ -27,143 +79,13 @@ export class IpcError extends Error {
   }
 }
 
-// ─── IPC Result Types ────────────────────────────────────────
-
-export interface ConnectionResult {
-  hostId: string;
-  status: HostStatus;
-  latencyMs: number;
-}
-
-export interface TestResult {
-  success: boolean;
-  latencyMs: number;
-  iptablesAvailable: boolean;
-  rootAccess: boolean;
-  dockerDetected: boolean;
-  fail2banDetected: boolean;
-  nftablesBackend: boolean;
-  error?: string;
-}
-
-export interface DetectionResult {
-  completed: boolean;
-  capabilities: Host['capabilities'];
-}
+// ─── Frontend-only types ─────────────────────────────────────
 
 export interface DetectionProgress {
   step: string;
   progress: number;
   total: number;
   message: string;
-}
-
-export interface ProvisionResult {
-  success: boolean;
-  dirsCreated: string[];
-  revertScriptInstalled: boolean;
-  sudoVerified: boolean;
-}
-
-export interface RuleSet {
-  rules: Rule[];
-  defaultPolicy: string;
-  rawIptablesSave: string;
-}
-
-export interface ApplyResult {
-  success: boolean;
-  safetyTimerActive: boolean;
-  safetyTimerExpiry?: number;
-  remoteJobId?: string;
-  safetyTimerMechanism?: string;
-}
-
-export interface HostApplyResult {
-  hostId: string;
-  success: boolean;
-  error?: string;
-}
-
-export interface GroupApplyResult {
-  results: HostApplyResult[];
-  strategy: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-}
-
-export interface PreviewResult {
-  restoreContent: string;
-  restoreCommand: string;
-}
-
-export interface ChainTraversal {
-  table: string;
-  chain: string;
-  rulesEvaluated: number;
-  matchedRuleIndex?: number;
-}
-
-export interface TraceResult {
-  matched: boolean;
-  matchedRuleId?: string;
-  chain: ChainTraversal[];
-  verdict: string;
-  explanation: string;
-  nearMisses: string[];
-}
-
-export interface TestPacket {
-  sourceIp: string;
-  destIp: string;
-  destPort: number;
-  protocol: 'tcp' | 'udp' | 'icmp';
-  interfaceIn?: string;
-}
-
-export interface DuplicateCheckResult {
-  isDuplicate: boolean;
-  existingRuleId?: string;
-  similarity: number;
-}
-
-export interface RuleConflict {
-  ruleIdA: string;
-  ruleIdB: string;
-  type: 'shadow' | 'contradiction' | 'redundant';
-  description: string;
-}
-
-export interface SnapshotMeta {
-  id: string;
-  hostId: string;
-  timestamp: number;
-  description?: string;
-  ruleCount: number;
-}
-
-export interface ConntrackEntry {
-  protocol: string;
-  sourceIp: string;
-  destIp: string;
-  sourcePort: number;
-  destPort: number;
-  state: string;
-  ttl: number;
-}
-
-export interface Fail2banBan {
-  jail: string;
-  ip: string;
-  bannedAt: number;
-  expiresAt: number | null;
-}
-
-export interface ActivityData {
-  hitCounters: HitCounter[];
-  conntrackCurrent: number;
-  conntrackMax: number;
 }
 
 export interface ConnectionStatusEvent {
@@ -190,19 +112,6 @@ export interface ConntrackEvent {
   hostId: string;
   current: number;
   max: number;
-}
-
-export interface CompareHostsResult {
-  onlyInA: string[];
-  onlyInB: string[];
-  different: string[];
-  identical: number;
-}
-
-export interface ImportExistingRulesResult {
-  rules: unknown;
-  rawIptablesSave: string;
-  nonTrRuleCount: number;
 }
 
 // ─── Tauri Detection ─────────────────────────────────────────
@@ -462,11 +371,6 @@ export const previewChanges = (hostId: string, changes: StagedChange[]) =>
 export const revertChanges = (hostId: string) =>
   ipcCall<void>('rules:revert', { hostId });
 
-export interface SafetyTimerResult {
-  jobId: string;
-  mechanism: string;
-}
-
 export const setSafetyTimer = (hostId: string, timeoutSecs: number) =>
   ipcCall<SafetyTimerResult>('safety:set-timer', { hostId, timeoutSecs });
 
@@ -543,13 +447,6 @@ export const fetchActivity = (hostId: string) =>
   ipcCall<ActivityData>('activity:fetch', { hostId });
 
 // Drift Detection
-export interface DriftCheckResult {
-  drifted: boolean;
-  addedRules: number;
-  removedRules: number;
-  modifiedRules: number;
-}
-
 export const checkDrift = (hostId: string) =>
   ipcCall<DriftCheckResult>('drift:check', { hostId });
 

@@ -80,8 +80,9 @@ function parseAddressSpec(addr: string | undefined | null): AddressSpec {
  */
 export function convertRuleSet(ruleSet: RuleSet): Rule[] {
   // If the backend returned pre-parsed rules, use them directly
-  if (ruleSet.rules && ruleSet.rules.length > 0) {
-    return ruleSet.rules.map((rule, index) => ({
+  const rules = ruleSet.rules as Rule[] | undefined;
+  if (rules && rules.length > 0) {
+    return rules.map((rule, index) => ({
       ...rule,
       position: rule.position ?? index,
       origin: rule.origin ?? { type: 'imported' as const },

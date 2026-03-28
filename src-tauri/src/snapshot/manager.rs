@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use ts_rs::TS;
 
 use crate::ssh::command::build_command;
 use crate::ssh::executor::{CommandExecutor, ExecError};
@@ -45,11 +46,13 @@ pub struct SnapshotData {
 }
 
 /// Lightweight metadata for listing snapshots.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotMeta {
     pub id: String,
     pub host_id: String,
+    #[ts(type = "number")]
     pub timestamp: u64,
     pub description: Option<String>,
     pub rule_count: usize,

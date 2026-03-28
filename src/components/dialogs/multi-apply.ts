@@ -305,7 +305,7 @@ export class MultiApplyDialog extends Component {
         const hp = this.hostProgresses.find(p => p.hostId === hostResult.hostId);
         if (hp) {
           hp.status = hostResult.success ? 'confirmed' : 'failed';
-          hp.error = hostResult.error;
+          hp.error = hostResult.error ?? undefined;
           this.updateProgressDisplay(hp);
 
           // Audit successful applies

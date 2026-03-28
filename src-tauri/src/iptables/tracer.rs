@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
+use ts_rs::TS;
 
 use super::types::{
     MatchSpec, ParsedRuleset, PortSpec, Protocol, RuleSpec, Target,
@@ -9,14 +10,16 @@ use super::types::{
 // Public types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 pub enum Direction {
     Incoming,
     Forwarded,
     Outgoing,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 pub enum ConntrackState {
     New,
     Established,
@@ -37,11 +40,15 @@ impl ConntrackState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct TestPacket {
+    #[ts(type = "string")]
     pub source_ip: IpAddr,
+    #[ts(type = "string")]
     pub dest_ip: IpAddr,
+    #[ts(type = "string")]
     pub protocol: Protocol,
     pub dest_port: Option<u16>,
     #[serde(default)]
@@ -60,7 +67,8 @@ fn default_conntrack_state() -> ConntrackState {
     ConntrackState::New
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 pub enum Verdict {
     Accept,
     Drop,
@@ -68,7 +76,8 @@ pub enum Verdict {
     Unsimulatable,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ChainTraversal {
     pub table: String,
@@ -77,7 +86,8 @@ pub struct ChainTraversal {
     pub matched_rule_index: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct TraceResult {
     /// Whether a specific rule matched (vs falling through to policy/default).

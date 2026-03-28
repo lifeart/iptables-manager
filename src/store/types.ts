@@ -2,7 +2,7 @@
 // Fields annotated @persisted are synced to IndexedDB.
 // Fields annotated @ephemeral are in-memory only.
 
-import type { RuleConflict } from '../ipc/bridge';
+import type { RuleConflict } from '../bindings';
 export type { RuleConflict };
 
 // ─── Domain Types ───────────────────────────────────────────────

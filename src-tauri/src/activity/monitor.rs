@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use ts_rs::TS;
 
 use crate::ssh::command::build_command;
 use crate::ssh::executor::{CommandExecutor, ExecError};
@@ -21,12 +22,16 @@ pub enum MonitorError {
 // ---------------------------------------------------------------------------
 
 /// Per-rule packet/byte hit counters from `iptables -L -v -n -x`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct HitCounter {
     pub rule_id: String,
+    #[ts(type = "number")]
     pub packets: u64,
+    #[ts(type = "number")]
     pub bytes: u64,
+    #[ts(type = "number")]
     pub timestamp: u64,
     // Raw fields kept for detailed display
     pub chain: String,
@@ -61,26 +66,33 @@ pub enum LogMethod {
 }
 
 /// Connection tracking table usage.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ConntrackUsage {
+    #[ts(type = "number")]
     pub current: u64,
+    #[ts(type = "number")]
     pub max: u64,
     pub percent: f64,
 }
 
 /// A fail2ban ban entry (one entry per banned IP).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct Fail2banBan {
     pub jail: String,
     pub ip: String,
+    #[ts(type = "number")]
     pub banned_at: u64,
+    #[ts(type = "number | null")]
     pub expires_at: Option<u64>,
 }
 
 /// A single connection tracking table entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ConntrackEntry {
     pub protocol: String,
@@ -89,6 +101,7 @@ pub struct ConntrackEntry {
     pub source_port: u16,
     pub dest_port: u16,
     pub state: String,
+    #[ts(type = "number")]
     pub ttl: u64,
 }
 

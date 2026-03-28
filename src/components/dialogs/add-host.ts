@@ -531,7 +531,7 @@ export class AddHostDialog extends Component {
             this.store.dispatch({
               type: 'UPDATE_HOST',
               hostId: host.id,
-              changes: { capabilities: result.capabilities as Host['capabilities'] },
+              changes: { capabilities: result.capabilities as unknown as Host['capabilities'] },
             });
           }
         })

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
+use ts_rs::TS;
 
 use super::types::{MatchSpec, ParsedRuleset, PortSpec, Protocol, Target};
 
@@ -40,7 +41,8 @@ pub struct EffectiveRule {
     pub out_interface: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum ConflictType {
     Shadow,
@@ -50,7 +52,8 @@ pub enum ConflictType {
     Overlap,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct RuleConflict {
     #[serde(rename = "type")]

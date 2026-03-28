@@ -1,0 +1,32 @@
+// Barrel export for auto-generated Rust bindings.
+// Do not edit manually — regenerate with `cargo test` in src-tauri.
+
+export type { ActivityData } from './ActivityData';
+export type { ApplyResult } from './ApplyResult';
+export type { ChainTraversal } from './ChainTraversal';
+export type { CompareHostsResult } from './CompareHostsResult';
+export type { ConflictType } from './ConflictType';
+export type { ConnectionResult } from './ConnectionResult';
+export type { ConntrackEntry } from './ConntrackEntry';
+export type { ConntrackState } from './ConntrackState';
+export type { ConntrackUsage } from './ConntrackUsage';
+export type { DetectionResult } from './DetectionResult';
+export type { Direction } from './Direction';
+export type { DriftCheckResult } from './DriftCheckResult';
+export type { DuplicateCheckResult } from './DuplicateCheckResult';
+export type { Fail2banBan } from './Fail2banBan';
+export type { GroupApplyResult } from './GroupApplyResult';
+export type { HitCounter } from './HitCounter';
+export type { HostApplyResult } from './HostApplyResult';
+export type { ImportExistingRulesResult } from './ImportExistingRulesResult';
+export type { PreviewResult } from './PreviewResult';
+export type { ProvisionResult } from './ProvisionResult';
+export type { RuleConflict } from './RuleConflict';
+export type { RuleSetResult } from './RuleSetResult';
+export type { SafetyTimerResult } from './SafetyTimerResult';
+export type { SnapshotMeta } from './SnapshotMeta';
+export type { TestConnectionParams } from './TestConnectionParams';
+export type { TestConnectionResult } from './TestConnectionResult';
+export type { TestPacket } from './TestPacket';
+export type { TraceResult } from './TraceResult';
+export type { Verdict } from './Verdict';

@@ -145,6 +145,9 @@ export class TerminalTab extends Component {
         destIp: inputs['destIp'].value.trim() || '0.0.0.0',
         destPort: parseInt(inputs['destPort'].value, 10) || 0,
         protocol: protoSelect.value as 'tcp' | 'udp' | 'icmp',
+        interfaceIn: '',
+        direction: 'Incoming',
+        conntrackState: 'New',
       };
 
       resultArea.textContent = 'Tracing...';
