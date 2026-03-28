@@ -640,6 +640,84 @@ TRACE: 2 fc475a39 filter:INPUT:rule:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 LEN
         }
     }
 
+    #[tokio::test]
+    async fn test_output_insert_failure_cleans_up_prerouting() {
+        // PREROUTING insert succeeds but OUTPUT insert fails.
+        // The code MUST delete the PREROUTING rule before returning error.
+        let executor = MockExecutor::new(vec![
+            ("-I PREROUTING", 0, "", ""),
+            ("-I OUTPUT", 1, "", "iptables: Permission denied"),
+            ("-D PREROUTING", 0, "", ""),
+        ]);
+
+        let req = LiveTraceRequest {
+            source_ip: Some("10.0.0.1".to_string()),
+            dest_ip: None,
+            protocol: Some("tcp".to_string()),
+            dest_port: Some(22),
+            interface_in: None,
+            timeout_secs: 5,
+        };
+
+        let result = run_live_trace(&executor, &IptablesVariant::Nft, &req).await;
+        assert!(result.is_err(), "should fail when OUTPUT insert fails");
+
+        match result.unwrap_err() {
+            LiveTraceError::InsertFailed(msg) => {
+                assert!(msg.contains("OUTPUT"), "error should mention OUTPUT, got: {}", msg);
+            }
+            other => panic!("expected InsertFailed, got: {:?}", other),
+        }
+
+        // Verify PREROUTING was cleaned up
+        let calls = executor.get_calls();
+        let has_del_pre = calls.iter().any(|c| c.contains("-D PREROUTING"));
+        assert!(
+            has_del_pre,
+            "MUST clean up PREROUTING rule on OUTPUT failure to avoid leaked TRACE rules; calls: {:?}",
+            calls
+        );
+    }
+
+    #[tokio::test]
+    async fn test_legacy_variant_uses_dmesg() {
+        // Verify the Legacy variant constructs a dmesg-based collection command
+        let executor = MockExecutor::new(vec![
+            ("-I PREROUTING", 0, "", ""),
+            ("-I OUTPUT", 0, "", ""),
+            ("dmesg", 0, "[12345.678] TRACE: raw:PREROUTING:policy:1 IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2 PROTO=TCP DPT=80", ""),
+            ("-D PREROUTING", 0, "", ""),
+            ("-D OUTPUT", 0, "", ""),
+        ]);
+
+        let req = LiveTraceRequest {
+            source_ip: Some("10.0.0.1".to_string()),
+            dest_ip: None,
+            protocol: None,
+            dest_port: None,
+            interface_in: None,
+            timeout_secs: 5,
+        };
+
+        let result = run_live_trace(&executor, &IptablesVariant::Legacy, &req)
+            .await
+            .expect("legacy trace should succeed");
+
+        assert_eq!(result.collection_method, "dmesg");
+        assert!(!result.events.is_empty(), "should parse dmesg TRACE output");
+        assert_eq!(result.events[0].table, "raw");
+        assert_eq!(result.events[0].chain, "PREROUTING");
+    }
+
+    #[test]
+    fn test_parse_malformed_trace_lines_skipped() {
+        // Partial/malformed TRACE lines should be silently skipped
+        let output = "TRACE: raw:PREROUTING\nTRACE: :::::\nTRACE: 2 abc raw:PREROUTING:policy:2 IN=eth0 SRC=1.2.3.4 DST=5.6.7.8\n";
+        let events = parse_xtables_monitor_trace(output);
+        // Only the last line has proper table:chain:verdict:num format
+        assert!(events.len() <= 1, "malformed lines should be skipped, got {} events", events.len());
+    }
+
     #[test]
     fn test_parse_empty_output() {
         let events_nft = parse_xtables_monitor_trace("");

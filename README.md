@@ -12,7 +12,7 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on mac
 - View, create, edit, delete, and reorder firewall rules through a visual GUI
 - Apply changes with a 60-second safety timer (auto-reverts if connection drops)
 - Dry-run preview — see exact iptables commands before applying
-- Drift detection — alerts when rules change outside the tool
+- Drift detection — alerts when rules change outside the tool, shows exactly what changed
 - Audit log — persistent history of all rule changes
 - Monitor traffic: real-time hit counters, blocked traffic log, connection tracking
 - Port saturation warnings (conntrack capacity alerts)
@@ -27,6 +27,11 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on mac
 - Human-readable rule explanation in rule detail panel
 - Advanced search filters (protocol, port, address)
 - HMAC-signed backups for tamper detection
+- Mixed-backend detection — warns when both legacy iptables and nf_tables rules exist, blocks unsafe apply
+- xtables lock handling — detects lock holder, retries with backoff, shows actionable error
+- Live traffic trace — insert kernel TRACE rules, collect real packet path, auto-cleanup
+- ipset optimization — suggests compiling large rule groups into ipset for O(1) lookups
+- Error explanations — maps 13 common iptables/SSH errors to human-readable remediation steps
 
 ## Screenshot
 
@@ -36,7 +41,7 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on mac
 - **Rule table**: colored action badges (green=allow, red=drop), hit counts, drag-to-reorder
 - **Side panel**: rule detail/edit, port forwarding, source NAT builders
 - **Activity tab**: live hit counters with sparklines, blocked traffic log
-- **Terminal tab**: raw iptables editor, packet tracer, SSH command log
+- **Terminal tab**: raw iptables editor, packet tracer, live traffic trace, SSH command log
 
 ## Quick start
 
@@ -105,7 +110,7 @@ Produces `.msi` in `src-tauri/target/release/bundle/msi/`.
 │
 ├── src-tauri/              # Backend (Rust)
 │   ├── src/
-│   │   ├── iptables/       # Parser, generator, diff, tracer, conflict detection
+│   │   ├── iptables/       # Parser, generator, diff, tracer, conflict, live trace, lock, error catalog
 │   │   ├── ssh/            # Connection pool, command builder, credentials
 │   │   ├── safety/         # Timer, lockout detection, HMAC, drift detection
 │   │   ├── host/           # Detection, persistence, auto-provision
@@ -115,7 +120,7 @@ Produces `.msi` in `src-tauri/target/release/bundle/msi/`.
 │   │   ├── export/         # Shell, Ansible, iptables-save
 │   │   └── ipc/            # Tauri command handlers
 │   ├── scripts/            # revert.sh, expire-rule.sh
-│   └── tests/              # 349 tests with fixtures
+│   └── tests/              # 446 tests with fixtures
 │
 ├── docs/
 │   ├── ux/                 # 12 UX spec files
@@ -136,7 +141,7 @@ cd src-tauri
 cargo test
 ```
 
-349 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log.
+446 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log, mixed-backend detection, xtables lock retry, live traffic trace (TRACE rule lifecycle, parsers), ipset optimization suggestions, error catalog (13 patterns).
 
 ### TypeScript type checking
 
@@ -183,7 +188,7 @@ Every rule change includes a 60-second safety window. If the SSH connection drop
 See the exact iptables commands that will run before applying any changes. Review the full diff of what will be added, removed, or modified.
 
 ### Drift detection
-The app monitors for rule changes made outside the tool and alerts you when the live ruleset no longer matches the managed state.
+The app monitors for rule changes made outside the tool and alerts you when the live ruleset no longer matches the managed state. The drift banner shows exactly what changed — added, removed, or modified rules — with an expandable diff view.
 
 ### Audit log
 Persistent history of all rule changes across sessions — who changed what, when, and why. Useful for compliance and troubleshooting.
@@ -212,6 +217,21 @@ Real-time hit counters with sparklines, blocked traffic log, and connection trac
 ### Packet tracer
 Test how a packet would be processed: enter source IP, destination, port, protocol — see which rule matches and why.
 
+### Live traffic trace
+Insert kernel TRACE rules on a remote host via SSH to trace real packets through the firewall. The app collects output via `xtables-monitor` (nft) or `dmesg` (legacy), auto-removes TRACE rules after a configurable timeout, and displays the packet path in the same format as the packet tracer.
+
+### Mixed-backend detection
+Detects when a host has both legacy iptables and nf_tables rules populated — a common source of "table is incompatible" errors. Shows a warning banner and blocks apply until resolved.
+
+### xtables lock handling
+When another process (Docker, fail2ban, ufw) holds the iptables lock, the app retries with exponential backoff (1s/2s/4s) and identifies the lock holder by PID and process name. Shows context-aware tips ("fail2ban is updating bans, try again shortly").
+
+### ipset optimization
+Analyzes rulesets for chains with many rules that differ only in source IP. Suggests compiling them into ipset hash:net sets for O(1) lookups instead of O(n) linear scans. One-click conversion creates the ipset and populates it.
+
+### Error explanations
+Maps 13 common iptables and SSH error patterns to human-readable explanations with context-aware remediation steps. Shows a popover with title, explanation, and actionable fix steps instead of raw stderr.
+
 ### Data integrity
 HMAC-signed backups detect tampering. 20+ serialization contract tests prevent frontend/backend data mismatches. Credentials are stored on connect and deleted on host removal.
 
@@ -219,8 +239,8 @@ HMAC-signed backups detect tampering. 20+ serialization contract tests prevent f
 
 | Layer | Technology | Lines |
 |-------|-----------|-------|
-| Frontend | Vanilla TypeScript, CSS | ~20k |
-| Backend | Rust (Tauri 2.x) | ~12k |
+| Frontend | Vanilla TypeScript, CSS | ~22k |
+| Backend | Rust (Tauri 2.x) | ~14k |
 | SSH | `openssh` crate (subprocess) | — |
 | State | Custom store with selector subscriptions | — |
 | Persistence | IndexedDB (browser) | — |

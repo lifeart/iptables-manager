@@ -393,4 +393,60 @@ mod tests {
         let result = explain_error("Out of memory", 1, &ctx).unwrap();
         assert_eq!(result.code, "OUT_OF_MEMORY");
     }
+
+    #[test]
+    fn test_ssh_auth_takes_priority_over_generic_permission_denied() {
+        let ctx = ErrorContext::default();
+
+        // "Permission denied (publickey)" must match SSH_AUTH, not PERMISSION_DENIED
+        let result = explain_error("Permission denied (publickey)", 255, &ctx).unwrap();
+        assert_eq!(
+            result.code, "SSH_AUTH",
+            "SSH auth error must not be caught by generic Permission denied matcher"
+        );
+
+        // Plain "Permission denied" without publickey should match PERMISSION_DENIED
+        let result2 = explain_error("Permission denied", 1, &ctx).unwrap();
+        assert_eq!(
+            result2.code, "PERMISSION_DENIED",
+            "Generic permission denied should match when no publickey keyword"
+        );
+    }
+
+    #[test]
+    fn test_empty_stderr_returns_none() {
+        let ctx = ErrorContext::default();
+        assert!(explain_error("", 0, &ctx).is_none(), "empty stderr should not match any pattern");
+        assert!(explain_error("", 1, &ctx).is_none());
+    }
+
+    #[test]
+    fn test_weak_tests_check_remediation_content() {
+        let ctx = ErrorContext::default();
+
+        // Permission denied should suggest sudo config
+        let r = explain_error("Permission denied", 1, &ctx).unwrap();
+        assert!(r.remediation.iter().any(|s| s.contains("sudo")),
+            "PERMISSION_DENIED should suggest sudo, got: {:?}", r.remediation);
+
+        // Table init should suggest modprobe
+        let r = explain_error("can't initialize iptables table 'filter'", 1, &ctx).unwrap();
+        assert!(r.remediation.iter().any(|s| s.contains("modprobe") || s.contains("module")),
+            "TABLE_INIT_FAILED should mention kernel modules, got: {:?}", r.remediation);
+
+        // SSH timeout should suggest ping
+        let r = explain_error("Connection timed out", 255, &ctx).unwrap();
+        assert!(r.remediation.iter().any(|s| s.contains("ping") || s.contains("reachable")),
+            "SSH_TIMEOUT should suggest checking connectivity, got: {:?}", r.remediation);
+
+        // Host key should suggest ssh-keygen
+        let r = explain_error("Host key verification failed", 255, &ctx).unwrap();
+        assert!(r.remediation.iter().any(|s| s.contains("ssh-keygen") || s.contains("known_hosts")),
+            "SSH_HOST_KEY should suggest removing old key, got: {:?}", r.remediation);
+
+        // Restore syntax should mention line number
+        let r = explain_error("iptables-restore: line 3 failed", 1, &ctx).unwrap();
+        assert!(r.remediation.iter().any(|s| s.contains("line")),
+            "RESTORE_SYNTAX should mention line, got: {:?}", r.remediation);
+    }
 }

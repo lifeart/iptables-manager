@@ -328,6 +328,52 @@ mod tests {
         )
         .await;
         assert!(result.is_ok(), "should succeed with stdin on retry");
+        let output = result.unwrap();
+        assert_eq!(output.stdout, "OK", "should return success output after retry");
+
+        // Verify retry happened (lock error + fuser + success = 3 calls)
+        let calls = executor.get_calls();
+        assert_eq!(calls.len(), 3, "expected 3 calls (lock + fuser + success), got: {:?}", calls);
+    }
+
+    #[tokio::test]
+    async fn test_transport_error_not_retried() {
+        // SSH transport errors (disconnection) should propagate immediately, not retry
+        let executor = SequentialMockExecutor::new(vec![
+            Err(ExecError::Transport("connection reset".to_string())),
+        ]);
+
+        let result = execute_with_lock_retry(&executor, "sudo iptables-restore", None, 3).await;
+        match result {
+            Err(LockError::Exec(ExecError::Transport(msg))) => {
+                assert!(msg.contains("connection reset"));
+            }
+            other => panic!("expected LockError::Exec(Transport), got {:?}", other),
+        }
+
+        // Only 1 call — no retries for transport errors
+        assert_eq!(executor.get_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_detect_lock_holder_multiple_pids() {
+        // fuser can return multiple PIDs; we should take the first
+        let executor = SequentialMockExecutor::new(vec![
+            Ok(CommandOutput {
+                stdout: "  1234  5678  ".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+            Ok(CommandOutput {
+                stdout: "dockerd\n".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        ]);
+
+        let holder = detect_lock_holder(&executor).await.unwrap();
+        assert_eq!(holder.pid, 1234, "should use first PID from fuser output");
+        assert_eq!(holder.process_name, "dockerd");
     }
 
     #[test]
