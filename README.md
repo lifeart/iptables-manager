@@ -32,6 +32,9 @@ Built with Tauri 2.x (Rust backend + vanilla TypeScript frontend). Native on mac
 - Live traffic trace — insert kernel TRACE rules, collect real packet path, auto-cleanup
 - ipset optimization — suggests compiling large rule groups into ipset for O(1) lookups
 - Error explanations — maps 13 common iptables/SSH errors to human-readable remediation steps
+- Dual-stack IPv4/IPv6 — single rule definition generates both v4 and v6, divergence detection
+- Ecosystem coexistence — read-only display of Docker/K8s/fail2ban chains, pre-apply warnings
+- Persistence assistant — detects if rules survive reboot, one-click setup for Debian/RHEL
 
 ## Screenshot
 
@@ -120,7 +123,7 @@ Produces `.msi` in `src-tauri/target/release/bundle/msi/`.
 │   │   ├── export/         # Shell, Ansible, iptables-save
 │   │   └── ipc/            # Tauri command handlers
 │   ├── scripts/            # revert.sh, expire-rule.sh
-│   └── tests/              # 446 tests with fixtures
+│   └── tests/              # 470 tests with fixtures
 │
 ├── docs/
 │   ├── ux/                 # 12 UX spec files
@@ -141,7 +144,7 @@ cd src-tauri
 cargo test
 ```
 
-446 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log, mixed-backend detection, xtables lock retry, live traffic trace (TRACE rule lifecycle, parsers), ipset optimization suggestions, error catalog (13 patterns).
+470 tests covering: iptables parser (all match modules, system detection), generator (restore files, round-trip), diff engine, packet tracer, conflict detection, safety timer, SSH commands, ipset, export formats, serialization contracts, HMAC verification, drift detection, audit log, mixed-backend detection, xtables lock retry, live traffic trace (TRACE rule lifecycle, parsers), ipset optimization suggestions, error catalog (13 patterns), dual-stack generation, coexistence profiles, persistence detection.
 
 ### TypeScript type checking
 
@@ -232,6 +235,15 @@ Analyzes rulesets for chains with many rules that differ only in source IP. Sugg
 ### Error explanations
 Maps 13 common iptables and SSH error patterns to human-readable explanations with context-aware remediation steps. Shows a popover with title, explanation, and actionable fix steps instead of raw stderr.
 
+### Dual-stack IPv4/IPv6
+Enable dual-stack mode per host to manage IPv4 and IPv6 rules from a single policy. The rule builder includes an "Apply to" dropdown (IPv4 only / IPv6 only / Both). Divergence detection warns when v4 and v6 rulesets differ. Side-by-side comparison view highlights differences.
+
+### Ecosystem coexistence
+Automatically detects which iptables chains are owned by Docker, Kubernetes, fail2ban, UFW, firewalld, and CSF. External chains are displayed in a collapsible read-only section — greyed out and non-editable. A pre-apply warning fires when staged changes would affect chains managed by other tools.
+
+### Persistence assistant
+Detects whether iptables rule persistence is configured (package installed, service enabled, last save time). Shows an "NP" badge in the sidebar for hosts without persistence. One-click setup installs `iptables-persistent` (Debian) or `iptables-services` (RHEL) and enables the service.
+
 ### Data integrity
 HMAC-signed backups detect tampering. 20+ serialization contract tests prevent frontend/backend data mismatches. Credentials are stored on connect and deleted on host removal.
 
@@ -239,8 +251,8 @@ HMAC-signed backups detect tampering. 20+ serialization contract tests prevent f
 
 | Layer | Technology | Lines |
 |-------|-----------|-------|
-| Frontend | Vanilla TypeScript, CSS | ~22k |
-| Backend | Rust (Tauri 2.x) | ~14k |
+| Frontend | Vanilla TypeScript, CSS | ~24k |
+| Backend | Rust (Tauri 2.x) | ~16k |
 | SSH | `openssh` crate (subprocess) | — |
 | State | Custom store with selector subscriptions | — |
 | Persistence | IndexedDB (browser) | — |
