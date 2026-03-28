@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.0.0] - 2026-03-27
+
+### Architecture Overhaul
+- **Safety timer ordering**: Timer armed BEFORE rules apply; abort if timer fails (CRITICAL fix)
+- **SSH keepalive**: 30s heartbeat per session, auto-detect dead connections
+- **Backend split**: Monolithic commands.rs (2,415 lines) → 11 focused submodules (no file >618 lines)
+- **Frontend split**: rule-table.ts (1,515 lines) → 5 sub-components + orchestrator (799 lines)
+- **CSS split**: rule-table.css (1,558 lines) → 6 files aligned with component structure
+- **Consolidated AppState**: Single managed state struct (pool + drift)
+
+### Performance
+- Shared `fetch_current_ruleset()` eliminates N+1 iptables-save SSH calls
+- DashMap for drift state (lock-free concurrent access)
+- Rate limiter race fix (holds mutex correctly)
+- Conflict detection capped at 50 results with early termination
+- Conflict detection frontend cache (60s TTL)
+- Hit counter UI debounced to 1 render/second
+- Reduced `.clone()` with Arc<String> in group apply
+- SSH connect timeout (10s)
+
+### Accessibility
+- aria-label on all icon buttons (disconnect, refresh, export, close, etc.)
+- aria-selected on tab buttons, role=dialog on preview modal
+
+### Code Quality
+- Extracted `exec_failed()` error helper (replaces 20+ patterns)
+- Log non-quota IndexedDB write failures
+- Documented intentionally permanent wireDbSync subscriptions
+
+### Tests
+- 9 new QA tests: timer ordering, keepalive, fetch helper, conflict capping,
+  drift concurrency, rate limiter load (370 total)
+
 ## [1.0.1] - 2026-03-27
 
 ### Fixed
