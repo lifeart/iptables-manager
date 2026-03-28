@@ -37,6 +37,7 @@ pub fn run() {
     let app_state = AppState { pool, drift };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             // Host connection commands

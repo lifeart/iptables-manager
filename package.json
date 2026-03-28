@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-updater": "^2",
     "idb": "^8.0.3",
     "sortablejs": "^1.15.7"
   }

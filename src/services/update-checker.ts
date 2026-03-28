@@ -1,23 +1,64 @@
 /**
  * Version update checker.
  *
- * Fetches the latest GitHub release and compares it against the
- * build-time version to determine if an update is available.
+ * In Tauri mode, uses the native updater plugin to check for updates
+ * (signed artifacts from GitHub Releases). Falls back to the GitHub
+ * API when the plugin is unavailable (browser mode, missing pubkey, etc.).
+ *
  * Failures are silently swallowed — this is a best-effort check
  * that must never block or break the app.
  */
 
+import type { Update } from '@tauri-apps/plugin-updater';
+
 const GITHUB_API = 'https://api.github.com/repos/lifeart/iptables-manager/releases/latest';
 const CURRENT_VERSION: string = __APP_VERSION__;
+
+const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 export interface UpdateInfo {
   latestVersion: string;
   currentVersion: string;
   downloadUrl: string;
   releaseNotes: string;
+  /** Native update handle — present only in Tauri mode. */
+  update?: Update;
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
+  // Try native updater first in Tauri mode
+  if (IS_TAURI) {
+    try {
+      const result = await checkViaTauriPlugin();
+      if (result) return result;
+      // Plugin returned null (no update) — that's fine, don't fall through
+      // to GitHub API since the plugin check succeeded
+      return null;
+    } catch {
+      // Plugin not configured (empty pubkey), not available, etc.
+      // Fall through to GitHub API fallback
+    }
+  }
+
+  return checkViaGitHubApi();
+}
+
+async function checkViaTauriPlugin(): Promise<UpdateInfo | null> {
+  const { check } = await import('@tauri-apps/plugin-updater');
+  const update = await check();
+  if (update) {
+    return {
+      latestVersion: update.version,
+      currentVersion: CURRENT_VERSION,
+      downloadUrl: '', // not needed — native updater handles download
+      releaseNotes: update.body || '',
+      update,
+    };
+  }
+  return null;
+}
+
+async function checkViaGitHubApi(): Promise<UpdateInfo | null> {
   try {
     const res = await fetch(GITHUB_API);
     if (!res.ok) return null;

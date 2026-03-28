@@ -2,9 +2,10 @@
  * Update notification banner.
  *
  * Shows a non-intrusive banner at the bottom of the window when a
- * newer version of Traffic Rules is available on GitHub. The user
- * can dismiss the banner (persisted per-version in localStorage)
- * or click "Download" to open the release page.
+ * newer version of Traffic Rules is available. In Tauri mode with
+ * the updater plugin configured, offers one-click "Update Now" that
+ * downloads and installs the update in-place. Otherwise falls back
+ * to opening the GitHub release page.
  */
 
 import { h } from '../../utils/dom';
@@ -14,8 +15,13 @@ const DISMISSED_KEY = 'update-banner-dismissed-version';
 
 export class UpdateBanner {
   private el: HTMLElement;
+  private textEl!: HTMLSpanElement;
+  private actionBtn!: HTMLButtonElement;
+  private progressEl!: HTMLElement;
+  private info: UpdateInfo;
 
-  constructor(private info: UpdateInfo) {
+  constructor(info: UpdateInfo) {
+    this.info = info;
     this.el = this.render();
   }
 
@@ -39,23 +45,35 @@ export class UpdateBanner {
 
   private render(): HTMLElement {
     const banner = h('div', { className: 'update-banner' });
-
     const content = h('div', { className: 'update-banner__content' });
 
     const icon = h('span', { className: 'update-banner__icon' }, '\u2B06');
 
-    const text = h(
+    this.textEl = h(
       'span',
       { className: 'update-banner__text' },
       `Traffic Rules v${this.info.latestVersion} is available. You\u2019re on v${this.info.currentVersion}.`,
-    );
+    ) as HTMLSpanElement;
 
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'update-banner__download-btn';
-    downloadBtn.type = 'button';
-    downloadBtn.textContent = 'Download';
-    downloadBtn.setAttribute('aria-label', 'Download latest version');
-    downloadBtn.addEventListener('click', () => this.handleDownload());
+    this.progressEl = h('div', { className: 'update-banner__progress' });
+    const progressBar = h('div', { className: 'update-banner__progress-bar' });
+    this.progressEl.appendChild(progressBar);
+    this.progressEl.style.display = 'none';
+
+    // Main action button: "Update Now" for native updater, "Download" for browser fallback
+    this.actionBtn = document.createElement('button');
+    this.actionBtn.className = 'update-banner__download-btn';
+    this.actionBtn.type = 'button';
+
+    if (this.info.update) {
+      this.actionBtn.textContent = 'Update Now';
+      this.actionBtn.setAttribute('aria-label', 'Download and install update');
+      this.actionBtn.addEventListener('click', () => this.handleAutoUpdate());
+    } else {
+      this.actionBtn.textContent = 'Download';
+      this.actionBtn.setAttribute('aria-label', 'Download latest version');
+      this.actionBtn.addEventListener('click', () => this.handleDownload());
+    }
 
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'update-banner__dismiss-btn';
@@ -66,25 +84,90 @@ export class UpdateBanner {
     dismissBtn.addEventListener('click', () => this.handleDismiss());
 
     content.appendChild(icon);
-    content.appendChild(text);
-    content.appendChild(downloadBtn);
+    content.appendChild(this.textEl);
+    content.appendChild(this.progressEl);
+    content.appendChild(this.actionBtn);
     content.appendChild(dismissBtn);
     banner.appendChild(content);
 
     return banner;
   }
 
-  private async handleDownload(): Promise<void> {
-    const url = this.info.downloadUrl;
+  private async handleAutoUpdate(): Promise<void> {
+    const update = this.info.update;
+    if (!update) return;
+
+    this.actionBtn.disabled = true;
+    this.actionBtn.textContent = 'Downloading\u2026';
+    this.progressEl.style.display = '';
+
+    const progressBar = this.progressEl.querySelector(
+      '.update-banner__progress-bar',
+    ) as HTMLElement;
+
     try {
-      // Try Tauri shell plugin (opens URL in default browser).
-      // The plugin may not be installed, so we use a dynamic string import
-      // to avoid compile-time module resolution failures.
+      let downloaded = 0;
+      let contentLength: number | undefined;
+
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case 'Started':
+            contentLength = event.data.contentLength ?? undefined;
+            break;
+          case 'Progress':
+            downloaded += event.data.chunkLength;
+            if (contentLength) {
+              const pct = Math.min(100, (downloaded / contentLength) * 100);
+              progressBar.style.width = `${pct}%`;
+              this.actionBtn.textContent = `Downloading ${Math.round(pct)}%`;
+            }
+            break;
+          case 'Finished':
+            progressBar.style.width = '100%';
+            break;
+        }
+      });
+
+      // Install succeeded — prompt restart
+      this.textEl.textContent = 'Update installed. Restart to apply.';
+      this.actionBtn.textContent = 'Restart';
+      this.actionBtn.disabled = false;
+      this.progressEl.style.display = 'none';
+
+      // Replace click handler for restart
+      this.actionBtn.replaceWith(this.actionBtn.cloneNode(true));
+      this.actionBtn = this.el.querySelector('.update-banner__download-btn') as HTMLButtonElement;
+      this.actionBtn.addEventListener('click', async () => {
+        try {
+          const mod = '@tauri-apps/plugin-process';
+          const { relaunch } = await import(/* @vite-ignore */ mod);
+          await (relaunch as () => Promise<void>)();
+        } catch {
+          this.textEl.textContent = 'Please restart the app manually to apply the update.';
+        }
+      });
+    } catch (err) {
+      // Download/install failed — offer manual download fallback
+      this.textEl.textContent = `Update failed: ${err instanceof Error ? err.message : 'unknown error'}`;
+      this.actionBtn.textContent = 'Download Manually';
+      this.actionBtn.disabled = false;
+      this.progressEl.style.display = 'none';
+
+      this.actionBtn.replaceWith(this.actionBtn.cloneNode(true));
+      this.actionBtn = this.el.querySelector('.update-banner__download-btn') as HTMLButtonElement;
+      this.actionBtn.addEventListener('click', () => this.handleDownload());
+    }
+  }
+
+  private async handleDownload(): Promise<void> {
+    const url =
+      this.info.downloadUrl ||
+      `https://github.com/lifeart/iptables-manager/releases/latest`;
+    try {
       const mod = '@tauri-apps/plugin-shell';
       const { open } = await import(/* @vite-ignore */ mod);
       await (open as (url: string) => Promise<void>)(url);
     } catch {
-      // Fallback: plain browser open
       window.open(url, '_blank');
     }
   }

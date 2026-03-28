@@ -227,6 +227,38 @@ HMAC-signed backups detect tampering. 20+ serialization contract tests prevent f
 | Credentials | OS keychain via `keyring` crate | — |
 | Drag & drop | SortableJS | — |
 
+## Auto-updates
+
+The app checks for updates on startup using the Tauri updater plugin. When a signed update is available, the user sees an "Update Now" button that downloads and installs in-place.
+
+### Setting up auto-updates
+
+1. Generate signing keys:
+   ```bash
+   cargo tauri signer generate -w ~/.tauri/traffic-rules.key
+   ```
+2. Copy the **public key** and add the updater plugin config to `src-tauri/tauri.conf.json`:
+   ```json
+   {
+     "plugins": {
+       "updater": {
+         "endpoints": [
+           "https://github.com/lifeart/iptables-manager/releases/latest/download/latest.json"
+         ],
+         "pubkey": "YOUR_PUBLIC_KEY_HERE"
+       }
+     }
+   }
+   ```
+3. Add to GitHub repository secrets:
+   - `TAURI_SIGNING_PRIVATE_KEY`: contents of `~/.tauri/traffic-rules.key`
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose
+4. Push a new tag to trigger a signed release
+
+The `tauri-apps/tauri-action` in the release workflow will automatically sign update artifacts, generate `latest.json` with download URLs and signatures, and upload it as a release asset.
+
+If the signing key is not configured (empty `pubkey`), the updater plugin is skipped gracefully and the app falls back to the GitHub API to check for new releases.
+
 ## Releasing
 
 1. Bump the version in all three files:
