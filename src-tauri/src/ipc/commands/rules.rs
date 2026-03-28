@@ -450,7 +450,8 @@ pub async fn rules_detect_conflicts(
     let (_raw, ruleset) = fetch_current_ruleset(&proxy, &host_id).await?;
 
     let effective = crate::iptables::conflict::ruleset_to_effective_rules(&ruleset);
-    Ok(crate::iptables::conflict::detect_conflicts(&effective))
+    let result = crate::iptables::conflict::detect_conflicts(&effective);
+    Ok(result.conflicts)
 }
 
 /// Produce a human-readable explanation of a rule.

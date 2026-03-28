@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
+use dashmap::DashMap;
 
 use crate::ssh::pool::ConnectionPool;
 
@@ -11,7 +11,7 @@ use crate::ssh::pool::ConnectionPool;
 pub type PoolState = Arc<ConnectionPool>;
 
 /// Managed state holding the last-known rule hash per host for drift detection.
-pub type DriftState = Arc<Mutex<HashMap<String, String>>>;
+pub type DriftState = Arc<DashMap<String, String>>;
 
 // ---------------------------------------------------------------------------
 // Submodules

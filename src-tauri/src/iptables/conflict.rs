@@ -464,10 +464,23 @@ pub fn ruleset_to_effective_rules(ruleset: &ParsedRuleset) -> Vec<EffectiveRule>
 // Public API
 // ---------------------------------------------------------------------------
 
-pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
-    let mut conflicts = Vec::new();
+/// Result of conflict detection, including whether the result was truncated
+/// due to hitting the `max_conflicts` limit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictDetectionResult {
+    pub conflicts: Vec<RuleConflict>,
+    pub truncated: bool,
+}
 
-    for i in 0..rules.len() {
+pub fn detect_conflicts(rules: &[EffectiveRule]) -> ConflictDetectionResult {
+    detect_conflicts_with_limit(rules, 50)
+}
+
+pub fn detect_conflicts_with_limit(rules: &[EffectiveRule], max_conflicts: usize) -> ConflictDetectionResult {
+    let mut conflicts = Vec::new();
+    let mut truncated = false;
+
+    'outer: for i in 0..rules.len() {
         for j in (i + 1)..rules.len() {
             let a = &rules[i];
             let b = &rules[j];
@@ -485,6 +498,10 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
                             a.id, a.position, b.id, b.position
                         ),
                     });
+                    if conflicts.len() >= max_conflicts {
+                        truncated = true;
+                        break 'outer;
+                    }
                 }
                 continue;
             }
@@ -501,6 +518,10 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
                         a.id, a.position, b.id, b.position, b.id, a.id
                     ),
                 });
+                if conflicts.len() >= max_conflicts {
+                    truncated = true;
+                    break 'outer;
+                }
                 continue;
             }
 
@@ -515,11 +536,15 @@ pub fn detect_conflicts(rules: &[EffectiveRule]) -> Vec<RuleConflict> {
                         a.id, a.position, b.id, b.position, a.action, b.action
                     ),
                 });
+                if conflicts.len() >= max_conflicts {
+                    truncated = true;
+                    break 'outer;
+                }
             }
         }
     }
 
-    conflicts
+    ConflictDetectionResult { conflicts, truncated }
 }
 
 // ---------------------------------------------------------------------------
@@ -586,7 +611,7 @@ mod tests {
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
         assert_eq!(conflicts[0].rule_id_a, "A");
@@ -629,7 +654,7 @@ mod tests {
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Redundancy);
     }
@@ -677,7 +702,7 @@ mod tests {
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         // B is subset of A in source (10.0.0.0/16 subset of 10.0.0.0/8)
         // but B's ports (80-90) are NOT a subset of A's ports (80).
         // So is_subset(B, A) = false. criteria_overlap = true. Different actions.
@@ -737,7 +762,7 @@ mod tests {
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts but got: {:?}",
@@ -821,7 +846,7 @@ mod tests {
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(conflicts.is_empty());
     }
 
@@ -888,7 +913,7 @@ COMMIT
 "#;
         let ruleset = parse_iptables_save(input).unwrap();
         let effective = ruleset_to_effective_rules(&ruleset);
-        let conflicts = detect_conflicts(&effective);
+        let conflicts = detect_conflicts(&effective).conflicts;
 
         assert_eq!(conflicts.len(), 1, "expected 1 shadow conflict, got {:?}", conflicts);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
@@ -906,7 +931,7 @@ COMMIT
 "#;
         let ruleset = parse_iptables_save(input).unwrap();
         let effective = ruleset_to_effective_rules(&ruleset);
-        let conflicts = detect_conflicts(&effective);
+        let conflicts = detect_conflicts(&effective).conflicts;
 
         assert_eq!(conflicts.len(), 1, "expected 1 redundancy, got {:?}", conflicts);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Redundancy);
@@ -927,7 +952,7 @@ COMMIT
 "#;
         let ruleset = parse_iptables_save(input).unwrap();
         let effective = ruleset_to_effective_rules(&ruleset);
-        let conflicts = detect_conflicts(&effective);
+        let conflicts = detect_conflicts(&effective).conflicts;
 
         assert!(!conflicts.is_empty(), "expected at least one conflict, got none");
         // Should be an overlap (not a pure shadow, since B has broader ports).
@@ -948,7 +973,7 @@ COMMIT
 "#;
         let ruleset = parse_iptables_save(input).unwrap();
         let effective = ruleset_to_effective_rules(&ruleset);
-        let conflicts = detect_conflicts(&effective);
+        let conflicts = detect_conflicts(&effective).conflicts;
 
         assert!(conflicts.is_empty(), "expected no conflicts, got {:?}", conflicts);
     }
@@ -966,7 +991,7 @@ COMMIT
 "#;
         let ruleset = parse_iptables_save(input).unwrap();
         let effective = ruleset_to_effective_rules(&ruleset);
-        let conflicts = detect_conflicts(&effective);
+        let conflicts = detect_conflicts(&effective).conflicts;
 
         assert_eq!(conflicts.len(), 1, "expected 1 conflict, got {:?}", conflicts);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
@@ -1014,7 +1039,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for opposite negation, got: {:?}",
@@ -1060,7 +1085,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for opposite protocol negation, got: {:?}",
@@ -1108,7 +1133,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         // A is "any" which is broader; B with !10.0.0.0/8 is a subset of "any".
         // criteria_overlap returns true (None vs Some with negated => true).
         assert!(
@@ -1159,7 +1184,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for different interfaces, got: {:?}",
@@ -1205,7 +1230,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].conflict_type, ConflictType::Shadow);
     }
@@ -1248,7 +1273,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for !tcp vs tcp, got: {:?}",
@@ -1294,7 +1319,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             !conflicts.is_empty(),
             "Expected a conflict for both-negated same address, got none"
@@ -1339,7 +1364,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for different out_interfaces, got: {:?}",
@@ -1385,7 +1410,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             !conflicts.is_empty(),
             "Expected a conflict when one rule has no interface (any) and the other has a specific interface"
@@ -1430,7 +1455,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             !conflicts.is_empty(),
             "Expected a conflict for overlapping port ranges, got none"
@@ -1481,7 +1506,7 @@ COMMIT
             },
         ];
 
-        let conflicts = detect_conflicts(&rules);
+        let conflicts = detect_conflicts(&rules).conflicts;
         assert!(
             conflicts.is_empty(),
             "Expected no conflicts for tcp vs udp on same port, got: {:?}",

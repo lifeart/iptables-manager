@@ -10,6 +10,9 @@ const BLOCKED_LOG_CAP = 500;
 const SSH_LOG_CAP = 1000;
 const AUDIT_LOG_CAP = 500;
 
+// cloneMap always creates a new Map reference so Redux-style identity checks
+// (oldMap !== newMap) detect the change. Every call site immediately mutates the
+// clone (set/delete), so the shallow copy is always necessary — no false positives.
 function cloneMap<K, V>(map: Map<K, V>): Map<K, V> {
   return new Map(map);
 }

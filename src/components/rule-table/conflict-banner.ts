@@ -12,9 +12,19 @@ import { h } from '../../utils/dom';
 import { detectConflicts } from '../../ipc/bridge';
 import type { RuleConflict } from '../../ipc/bridge';
 
+interface ConflictCache {
+  hostId: string;
+  rulesHash: string;
+  conflicts: RuleConflict[];
+  timestamp: number;
+}
+
+const CONFLICT_CACHE_TTL_MS = 60_000; // 60 seconds
+
 export class ConflictBanner extends Component {
   private conflictsBanner: HTMLElement | null = null;
   private conflictsExpanded = false;
+  private conflictCache: ConflictCache | null = null;
 
   constructor(
     container: HTMLElement,
@@ -58,10 +68,41 @@ export class ConflictBanner extends Component {
     );
   }
 
+  private computeRulesHash(hostId: string): string {
+    const state = this.store.getState();
+    const rules = state.hostStates.get(hostId)?.rules;
+    if (!rules || rules.length === 0) return '';
+    return `${rules.length}:${rules[0]?.id ?? ''}`;
+  }
+
   private runConflictDetection(hostId: string): void {
+    const rulesHash = this.computeRulesHash(hostId);
+    const now = Date.now();
+
+    // Use cached result if same host, same rules hash, and within TTL
+    if (
+      this.conflictCache &&
+      this.conflictCache.hostId === hostId &&
+      this.conflictCache.rulesHash === rulesHash &&
+      now - this.conflictCache.timestamp < CONFLICT_CACHE_TTL_MS
+    ) {
+      this.store.dispatch({
+        type: 'SET_RULE_CONFLICTS',
+        hostId,
+        conflicts: this.conflictCache.conflicts,
+      });
+      return;
+    }
+
     detectConflicts(hostId)
       .then((conflicts) => {
         if (this.store.getState().activeHostId === hostId) {
+          this.conflictCache = {
+            hostId,
+            rulesHash,
+            conflicts,
+            timestamp: Date.now(),
+          };
           this.store.dispatch({
             type: 'SET_RULE_CONFLICTS',
             hostId,

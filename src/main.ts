@@ -215,6 +215,10 @@ async function bootstrap(): Promise<void> {
   }
 }
 
+// These store subscriptions are intentionally permanent — they persist for the
+// entire app lifecycle and are never unsubscribed. The subscription lifecycle
+// matches the application lifecycle: created once at boot and torn down only
+// when the window closes.
 function wireDbSync(): void {
   // Batched writes for hosts, groups, ipLists, settings
   store.subscribeSelector(

@@ -106,9 +106,8 @@ pub async fn check_drift(
         format!("{:016x}", hasher.finish())
     };
 
-    let mut hashes = drift_state.lock().await;
-    let previous = hashes.get(&host_id).cloned();
-    hashes.insert(host_id.clone(), new_hash.clone());
+    let previous = drift_state.get(&host_id).map(|v| v.clone());
+    drift_state.insert(host_id.clone(), new_hash.clone());
 
     match previous {
         None => {
@@ -185,8 +184,7 @@ pub async fn reset_drift(
         format!("{:016x}", hasher.finish())
     };
 
-    let mut hashes = drift_state.lock().await;
-    hashes.insert(host_id, new_hash);
+    drift_state.insert(host_id, new_hash);
     Ok(())
 }
 

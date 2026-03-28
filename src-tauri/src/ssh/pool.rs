@@ -367,11 +367,9 @@ impl ConnectionPool {
             .rate_limiters
             .entry(host_id.to_string())
             .or_insert_with(|| Mutex::new(RateLimiter::new(10)));
-        let delay = {
-            let mut rl = limiter.lock().await;
-            rl.record()
-        };
-        if let Some(d) = delay {
+        let mut rl = limiter.lock().await;
+        if let Some(d) = rl.record() {
+            drop(rl);
             tokio::time::sleep(d).await;
         }
     }

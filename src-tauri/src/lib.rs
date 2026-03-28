@@ -10,8 +10,8 @@ pub mod export;
 pub mod temporary;
 pub mod sysctl;
 
-use std::collections::HashMap;
 use std::sync::Arc;
+use dashmap::DashMap;
 use ssh::pool::{ConnectionPool, OpensshTransport};
 use ipc::commands::{PoolState, DriftState};
 
@@ -21,7 +21,7 @@ pub fn run() {
     let pool: PoolState = Arc::new(ConnectionPool::new(Box::new(OpensshTransport)));
 
     // Create drift detection state (in-memory hash store per host)
-    let drift_state: DriftState = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let drift_state: DriftState = Arc::new(DashMap::new());
 
     tauri::Builder::default()
         .manage(pool)
