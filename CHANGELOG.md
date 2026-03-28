@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.1] - 2026-03-27
+
+### Added
+- Structured logging via tracing-subscriber (27 instrumentation points)
+- SSH pool: connect/disconnect/keepalive/rate-limit/timeout events
+- Safety timer: armed/cancelled logging
+- Backup: creation/HMAC/v6 failure warnings
+- 14 silent error paths now log warnings instead of swallowing
+
+### Removed
+- Unused `winnow` dependency
+
 ## [2.1.0] - 2026-03-27
 
 ### Added
