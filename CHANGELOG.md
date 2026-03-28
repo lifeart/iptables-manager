@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.0] - 2026-03-27
+
+### Added
+- Tauri auto-updater with signed releases
+- "Update Now" button downloads, installs, and prompts restart
+- Progress bar during download
+- Falls back to GitHub API check when updater plugin not configured
+- Release workflow signs artifacts with TAURI_SIGNING_PRIVATE_KEY
+
 ## [2.2.0] - 2026-03-27
 
 ### Added
